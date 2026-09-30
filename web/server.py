@@ -1,6 +1,7 @@
 """
 웹 대시보드. 봇 프로세스 안에서 aiohttp로 돌아 봇 상태와 설정 캐시를 그대로 공유
 """
+import asyncio
 import os
 import secrets
 import time
@@ -18,6 +19,7 @@ from utils.config import config
 from utils.emoji_zoom import load_disabled_servers, save_disabled_servers
 from utils.logging_config import get_logger
 from utils.usage_db import db
+from web import previews
 
 logger = get_logger('대시보드')
 
@@ -88,7 +90,7 @@ env.filters['numdate'] = lambda d: d.strftime('%Y.%m.%d')
 env.filters['shortdate'] = lambda d: f"{d.month}월 {d.day}일 {d:%H:%M}"
 env.globals['session_avatar'] = lambda s: avatar_url(s['user_id'], s['avatar'])
 env.globals['support_server'] = config.support_server
-env.globals['static_version'] = str(int((ROOT / 'static' / 'style.css').stat().st_mtime))
+env.globals['static_version'] = str(int(max(f.stat().st_mtime for f in (ROOT / 'static').iterdir())))
 
 
 def render(request: web.Request, name: str, status: int = 200, **context) -> web.Response:
@@ -179,7 +181,7 @@ async def session_middleware(request: web.Request, handler):
         response.headers.setdefault('Cache-Control', 'private, no-store')
     response.headers.setdefault(
         'Content-Security-Policy',
-        "default-src 'self'; img-src 'self' https://cdn.discordapp.com data:; "
+        "default-src 'self'; img-src 'self' https: data:; "
         "style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; form-action 'self'",
     )
     return response
@@ -322,15 +324,26 @@ async def index(request: web.Request):
         })
     commands.sort(key=lambda c: COMMAND_ORDER.index(c['name']) if c['name'] in COMMAND_ORDER else 99)
 
+    live = dict(previews.live)
+    if live.get('season_end'):
+        live['season_days'] = (live['season_end'].date() - datetime.now(KST).date()).days
+    stamp = None
+    if previews.updated_at:
+        t = datetime.fromtimestamp(previews.updated_at, KST)
+        stamp = f"{'오전' if t.hour < 12 else '오후'} {t.hour % 12 or 12}:{t.minute:02d}"
+
     return render(
         request, 'index.html',
-        avatar=client.user.display_avatar.with_size(256).url if client.user else None,
+        avatar=client.user.display_avatar.with_size(128).url if client.user else None,
         guild_count=len(client.guilds),
         user_count=sum(g.member_count or 0 for g in client.guilds),
         days=(datetime.now(KST) - SERVICE_START).days,
         commands=commands,
+        selected='랭킹',
+        previews=previews.previews,
+        live=live,
+        stamp=stamp,
         invite=invite_url(),
-        support=config.support_server,
     )
 
 
@@ -521,6 +534,11 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
     app.router.add_get('/favicon.ico', favicon)
     app.router.add_static('/static', ROOT / 'static')
     app.on_cleanup.append(lambda _: http.close())
+    refresh = asyncio.create_task(previews.refresh_loop(client))
+
+    async def stop_refresh(_):
+        refresh.cancel()
+    app.on_cleanup.append(stop_refresh)
 
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()

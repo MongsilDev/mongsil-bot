@@ -306,20 +306,115 @@ img {
 
 /* 첫 화면 */
 .hero {
-  text-align: center;
-  padding: 24px 0 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 500px);
+  align-items: center;
+  gap: 56px;
+  padding: 8px 0 0;
 }
 
 .bot-avatar {
-  width: 112px;
-  height: 112px;
-  margin: 0 auto 24px;
+  width: 88px;
+  height: 88px;
+  margin-bottom: 24px;
   border-radius: 50%;
 }
 
 .hero h1 {
-  font-size: 64px;
+  font-size: 56px;
   line-height: 1.05;
+}
+
+.hero .actions {
+  justify-content: flex-start;
+}
+
+.facts {
+  display: flex;
+  gap: 36px;
+  margin: 40px 0 0;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+}
+
+.facts div {
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.facts dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.facts dd {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.hero-shot .dc-message {
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+.figures.figures-live {
+  grid-template-columns: repeat(4, 1fr);
+  margin-top: 0;
+}
+
+/* 명령어 목록과 출력 미리보기 */
+.cmd-browser {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.cmd-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--rule);
+}
+
+.cmd-list button {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+  transition: background-color 150ms var(--ease);
+}
+
+.cmd-list button:hover {
+  background: #111113;
+}
+
+.cmd-list button[aria-selected="true"] {
+  background: var(--tile);
+  box-shadow: inset 3px 0 0 var(--link);
+}
+
+.cmd-list button:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+
+.cmd-list .desc {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.cmd-panels {
+  position: sticky;
+  top: 76px;
+}
+
+.panel-desc {
+  display: none;
 }
 
 .lede {
@@ -1000,9 +1095,65 @@ a.guild:focus-visible {
   color: var(--fg);
 }
 
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  .cmd-browser {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .cmd-list {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 8px;
+    border: 0;
+    scrollbar-width: none;
+  }
+
+  .cmd-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cmd-list button {
+    flex: none;
+    padding: 8px 14px;
+    border: 1px solid var(--tile-edge);
+    border-radius: 980px;
+  }
+
+  .cmd-list button[aria-selected="true"] {
+    box-shadow: none;
+    border-color: var(--fg);
+  }
+
+  .cmd-list .desc,
+  .cmd-list .param {
+    display: none;
+  }
+
+  .cmd-panels {
+    position: static;
+  }
+
+  .panel-desc {
+    display: block;
+    margin-bottom: 12px;
+    color: var(--muted);
+    font-size: 15px;
+  }
+}
+
 @media (max-width: 820px) {
   .figures-wide {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .figures.figures-live {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .split {

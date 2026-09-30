@@ -1,0 +1,247 @@
+/* 디스코드 다크 테마 메시지 미리보기 */
+.dc-message {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 0 16px;
+  padding: 16px 16px 18px;
+  background: #313338;
+  border-radius: 12px;
+  color: #dbdee1;
+  font: 16px/1.375 "gg sans", "Noto Sans KR", -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+.dc-invoke {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin: 0 0 4px 18px;
+  color: #b5bac1;
+  font-size: 14px;
+}
+
+.dc-invoke svg {
+  flex: none;
+  margin-bottom: -2px;
+}
+
+.dc-arg {
+  color: #949ba4;
+}
+
+.dc-main {
+  min-width: 0;
+}
+
+.dc-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.dc-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  line-height: 1.2;
+}
+
+.dc-name {
+  color: #f2f3f5;
+  font-weight: 500;
+}
+
+.dc-app {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #5865f2;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+}
+
+.dc-stamp {
+  color: #949ba4;
+  font-size: 12px;
+}
+
+.dc-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dc-container {
+  display: grid;
+  gap: 8px;
+  max-width: 520px;
+  padding: 16px;
+  background: #393a41;
+  border: 1px solid #45464d;
+  border-left: 4px solid var(--accent, #45464d);
+  border-radius: 8px;
+}
+
+.dc-text {
+  font-size: 15px;
+  min-width: 0;
+}
+
+.dc-h1,
+.dc-h2,
+.dc-h3 {
+  color: #f2f3f5;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.dc-h1 {
+  font-size: 24px;
+  margin: 2px 0 4px;
+}
+
+.dc-h2 {
+  font-size: 20px;
+  margin: 2px 0 4px;
+}
+
+.dc-h3 {
+  font-size: 16px;
+  margin: 2px 0;
+}
+
+.dc-small {
+  color: #949ba4;
+  font-size: 13px;
+}
+
+.dc-text strong {
+  color: #f2f3f5;
+  font-weight: 700;
+}
+
+.dc-text code {
+  padding: 1px 3px;
+  background: #2b2d31;
+  border: 1px solid #1e1f22;
+  border-radius: 4px;
+  font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.dc-time {
+  padding: 0 2px;
+  background: rgba(78, 80, 88, 0.48);
+  border-radius: 3px;
+}
+
+.dc-text a {
+  color: #00a8fc;
+}
+
+.dc-sep {
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid #4e5058;
+}
+
+.dc-gap {
+  height: 4px;
+}
+
+.dc-section {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dc-section-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dc-thumb {
+  flex: none;
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.dc-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dc-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.dc-primary {
+  background: #5865f2;
+}
+
+.dc-secondary {
+  background: #4e5058;
+}
+
+.dc-success {
+  background: #248046;
+}
+
+.dc-danger {
+  background: #da373c;
+}
+
+.dc-button.is-disabled {
+  opacity: 0.5;
+}
+
+.dc-ext {
+  margin-left: 2px;
+}
+
+.dc-image {
+  max-width: 360px;
+  max-height: 300px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+@media (max-width: 640px) {
+  .dc-message {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 0 10px;
+    padding: 12px 10px 14px;
+  }
+
+  .dc-avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .dc-container {
+    padding: 12px;
+  }
+
+  .dc-thumb {
+    width: 64px;
+    height: 64px;
+  }
+}

@@ -41,3 +41,17 @@
 <span class="gicon gicon-text" style="width:{{ size }}px;height:{{ size }}px" aria-hidden="true">{{ g.name|initials }}</span>
 {% endif %}
 {% endmacro %}
+
+{% macro message(name, p, avatar, stamp) %}
+<div class="dc-message">
+  <div class="dc-invoke">
+    <svg width="34" height="12" viewBox="0 0 34 12" aria-hidden="true"><path d="M33 1H10a8 8 0 0 0-8 8v3" fill="none" stroke="#4e5058" stroke-width="2"/></svg>
+    <span>/{{ name }}{% if p.input %} <span class="dc-arg">{{ p.input }}</span>{% endif %}</span>
+  </div>
+  {% if avatar %}<img class="dc-avatar" src="{{ avatar }}" alt="" width="40" height="40" loading="lazy">{% else %}<span></span>{% endif %}
+  <div class="dc-main">
+    <div class="dc-head"><span class="dc-name">몽실봇</span><span class="dc-app">앱</span>{% if stamp %}<span class="dc-stamp">오늘 {{ stamp }}</span>{% endif %}</div>
+    <div class="dc-body">{{ p.html|safe }}</div>
+  </div>
+</div>
+{% endmacro %}
