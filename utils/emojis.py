@@ -13,6 +13,7 @@ EMOJIS = {
 
     # 버튼
     'chart': '📊',
+    'clock': '⏱️',
     'support': '💬',
     'invite': '🚀',
     'web': '🌐',

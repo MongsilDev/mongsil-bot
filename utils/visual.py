@@ -212,23 +212,50 @@ def heatmap(grid: Sequence[Sequence[float]], row_labels: Sequence[str], accent: 
     return _png(img)
 
 
-def place_strip(places: Sequence[int], width: int = 720, height: int = 96) -> Optional[bytes]:
-    """최근 게임 순위 막대. 오래된 게임이 왼쪽. 1등 금색, 3등 안은 청록, 나머지는 회색"""
-    if not places:
+PLACE_COLOURS = [(1, (240, 178, 50)), (3, (79, 194, 180)), (6, (138, 145, 153)), (99, (229, 72, 77))]
+
+
+def place_colour(place: int) -> Tuple[int, int, int]:
+    return next(col for limit, col in PLACE_COLOURS if place <= limit)
+
+
+def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
+             width: int = 720, height: int = 210) -> Optional[bytes]:
+    """최근 게임 RP 흐름. games는 오래된 순 (게임 후 RP, 순위), 아래 줄에 순위 칩"""
+    if not games:
         return None
     img, d = _canvas(width, height)
     s = SCALE
-    n = len(places)
-    left, right, top, bottom = 12, width - 12, 10, height - 22
-    slot = (right - left) / n
-    bar_w = slot * 0.62
-    worst = max(8, max(places))
-    small = font(10, bold=True)
-    for i, p in enumerate(places):
-        x0 = (left + i * slot + (slot - bar_w) / 2) * s
-        h = (bottom - top) * (0.18 + 0.82 * (worst - p) / (worst - 1))
-        col = (240, 178, 50) if p == 1 else (79, 194, 180) if p <= 3 else (108, 114, 123)
-        d.rounded_rectangle([x0, (bottom - h) * s, x0 + bar_w * s, bottom * s], radius=3 * s, fill=col)
-        d.text((x0 + bar_w * s / 2, (bottom + 5) * s), str(p), font=small,
-               fill=TEXT if p <= 3 else SUBTEXT, anchor='mt')
+    values = [start_rp] + [rp for rp, _ in games]
+    ticks = _ticks(min(values) - 10, max(values) + 10, 4)
+    lo, hi = ticks[0], ticks[-1]
+    left, right, top, bottom = 56, width - 64, 14, height - 52
+    n = len(values)
+
+    def xy(i: int, v: float) -> Tuple[float, float]:
+        return ((left + i / (n - 1) * (right - left)) * s,
+                (bottom - (v - lo) / (hi - lo) * (bottom - top)) * s)
+
+    small = font(11)
+    for v in ticks:
+        _, y = xy(0, v)
+        d.line([(left * s, y), (right * s, y)], fill=GRID, width=s)
+        d.text(((left - 8) * s, y), f'{v:,.0f}', font=small, fill=SUBTEXT, anchor='rm')
+
+    rgb = _hex(accent)
+    line = [xy(i, v) for i, v in enumerate(values)]
+    d.line(line, fill=rgb, width=3 * s, joint='curve')
+    chip = font(11, bold=True)
+    radius = min(11, (right - left) / n / 2 - 1)
+    for i, (_, place) in enumerate(games, start=1):
+        x, y = line[i]
+        col = place_colour(place)
+        d.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=col, outline=BG, width=2 * s)
+        cy = (height - 22) * s
+        d.ellipse([x - radius * s, cy - radius * s, x + radius * s, cy + radius * s], fill=col)
+        d.text((x, cy), str(place), font=chip, fill=BG, anchor='mm')
+    x, y = line[0]
+    d.ellipse([x - 4 * s, y - 4 * s, x + 4 * s, y + 4 * s], fill=SUBTEXT)
+    x, y = line[-1]
+    d.text((x + 10 * s, y), f'{values[-1]:,}', font=font(12, bold=True), fill=TEXT, anchor='lm')
     return _png(img)

@@ -5,12 +5,14 @@ import discord
 from discord import ui
 from discord.ext import commands
 from discord import app_commands
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from client import ERClient
 
 from commands.rating import cut_rp, fetch_rating_info
 from commands.season import get_ranked_season
-from utils.layouts import create_loading_layout
+from utils.config import config
+from utils.layouts import create_loading_layout, CooldownLayoutView
+from utils import app_emojis, visual
 from utils.errors import handle_errors, validate_nickname, NotFoundError, APIError
 from utils.logging_config import get_logger
 from utils.character_names import get_character_name
@@ -21,21 +23,48 @@ from utils.emojis import EMOJIS
 logger = get_logger('랭크')
 
 
-def next_goal(tier: str, mmr: int, cuts: Tuple[Optional[int], Optional[int]]) -> str:
-    """다음 티어까지 남은 RP 문구. 목표가 없으면 빈 문자열"""
+RECENT_GAMES = 20
+
+
+def next_goal(tier: str, mmr: int, cuts: Tuple[Optional[int], Optional[int]]) -> Optional[Tuple[str, int, float]]:
+    """다음 목표 이름, 남은 RP, 현재 구간 진행률. 목표가 없으면 None"""
     eternity_cut, demigod_cut = cuts
     if tier == "데미갓":
         target, label = eternity_cut, "이터니티 컷"
+        floor = demigod_cut or TierSystem.RANKED_GATE
     elif tier == "미스릴":
         target, label = demigod_cut or TierSystem.RANKED_GATE, "데미갓 컷"
+        floor = TierSystem.TIERS["미스릴"]["base"]
     else:
         step = TierSystem.next_rp_tier(tier)
         if not step:
-            return ""
+            return None
         label, target = step
+        floor = TierSystem.TIERS[tier]["base"]
     if not target or target <= mmr:
-        return ""
-    return f"{label}까지 {target - mmr:,} RP"
+        return None
+    ratio = (mmr - floor) / (target - floor) if target > floor else 0.0
+    return label, target - mmr, min(max(ratio, 0.0), 1.0)
+
+
+async def fetch_recent_ranked(client: ERClient, user_id: str, season_id: int) -> List[Dict[str, Any]]:
+    """이번 시즌 최근 랭크 게임, 최신순. 실패하면 빈 목록"""
+    games: List[Dict[str, Any]] = []
+    url = f"{config.api_url}/user/games/uid/{user_id}"
+    try:
+        for _ in range(2):
+            data = await client.api_client.get(url, ttl=300)
+            if not data:
+                break
+            for game in data.get('userGames', []):
+                if game.get('matchingMode') == 3 and game.get('seasonId') == season_id and game.get('mmrAfter'):
+                    games.append(game)
+            if len(games) >= RECENT_GAMES or not data.get('next'):
+                break
+            url = f"{config.api_url}/user/games/uid/{user_id}?next={data['next']}"
+    except Exception as e:
+        logger.warning(f"최근 게임 조회 실패, 흐름 없이 표시: {e}")
+    return games[:RECENT_GAMES]
 
 
 def create_rank_layout(
@@ -44,6 +73,8 @@ def create_rank_layout(
     user_rank: Optional[Dict[str, Any]],
     season_name: str,
     cuts: Tuple[Optional[int], Optional[int]] = (None, None),
+    recent: Optional[List[Dict[str, Any]]] = None,
+    client: Optional[ERClient] = None,
 ) -> ui.LayoutView:
     """랭크 정보 LayoutView를 생성합니다."""
     mmr = int(stats.get('mmr', 0))
@@ -55,6 +86,7 @@ def create_rank_layout(
     # 이터니티와 데미갓은 귀속 서버 순위 기준. 통계의 rank는 통합 순위라 서버 컷과 어긋남
     server_rank = int(user_rank.get('serverRank', 0)) if user_rank else 0
     tier = TierSystem.get_tier(mmr, server_rank or int(stats.get('rank', 0)))
+    icon = TierSystem.get_tier_icon(tier)
 
     if server_rank and server_rank <= 1000:
         server = SERVER_NAMES.get(user_rank.get('serverCode'), "서버")
@@ -64,15 +96,19 @@ def create_rank_layout(
         rank_size = int(stats.get('rankSize', 0))
         place = f"상위 {rank / rank_size * 100:.2f}%" if rank_size else ""
 
-    icon_url = f"https://cdn.mongsil.dev/mongsilbot/tier2/{TierSystem.get_tier_icon(tier)}.png"
+    view = RankView(client, actual_nickname) if client else ui.LayoutView()
+    icon_url = f"https://cdn.mongsil.dev/mongsilbot/tier2/{icon}.png"
     header_text = (
         f"## {actual_nickname}\n"
-        f"{tier} | **{mmr:,}** RP\n"
+        f"### {tier} | {mmr:,} RP\n"
         f"-# {season_name}" + (f" | {place}" if place else "")
     )
+    container_items = [ui.Section(ui.TextDisplay(header_text), accessory=ui.Thumbnail(media=icon_url))]
+
     goal = next_goal(tier, mmr, cuts)
     if goal:
-        header_text += f"\n-# {goal}"
+        label, left, ratio = goal
+        container_items.append(ui.TextDisplay(f"{visual.gauge(ratio)}  **{ratio * 100:.0f}%**\n-# {label}까지 {left:,} RP"))
 
     # 탑1은 솔로 승률과 같은 지표라 표시하지 않는다
     stats_text = (
@@ -81,41 +117,76 @@ def create_rank_layout(
         f"킬 **{float(stats.get('averageKills', 0.0)):.1f}** | "
         f"어시 **{float(stats.get('averageAssistants', 0.0)):.1f}**"
     )
+    container_items += [ui.Separator(), ui.TextDisplay(stats_text)]
 
-    container_items = [
-        ui.Section(ui.TextDisplay(header_text), accessory=ui.Thumbnail(media=icon_url)),
-        ui.Separator(),
-        ui.TextDisplay(stats_text),
-    ]
+    if recent:
+        oldest_first = list(reversed(recent))
+        places = [int(g.get('gameRank', 0)) for g in oldest_first]
+        gain = int(oldest_first[-1]['mmrAfter']) - int(oldest_first[0].get('mmrBefore') or oldest_first[0]['mmrAfter'])
+        chart = visual.rp_chart(
+            int(oldest_first[0].get('mmrBefore') or oldest_first[0]['mmrAfter']),
+            [(int(g['mmrAfter']), p) for g, p in zip(oldest_first, places)],
+            visual.TIER_COLOURS.get(icon, visual.TIER_COLOURS['0']),
+        )
+        container_items += [ui.Separator(), ui.TextDisplay(
+            f"### 최근 {len(recent)}게임\n"
+            f"평균 **{sum(places) / len(places):.1f}**등 | 탑3 **{sum(p <= 3 for p in places)}**회 | RP **{gain:+,}**"
+        )]
+        if chart:
+            url = visual.attach(view, 'rank.png', chart)
+            container_items.append(ui.MediaGallery(discord.MediaGalleryItem(url, description="최근 게임 RP와 순위")))
 
     top_characters = sorted(stats.get('characterStats') or [], key=lambda x: x.get('totalGames', 0), reverse=True)[:3]
     if top_characters:
         char_lines = []
         for char in top_characters:
+            code = char.get('characterCode', 0)
             char_games = char.get('totalGames', 0)
             char_win = (char.get('wins', 0) / char_games * 100) if char_games else 0.0
             char_top3 = (char.get('top3', 0) / char_games * 100) if char_games else 0.0
+            face = app_emojis.character(code)
             char_lines.append(
-                f"**{get_character_name(char.get('characterCode', 0))}** "
+                (f"{face} " if face else "") +
+                f"**{get_character_name(code)}** "
                 f"{char_games}게임 | 승률 {char_win:.0f}% | 탑3 {char_top3:.0f}%"
             )
         container_items.append(ui.Separator())
         container_items.append(ui.TextDisplay("### 모스트 캐릭터\n" + "\n".join(char_lines)))
 
-    view = ui.LayoutView()
-    view.add_item(ui.Container(*container_items, accent_colour=discord.Colour.blurple()))
-    view.add_item(ui.ActionRow(
+    view.add_item(ui.Container(*container_items, accent_colour=visual.tier_colour(icon)))
+    row = ui.ActionRow(
         ui.Button(
             style=discord.ButtonStyle.link,
             label="DAK.GG",
             emoji=EMOJIS['chart'],
             url=f"https://dak.gg/er/players/{quote(actual_nickname)}"
         )
-    ))
+    )
+    if client:
+        row.add_item(view.playtime_button)
+    view.add_item(row)
     return view
 
 
-async def build_rank_view(client: ERClient, nickname: str) -> ui.LayoutView:
+class RankView(CooldownLayoutView):
+    """플탐 버튼이 있는 랭크 카드"""
+
+    def __init__(self, client: ERClient, nickname: str):
+        super().__init__(timeout=config.view_timeout_interactive)
+        self.client = client
+        self.nickname = nickname
+        self.playtime_button = ui.Button(style=discord.ButtonStyle.secondary, label="플탐", emoji=EMOJIS['clock'])
+        self.playtime_button.callback = self.show_playtime
+
+    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    async def show_playtime(self, interaction: discord.Interaction):
+        from commands.playtime import build_playtime_view
+        await interaction.response.send_message(view=create_loading_layout("플레이 타임 조회 중"))
+        view = await build_playtime_view(self.client, self.nickname)
+        await interaction.edit_original_response(view=view, attachments=visual.files_of(view))
+
+
+async def build_rank_view(client: ERClient, nickname: str, buttons: bool = True) -> ui.LayoutView:
     """닉네임으로 랭크 카드를 만든다. 명령과 웹 미리보기가 같이 씀"""
     season = await get_ranked_season()
     if not season:
@@ -129,9 +200,10 @@ async def build_rank_view(client: ERClient, nickname: str) -> ui.LayoutView:
             f"'{nickname}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요."
         )
 
-    stats, user_rank = await asyncio.gather(
+    stats, user_rank, recent = await asyncio.gather(
         fetch_user_stats_solo(client, user_id, season_id, use_cache=True),
         fetch_user_rank(client, user_id, season_id),
+        fetch_recent_ranked(client, user_id, season_id),
     )
 
     # 순위 컷은 아시아1 목록만 있어 다른 서버 유저는 컷 목표를 생략
@@ -141,7 +213,7 @@ async def build_rank_view(client: ERClient, nickname: str) -> ui.LayoutView:
         rank_300, rank_1000 = await fetch_rating_info(client, season_id)
         cuts = (cut_rp(rank_300), cut_rp(rank_1000))
 
-    return create_rank_layout(nickname, stats, user_rank, season_name, cuts)
+    return create_rank_layout(nickname, stats, user_rank, season_name, cuts, recent, client if buttons else None)
 
 
 class Rank(commands.Cog):
@@ -158,7 +230,8 @@ class Rank(commands.Cog):
 
         await interaction.response.send_message(view=create_loading_layout("랭크 조회 중"))
         view = await build_rank_view(self.client, validated_nickname)
-        await interaction.edit_original_response(view=view, embeds=[], attachments=[])
+        await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
+        view.message = await interaction.original_response()
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""
