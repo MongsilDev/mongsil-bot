@@ -25,7 +25,7 @@ async def _build(client) -> None:
     from commands.playtime import create_playtime_layout, get_playtime_info
     from commands.rank import build_rank_view
     from commands.ranking import PaginationView, get_ranking_info
-    from commands.rating import create_rating_layout, cut_rp, fetch_rating_info
+    from commands.rating import create_rating_layout, cut_rp, fetch_rating_info, season_end_for
     from commands.season import create_season_layout, fetch_patch_notes, get_ranked_season, get_season_info
     from commands.settings import SettingsView
     from utils.animal_utils import fetch_animal_image
@@ -62,7 +62,7 @@ async def _build(client) -> None:
         a, b = await fetch_rating_info(client, season_id)
         live['eternity'], live['demigod'] = cut_rp(a), cut_rp(b)
         info = await get_season_info()
-        view = create_rating_layout(a, b, season_name, season_id, info.end_date if info else None, top=top)
+        view = create_rating_layout(a, b, season_name, season_id, season_end_for(info, season_id), top=top)
         return {'input': '', 'html': render_view(view)}
 
     async def playtime():

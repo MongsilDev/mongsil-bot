@@ -61,6 +61,11 @@ def _day_ago(history, index: int) -> Optional[int]:
     return min(old, key=lambda h: abs(now - h[0] - 86400))[index] if old else None
 
 
+def season_end_for(season_info, season_id: int) -> Optional[datetime]:
+    """프리 시즌에는 컷이 직전 정규 시즌 기준이라 현재 시즌 종료일을 붙이지 않음"""
+    return season_info.end_date if season_info and season_info.number == season_id else None
+
+
 def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], season_name: str,
                          season_id: Optional[int] = None, season_end: Optional[datetime] = None,
                          client: Optional[ERClient] = None, top: Optional[List[Dict]] = None) -> ui.LayoutView:
@@ -208,18 +213,16 @@ class Rating(commands.Cog):
             return
         season_id, season_name = season
 
-        # 레이팅 정보 조회 (한 번의 API 호출로 300등과 1000등 모두 가져오기)
-        rank_300, rank_1000 = await fetch_rating_info(self.client, season_id)
+        (rank_300, rank_1000), season_info, top = await asyncio.gather(
+            fetch_rating_info(self.client, season_id), get_season_info(), fetch_ranking_data(self.client, season_id))
 
         if not rank_300 and not rank_1000:
             error_view = create_error_layout(f"{season_name} 이터컷을 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
             await interaction.followup.send(view=error_view)
             return
 
-        season_info = await get_season_info()
-        top = await fetch_ranking_data(self.client, season_id)
         view = create_rating_layout(rank_300, rank_1000, season_name, season_id,
-                                    season_info.end_date if season_info else None, self.client, top)
+                                    season_end_for(season_info, season_id), self.client, top)
         view.message = await interaction.followup.send(view=view, files=visual.files_of(view), wait=True)
 
 async def setup(client: ERClient):

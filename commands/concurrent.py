@@ -74,6 +74,14 @@ class ConcurrentData:
             buckets.setdefault(key, []).append(c)
         return [(k, sum(v) / len(v)) for k, v in sorted(buckets.items())]
 
+    def latest(self, max_age_minutes: int = 2) -> Optional[int]:
+        """1분 수집 루프가 방금 받은 값. 오래됐거나 점검 중 0이면 None"""
+        if not self.data:
+            return None
+        t, c = self.data[-1]
+        fresh = datetime.now(timezone.utc) - _as_utc(t) <= timedelta(minutes=max_age_minutes)
+        return c if fresh and c > 0 else None
+
     def count_at(self, when: datetime, tolerance_minutes: int = 5) -> Optional[int]:
         best = None
         for t, c in self.data:
@@ -234,7 +242,7 @@ class Concurrent(commands.Cog):
             await interaction.followup.send(view=layout)
             return
 
-        current_count = await get_current_player_count()
+        current_count = concurrent_data.latest() or await get_current_player_count()
 
         if current_count is None:
             layout = create_error_layout("동시 접속자 수를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
@@ -261,10 +269,7 @@ class Concurrent(commands.Cog):
                     self._fail_streak = 0
                 concurrent_data.add_data(datetime.now(timezone.utc), count)
 
-                # 5분마다만 파일에 저장 (I/O 부하 감소)
-                # len(deque) 기준은 deque가 가득 차면 매분 저장으로 변질된다
-                if self.save_concurrent_data.current_loop % 5 == 4:
-                    concurrent_data.save_to_file()
+                concurrent_data.save_to_file()
             else:
                 self._fail_streak += 1
                 if self._fail_streak == FAIL_ALERT_THRESHOLD:
