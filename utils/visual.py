@@ -332,8 +332,9 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
 
 
 def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequence[Tuple[datetime, str]],
-                    accent: int, width: int = 720, height: int = 118) -> bytes:
-    """시즌 기간 막대. 지난 구간 채움, 패치 적용일 눈금, 오늘 표시"""
+                    accent: int, guesses: Sequence[Tuple[datetime, str]] = (),
+                    width: int = 720, height: int = 118) -> bytes:
+    """시즌 기간 막대. 지난 구간 채움, 패치 적용일 눈금, 예상 패치일은 회색, 오늘 표시"""
     img, d = _canvas(width, height)
     s = SCALE
     left, right, cy, bar = 28, width - 28, 64, 7
@@ -355,6 +356,11 @@ def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequen
         d.line([(x, (cy - bar - 12) * s), (x, (cy - bar - 2) * s)], fill=TEXT if past else rgb, width=2 * s)
         d.text((x, (cy - bar - 15) * s), label, font=bold if not past else small,
                fill=TEXT if past else rgb, anchor='mb')
+    for when, label in guesses:
+        x = x_of(when)
+        for y in range(cy - bar - 12, cy - bar - 2, 4):
+            d.line([(x, y * s), (x, (y + 2) * s)], fill=SUBTEXT, width=2 * s)
+        d.text((x, (cy - bar - 15) * s), label, font=small, fill=SUBTEXT, anchor='mb')
 
     d.ellipse([today - 9 * s, (cy - 9) * s, today + 9 * s, (cy + 9) * s], fill=(255, 255, 255), outline=BG, width=3 * s)
     d.text((left * s, (cy + bar + 10) * s), f'{start.month}/{start.day}', font=small, fill=SUBTEXT, anchor='lt')

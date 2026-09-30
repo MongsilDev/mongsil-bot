@@ -243,6 +243,20 @@ async def fetch_patch_notes() -> List[PatchNote]:
         return []
 
 
+def expected_patches(known: Sequence[PatchNote], end: datetime) -> List[PatchNote]:
+    """정기 패치는 목요일 2주 간격. 마지막 공지 이후 시즌 종료 전까지 예상일, 버전은 소수점 뒤 1씩 증가"""
+    if not known:
+        return []
+    last = known[-1]
+    major, minor = last.version.split('.')
+    out = []
+    when, n = last.applied + timedelta(days=14), int(minor) + 1
+    while when.date() < end.date():
+        out.append(PatchNote(f"{major}.{n}", when, PATCH_NOTES_URL))
+        when, n = when + timedelta(days=14), n + 1
+    return out
+
+
 def create_season_layout(season_info: Optional[SeasonInfo], patches: Sequence[PatchNote] = ()) -> ui.LayoutView:
     """시즌 정보 LayoutView를 생성합니다."""
     if not season_info:
@@ -267,9 +281,10 @@ def create_season_layout(season_info: Optional[SeasonInfo], patches: Sequence[Pa
 
     view = ui.LayoutView(timeout=None)
     in_season = [p for p in patches if start.date() <= p.applied.date() <= end.date()]
+    guesses = expected_patches(in_season, end)
     children = [ui.TextDisplay(f"### {title}\n{status}")]
     chart = visual.season_timeline(start, end, now, [(p.applied, p.version) for p in in_season],
-                                   visual.COLOURS['season'])
+                                   visual.COLOURS['season'], [(p.applied, p.version) for p in guesses])
     children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'season.png', chart))))
 
     current = [p for p in patches if p.applied <= now]
@@ -279,6 +294,11 @@ def create_season_layout(season_info: Optional[SeasonInfo], patches: Sequence[Pa
         notes.append(f"현재 패치 {current[-1].version}")
     if upcoming:
         notes.append(f"다음 패치 {upcoming[0].version} {upcoming[0].applied.month}/{upcoming[0].applied.day}")
+    elif guesses:
+        g = guesses[0]
+        notes.append(f"다음 패치 {g.version} {g.applied.month}/{g.applied.day} 예상")
+    if guesses:
+        notes.append("회색은 2주 주기 예상일")
     if notes:
         children.append(ui.TextDisplay("-# " + " | ".join(notes)))
     view.add_item(ui.Container(*children, accent_colour=visual.colour('season')))
