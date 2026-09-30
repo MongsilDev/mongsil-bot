@@ -8,11 +8,12 @@ from client import ERClient
 from discord import app_commands, ui
 from discord.ext import commands
 from utils.config import config
-from utils.layouts import create_loading_layout
+from utils.layouts import create_loading_layout, send_card
 from utils.errors import handle_errors, validate_nickname, NotFoundError
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
-from utils import visual
+from commands import account
+from utils import accounts, visual
 
 logger = get_logger('플탐')
 
@@ -212,14 +213,13 @@ def dakgg_row(nickname: str) -> ui.ActionRow:
     )
 
 
-async def get_playtime_info(client: ERClient, nickname: str) -> Optional[PlayTimeStats]:
+async def get_playtime_info(client: ERClient, nickname: str, user_id: Optional[str] = None) -> Optional[PlayTimeStats]:
     """플레이어의 플레이 타임 정보를 가져옵니다.
 
     없는 닉네임은 NotFoundError, 유저는 있는데 기록이 없으면 None.
     API 오류는 전파해 handle_errors가 안내한다.
     """
-    # 유저 UID 조회
-    user_id = await client.get_user_nickname(nickname)
+    user_id = user_id or await client.get_user_nickname(nickname)
     if not user_id:
         raise NotFoundError(
             f"유저를 찾을 수 없습니다: {nickname}",
@@ -251,31 +251,33 @@ def no_playtime_layout(nickname: str) -> ui.LayoutView:
     return view
 
 
-async def build_playtime_view(client: ERClient, nickname: str) -> ui.LayoutView:
+async def build_playtime_view(client: ERClient, nickname: str, user_id: Optional[str] = None) -> ui.LayoutView:
     """명령과 /랭크의 플탐 버튼이 같이 씀"""
-    stats = await get_playtime_info(client, nickname)
-    return create_playtime_layout(stats) if stats else no_playtime_layout(nickname)
+    stats = await get_playtime_info(client, nickname, user_id)
+    view = create_playtime_layout(stats) if stats else no_playtime_layout(nickname)
+    view.nickname = stats.nickname if stats else None
+    return view
 
 class Playtime(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
     @app_commands.command(name="플탐", description="최근 7일 플레이 타임")
-    @app_commands.describe(닉네임="이터널 리턴 닉네임")
+    @app_commands.describe(닉네임="이터널 리턴 닉네임, 비우면 내 닉네임", 유저="닉네임을 등록한 디스코드 유저")
     @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
-    async def playtime(
-        self,
-        interaction: discord.Interaction,
-        닉네임: str
-    ):
+    async def playtime(self, interaction: discord.Interaction,
+                       닉네임: Optional[str] = None, 유저: Optional[discord.User] = None):
         """플레이어의 최근 7일 플레이 타임을 조회합니다."""
-        # 닉네임 검증
-        validated_nickname = validate_nickname(닉네임)
+        target = await account.resolve(self.client, interaction, 닉네임, 유저, self.show)
+        if target:
+            await self.show(interaction, *target)
 
-        await interaction.response.send_message(view=create_loading_layout("플레이 타임 조회 중"))
-
-        view = await build_playtime_view(self.client, validated_nickname)
-        await interaction.edit_original_response(view=view, attachments=visual.files_of(view))
+    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    async def show(self, interaction: discord.Interaction, nickname: str, uid: Optional[str], owner: Optional[int]):
+        view, _ = await send_card(interaction, "플레이 타임 조회 중",
+                                  lambda: build_playtime_view(self.client, nickname, uid))
+        if view is not None and owner and view.nickname:
+            accounts.rename(owner, view.nickname)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

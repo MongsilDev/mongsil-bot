@@ -11,8 +11,9 @@ from client import ERClient
 from commands.rating import cut_rp, fetch_rating_info
 from commands.season import get_ranked_season
 from utils.config import config
-from utils.layouts import create_loading_layout, CooldownLayoutView
-from utils import app_emojis, visual
+from utils.layouts import create_loading_layout, send_card, CooldownLayoutView
+from commands import account
+from utils import accounts, app_emojis, visual
 from utils.errors import handle_errors, validate_nickname, NotFoundError, APIError
 from utils.logging_config import get_logger
 from utils.character_names import get_character_name
@@ -81,7 +82,7 @@ def create_rank_layout(
     games = int(stats.get('totalGames', 0))
     wins = int(stats.get('totalWins', 0))
     win_rate = (wins / games * 100) if games > 0 else 0.0
-    actual_nickname = stats.get('nickname', nickname)
+    actual_nickname = stats.get('nickname') or (user_rank or {}).get('nickname') or nickname
 
     # 이터니티와 데미갓은 귀속 서버 순위 기준. 통계의 rank는 통합 순위라 서버 컷과 어긋남
     server_rank = int(user_rank.get('serverRank', 0)) if user_rank else 0
@@ -179,14 +180,15 @@ class RankView(CooldownLayoutView):
         await interaction.edit_original_response(view=view, attachments=visual.files_of(view))
 
 
-async def build_rank_view(client: ERClient, nickname: str, buttons: bool = True) -> ui.LayoutView:
+async def build_rank_view(client: ERClient, nickname: str, buttons: bool = True,
+                          user_id: Optional[str] = None) -> ui.LayoutView:
     """닉네임으로 랭크 카드를 만든다. 명령과 웹 미리보기가 같이 씀"""
     season = await get_ranked_season()
     if not season:
         raise APIError("시즌 정보를 가져올 수 없습니다.", "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
     season_id, season_name = season
 
-    user_id = await client.get_user_nickname(nickname)
+    user_id = user_id or await client.get_user_nickname(nickname)
     if not user_id:
         raise NotFoundError(
             f"유저를 찾을 수 없습니다: {nickname}",
@@ -214,17 +216,24 @@ class Rank(commands.Cog):
         self.client = client
 
     @app_commands.command(name="랭크", description="시즌 랭크 전적")
-    @app_commands.describe(닉네임="이터널 리턴 닉네임")
+    @app_commands.describe(닉네임="이터널 리턴 닉네임, 비우면 내 닉네임", 유저="닉네임을 등록한 디스코드 유저")
     @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
-    async def rank_command(self, interaction: discord.Interaction, 닉네임: str):
+    async def rank_command(self, interaction: discord.Interaction,
+                           닉네임: Optional[str] = None, 유저: Optional[discord.User] = None):
         """유저의 랭크 정보를 조회합니다."""
-        # 입력 검증 (실패 시 handle_errors가 user_message를 ephemeral로 전송)
-        validated_nickname = validate_nickname(닉네임)
+        target = await account.resolve(self.client, interaction, 닉네임, 유저, self.show)
+        if target:
+            await self.show(interaction, *target)
 
-        await interaction.response.send_message(view=create_loading_layout("랭크 조회 중"))
-        view = await build_rank_view(self.client, validated_nickname)
-        await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
-        view.message = await interaction.original_response()
+    @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    async def show(self, interaction: discord.Interaction, nickname: str, uid: Optional[str], owner: Optional[int]):
+        view, message = await send_card(interaction, "랭크 조회 중",
+                                        lambda: build_rank_view(self.client, nickname, user_id=uid))
+        if view is None:
+            return
+        view.message = message
+        if owner and getattr(view, 'nickname', None):
+            accounts.rename(owner, view.nickname)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

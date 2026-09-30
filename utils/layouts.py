@@ -2,6 +2,7 @@
 LayoutView 기반 공통 레이아웃 유틸리티
 discord.py 2.7+ Components V2 사용
 """
+import logging
 import time
 import discord
 from discord import ui
@@ -76,3 +77,27 @@ class CooldownLayoutView(ui.LayoutView):
                 await self.message.edit(view=self)
             except discord.HTTPException:
                 pass
+
+
+async def send_card(interaction: discord.Interaction, loading: str, build):
+    """로딩 카드를 먼저 보내고 build 결과로 교체. 이미 응답한 인터랙션은 새 메시지로"""
+    from . import visual
+    if not interaction.response.is_done():
+        await interaction.response.send_message(view=create_loading_layout(loading))
+        view = await build()
+        await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
+        return view, await interaction.original_response()
+    from .errors import BotError
+    message = await interaction.followup.send(view=create_loading_layout(loading), wait=True)
+    try:
+        view = await build()
+    except BotError as e:
+        # 원 응답은 계정 카드라 오류로 덮지 않고 로딩 메시지를 오류로 바꿈
+        await message.edit(view=create_error_layout(e.user_message))
+        return None, message
+    except Exception:
+        logging.getLogger('mongsil-bot.layouts').error("카드 생성 실패", exc_info=True)
+        await message.edit(view=create_error_layout("조회 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."))
+        return None, message
+    await message.edit(view=view, attachments=visual.files_of(view))
+    return view, message

@@ -11,8 +11,8 @@ from utils.config import config
 from utils.layouts import create_error_layout, create_loading_layout, CooldownLayoutView
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
-from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_stats_solo, fetch_ranking_data
-from utils import app_emojis, rank_history, visual
+from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo, fetch_ranking_data
+from utils import accounts, app_emojis, rank_history, visual
 
 logger = get_logger('랭킹')
 
@@ -107,7 +107,14 @@ class PaginationView(CooldownLayoutView):
 
         custom_id = interaction.data.get("custom_id")
         if custom_id == "find":
-            await interaction.response.send_modal(FindRankModal(self))
+            account = accounts.get(interaction.user.id)
+            if account:
+                current = await fetch_user_rank(self.client, account[0], self.season_id)
+                name = (current or {}).get('nickname') or account[1]
+                accounts.rename(interaction.user.id, name)
+                await self.find(interaction, name)
+            else:
+                await interaction.response.send_modal(FindRankModal(self))
             return False
         if custom_id == "prev" and self.current_page > 1:
             target_page = self.current_page - 1
@@ -119,6 +126,17 @@ class PaginationView(CooldownLayoutView):
 
         await self.update_page(interaction, target_page)
         return False
+
+    async def find(self, interaction: discord.Interaction, name: str):
+        ranking_data = await fetch_ranking_data(self.client, self.season_id) or []
+        found = next((r for r in ranking_data[:TOTAL_RANKS] if r.get('nickname', '').lower() == name.lower()), None)
+        if not found:
+            layout = create_error_layout(
+                f"'{name}' 유저는 {SERVER_NAMES[RANKING_SERVER]} 상위 {TOTAL_RANKS}명 안에 없습니다.\n/랭크로 전적을 확인해주세요.")
+            await interaction.response.send_message(view=layout, ephemeral=True)
+            return
+        self.highlight = found['nickname']
+        await self.update_page(interaction, (found['rank'] - 1) // RANKS_PER_PAGE + 1)
 
     async def update_page(self, interaction: discord.Interaction, target_page: int):
         """페이지를 업데이트합니다. 캐시에 없으면 lazy-load합니다.
@@ -163,16 +181,7 @@ class FindRankModal(ui.Modal, title="내 순위 찾기"):
         self.view = view
 
     async def on_submit(self, interaction: discord.Interaction):
-        name = self.nickname.value.strip()
-        ranking_data = await fetch_ranking_data(self.view.client, self.view.season_id) or []
-        found = next((r for r in ranking_data[:TOTAL_RANKS] if r.get('nickname', '').lower() == name.lower()), None)
-        if not found:
-            layout = create_error_layout(
-                f"'{name}' 유저는 {SERVER_NAMES[RANKING_SERVER]} 상위 {TOTAL_RANKS}명 안에 없습니다.\n/랭크로 전적을 확인해주세요.")
-            await interaction.response.send_message(view=layout, ephemeral=True)
-            return
-        self.view.highlight = found['nickname']
-        await self.view.update_page(interaction, (found['rank'] - 1) // RANKS_PER_PAGE + 1)
+        await self.view.find(interaction, self.nickname.value.strip())
 
 
 async def get_ranking_info(client: ERClient, season_id: int, page: int = 1) -> Optional[List[RankUser]]:

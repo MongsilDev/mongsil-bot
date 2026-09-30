@@ -79,7 +79,8 @@ class ERClient(commands.Bot):
                 "commands.settings",
                 "commands.info",
                 "commands.rank",
-                "commands.rating"
+                "commands.rating",
+                "commands.account",
             ]:
                 await self.load_extension(module)
 

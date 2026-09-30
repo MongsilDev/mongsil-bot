@@ -13,7 +13,7 @@ from commands.season import get_ranked_season, get_season_info
 from utils.config import config
 from utils.layouts import create_error_layout, CooldownLayoutView
 from utils.errors import handle_errors, validate_nickname, NotFoundError
-from utils import app_emojis, rank_history, visual
+from utils import accounts, app_emojis, rank_history, visual
 from utils.logging_config import get_logger
 from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_ranking_data, fetch_user_rank, fetch_user_stats_solo
 from utils.tier_system import TierSystem
@@ -120,7 +120,11 @@ class RatingView(CooldownLayoutView):
         self.compare_button.callback = self.open_modal
 
     async def open_modal(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(CompareModal(self.client, self.season_id))
+        account = accounts.get(interaction.user.id)
+        if account:
+            await compare(self.client, self.season_id, interaction, account[1], account[0])
+        else:
+            await interaction.response.send_modal(CompareModal(self.client, self.season_id))
 
 
 class CompareModal(ui.Modal, title="내 RP와 비교"):
@@ -131,31 +135,40 @@ class CompareModal(ui.Modal, title="내 RP와 비교"):
         self.client = client
         self.season_id = season_id
 
-    @handle_errors(user_message="RP를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def on_submit(self, interaction: discord.Interaction):
-        name = validate_nickname(self.nickname.value)
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        user_id = await self.client.get_user_nickname(name)
-        if not user_id:
-            raise NotFoundError(f"유저를 찾을 수 없습니다: {name}", f"'{name}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요.")
-        stats, user_rank = await asyncio.gather(
-            fetch_user_stats_solo(self.client, user_id, self.season_id),
-            fetch_user_rank(self.client, user_id, self.season_id),
-        )
-        rank_300, rank_1000 = await fetch_rating_info(self.client, self.season_id)
-        mmr = int(stats.get('mmr', 0))
-        lines = [f"### {stats.get('nickname', name)}\n**{mmr:,}** RP"]
-        for tier, icon, cut in (('이터니티', '10', cut_rp(rank_300)), ('데미갓', '9', cut_rp(rank_1000))):
-            if not cut:
-                continue
-            gap = cut - mmr
-            state = f"컷까지 **{gap:,}** RP" if gap > 0 else f"컷보다 **{-gap:,}** RP 위"
-            lines.append(f"{app_emojis.tier(icon)} {tier} {state}".strip())
-        if user_rank and user_rank.get('serverCode') not in (None, RANKING_SERVER):
-            lines.append(f"-# 컷은 {SERVER_NAMES[RANKING_SERVER]} 기준")
-        view = ui.LayoutView()
-        view.add_item(ui.Container(ui.TextDisplay("\n".join(lines)), accent_colour=visual.colour('cut')))
-        await interaction.followup.send(view=view, ephemeral=True)
+        await compare(self.client, self.season_id, interaction, self.nickname.value)
+
+
+@handle_errors(user_message="RP를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+async def compare(client: ERClient, season_id: int, interaction: discord.Interaction,
+                  name: str, user_id: Optional[str] = None):
+    name = name if user_id else validate_nickname(name)
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    user_id = user_id or await client.get_user_nickname(name)
+    if not user_id:
+        raise NotFoundError(f"유저를 찾을 수 없습니다: {name}", f"'{name}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요.")
+    stats, user_rank = await asyncio.gather(
+        fetch_user_stats_solo(client, user_id, season_id),
+        fetch_user_rank(client, user_id, season_id),
+    )
+    rank_300, rank_1000 = await fetch_rating_info(client, season_id)
+    mmr = int(stats.get('mmr', 0))
+    current = stats.get('nickname') or (user_rank or {}).get('nickname') or name
+    mine = accounts.get(interaction.user.id)
+    if mine and mine[0] == user_id:
+        accounts.rename(interaction.user.id, current)
+    lines = [f"### {current}\n**{mmr:,}** RP"]
+    for tier, icon, cut in (('이터니티', '10', cut_rp(rank_300)), ('데미갓', '9', cut_rp(rank_1000))):
+        if not cut:
+            continue
+        gap = cut - mmr
+        state = f"컷까지 **{gap:,}** RP" if gap > 0 else f"컷보다 **{-gap:,}** RP 위"
+        lines.append(f"{app_emojis.tier(icon)} {tier} {state}".strip())
+    if user_rank and user_rank.get('serverCode') not in (None, RANKING_SERVER):
+        lines.append(f"-# 컷은 {SERVER_NAMES[RANKING_SERVER]} 기준")
+    view = ui.LayoutView()
+    view.add_item(ui.Container(ui.TextDisplay("\n".join(lines)), accent_colour=visual.colour('cut')))
+    await interaction.followup.send(view=view, ephemeral=True)
 
 
 class Rating(commands.Cog):
