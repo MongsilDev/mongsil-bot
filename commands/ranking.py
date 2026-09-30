@@ -109,6 +109,7 @@ class PaginationView(CooldownLayoutView):
         if custom_id == "find":
             account = accounts.get(interaction.user.id)
             if account:
+                await interaction.response.defer()
                 current = await fetch_user_rank(self.client, account[0], self.season_id)
                 name = (current or {}).get('nickname') or account[1]
                 accounts.rename(interaction.user.id, name)
@@ -128,12 +129,14 @@ class PaginationView(CooldownLayoutView):
         return False
 
     async def find(self, interaction: discord.Interaction, name: str):
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         ranking_data = await fetch_ranking_data(self.client, self.season_id) or []
         found = next((r for r in ranking_data[:TOTAL_RANKS] if r.get('nickname', '').lower() == name.lower()), None)
         if not found:
             layout = create_error_layout(
                 f"'{name}' 유저는 {SERVER_NAMES[RANKING_SERVER]} 상위 {TOTAL_RANKS}명 안에 없습니다.\n/랭크로 전적을 확인해주세요.")
-            await interaction.response.send_message(view=layout, ephemeral=True)
+            await interaction.followup.send(view=layout, ephemeral=True)
             return
         self.highlight = found['nickname']
         await self.update_page(interaction, (found['rank'] - 1) // RANKS_PER_PAGE + 1)
@@ -144,7 +147,8 @@ class PaginationView(CooldownLayoutView):
         페이지 번호는 로드 성공 후에만 반영한다. 실패한 페이지를 캐시하면
         뷰 수명 동안 그 페이지가 빈 채로 박제되므로 캐시하지 않는다.
         """
-        await interaction.response.defer()
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             users = self.page_cache.get(target_page)
             if users is None:
@@ -180,6 +184,7 @@ class FindRankModal(ui.Modal, title="내 순위 찾기"):
         super().__init__()
         self.view = view
 
+    @handle_errors(user_message="순위를 찾는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def on_submit(self, interaction: discord.Interaction):
         await self.view.find(interaction, self.nickname.value.strip())
 

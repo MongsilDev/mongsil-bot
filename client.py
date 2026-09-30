@@ -1,3 +1,6 @@
+import asyncio
+import signal
+
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
@@ -84,6 +87,8 @@ class ERClient(commands.Bot):
             ]:
                 await self.load_extension(module)
 
+            # supervisord는 SIGTERM으로 멈춤. 처리하지 않으면 close와 cog_unload 저장이 돌지 않음
+            asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, lambda: asyncio.create_task(self.close()))
             await app_emojis.load(self)
             self.refresh_names.start()
 

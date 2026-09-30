@@ -120,6 +120,10 @@ def handle_errors(
 
                 return None
             except Exception as e:
+                # 10062는 응답 기한이 지난 인터랙션이라 답할 곳이 없음
+                if isinstance(e, discord.NotFound) and e.code == 10062:
+                    logger.warning(f"만료된 인터랙션 {func.__name__}: {e}")
+                    return None
                 if log_error:
                     logger.error(f"Unexpected error in {func.__name__}: {e}", exc_info=True)
 

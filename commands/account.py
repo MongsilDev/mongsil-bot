@@ -57,7 +57,7 @@ async def account_summary(client: ERClient, user_id: int, uid: str, nickname: st
         place = f"{SERVER_NAMES.get(user_rank.get('serverCode'), '서버')} {server_rank:,}등"
     else:
         rank, size = int(stats.get('rank', 0)), int(stats.get('rankSize', 0))
-        place = f"상위 {rank / size * 100:.2f}%" if size else ""
+        place = f"상위 {rank / size * 100:.2f}%" if rank and size else ""
     games = int(stats.get('totalGames', 0))
     wins = int(stats.get('totalWins', 0))
     lines = [f"{tier} **{mmr:,}** RP" + (f" | {place}" if place else "")]
@@ -89,7 +89,7 @@ async def account_view(client: ERClient, user_id: int) -> ui.LayoutView:
     summary, icon = await account_summary(client, user_id, uid, nickname)
     nickname = (accounts.get(user_id) or account)[1]
     day = datetime.fromtimestamp(updated, KST)
-    header = ui.TextDisplay(f"### 내 계정\n## {nickname}\n{summary}")
+    header = ui.TextDisplay(f"### {nickname}\n{summary}")
     top = (ui.Section(header, accessory=ui.Thumbnail(media=f"https://cdn.mongsil.dev/mongsilbot/tier2/{icon}.png"))
            if icon else header)
 
@@ -107,7 +107,7 @@ async def account_view(client: ERClient, user_id: int) -> ui.LayoutView:
     view.add_item(ui.Container(
         top,
         ui.Separator(),
-        ui.TextDisplay(f"-# {day.month}/{day.day} 등록 | /랭크, /플탐을 닉네임 없이 쓸 수 있습니다."),
+        ui.TextDisplay(f"-# 내 계정 | {day.month}/{day.day} 등록"),
         ui.ActionRow(dakgg, change, remove),
         accent_colour=visual.tier_colour(icon) if icon else visual.colour('info'),
     ))
@@ -149,7 +149,8 @@ class RegisterModal(ui.Modal, title="닉네임 등록"):
             await interaction.followup.send(
                 view=create_error_layout("닉네임을 저장하지 못했습니다. 잠시 후 다시 시도해주세요."), ephemeral=True)
             return
-        await interaction.edit_original_response(view=await account_view(self.client, interaction.user.id))
+        card = await account_view(self.client, interaction.user.id)
+        card.message = await interaction.edit_original_response(view=card)
         if self.after:
             await self.after(interaction, name, uid, interaction.user.id)
 
@@ -197,7 +198,9 @@ async def resolve(client: ERClient, interaction: discord.Interaction, nickname: 
     account = accounts.get(interaction.user.id)
     if account:
         return account[1], account[0], interaction.user.id
-    await interaction.response.send_message(view=prompt_view(client, after), ephemeral=True)
+    prompt = prompt_view(client, after)
+    await interaction.response.send_message(view=prompt, ephemeral=True)
+    prompt.message = await interaction.original_response()
     return None
 
 
@@ -209,7 +212,8 @@ class Account(commands.Cog):
     @handle_errors(user_message="계정 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def account_command(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=True)
-        await interaction.followup.send(view=await account_view(self.client, interaction.user.id), ephemeral=True)
+        card = await account_view(self.client, interaction.user.id)
+        card.message = await interaction.followup.send(view=card, ephemeral=True, wait=True)
 
 
 async def setup(client: ERClient):
