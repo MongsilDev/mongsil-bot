@@ -14,7 +14,7 @@
         {{ guild_icon(g) }}
         <span class="guild-text">
           <span class="guild-name">{{ g.name }}</span>
-          <span class="guild-meta">멤버 {{ g.members|number }}명</span>
+          <span class="guild-meta"><span>멤버 {{ g.members|number }}명</span>{% if g.usage %}<span>30일 {{ g.usage|number }}회 실행</span>{% endif %}</span>
         </span>
         <svg class="chev" width="8" height="14" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>

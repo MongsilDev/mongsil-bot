@@ -4,16 +4,30 @@
 {% block main %}
 <a class="back" href="/servers"><svg width="7" height="12" viewBox="0 0 7 12" aria-hidden="true"><path d="M6 1L1 6l5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>내 서버</a>
 
-<header class="guild-head">
-  {{ guild_icon(guild, 64) }}
-  <div>
-    <h1>{{ guild.name }}</h1>
-    <p class="guild-sub">
-      <span>멤버 {{ guild.members|number }}명</span>
-      {% if guild.joined_at %}<span>{{ guild.joined_at|date }} 추가</span>{% endif %}
-    </p>
+<header class="guild-hero{% if info.banner %} has-banner{% endif %}">
+  {% if info.banner %}
+  <img class="guild-banner" src="{{ info.banner }}" alt="" width="1024" height="410">
+  {% endif %}
+  <div class="guild-head">
+    {{ guild_icon(guild, 80) }}
+    <div class="guild-head-text">
+      <h1>{{ guild.name }}</h1>
+      {% if info.description %}<p class="guild-desc">{{ info.description }}</p>{% endif %}
+      {% if info.features %}
+      <p class="guild-tags">{% for f in info.features %}<span class="tag">{{ f }}</span>{% endfor %}</p>
+      {% endif %}
+    </div>
   </div>
 </header>
+
+<section class="stats stats-guild" aria-label="서버 현황">
+  <div class="stat"><strong>{{ guild.members|number }}</strong><span>멤버</span></div>
+  {% if info.online is not none %}
+  <div class="stat"><strong><i class="dot" aria-hidden="true"></i>{{ info.online|number }}</strong><span>온라인</span></div>
+  {% endif %}
+  <div class="stat"><strong>{{ info.boosts|number }}</strong><span>부스트{% if info.boost_tier %} {{ info.boost_tier }}레벨{% endif %}</span></div>
+  <div class="stat"><strong>{{ (info.text + info.voice)|number }}</strong><span>채널</span></div>
+</section>
 
 <section class="block">
   <div class="block-head"><h2>설정</h2></div>
@@ -29,8 +43,45 @@
   </div>
 </section>
 
+<div class="split">
+  <section class="block">
+    <div class="block-head"><h2>서버 정보</h2></div>
+    <div class="panel">
+      <dl class="facts-list">
+        {% if info.owner %}<div><dt>소유자</dt><dd>{{ info.owner }}</dd></div>{% endif %}
+        <div><dt>만든 날</dt><dd>{{ info.created|date }}</dd></div>
+        {% if guild.joined_at %}<div><dt>몽실봇 추가</dt><dd>{{ guild.joined_at|date }}</dd></div>{% endif %}
+        <div><dt>채널</dt><dd>텍스트 {{ info.text }}, 음성 {{ info.voice }}</dd></div>
+        <div><dt>역할</dt><dd>{{ info.roles|number }}개</dd></div>
+        <div><dt>이모지</dt><dd>{{ info.emojis }} <span class="muted">/ {{ info.emoji_limit }}</span></dd></div>
+        <div><dt>스티커</dt><dd>{{ info.stickers }} <span class="muted">/ {{ info.sticker_limit }}</span></dd></div>
+        <div><dt>보안 수준</dt><dd>{{ info.verification }}</dd></div>
+        <div><dt>기본 언어</dt><dd>{{ info.locale }}</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="block-head"><h2>봇 권한</h2></div>
+    <div class="panel">
+      <ul class="rows perms">
+        {% for name, ok, use in permissions %}
+        <li>
+          <span class="perm-state {{ 'ok' if ok else ('no' if loop.first else 'miss') }}" aria-hidden="true"></span>
+          <span class="perm-name">{{ name }}<span class="perm-use">{{ use }}</span></span>
+          <span class="perm-value{% if not ok %} muted{% endif %}">{{ '있음' if ok else '없음' }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+</div>
+
 <section class="block">
-  <div class="block-head"><h2>최근 30일 사용량</h2></div>
+  <div class="block-head">
+    <h2>최근 30일 사용량</h2>
+    {% if recording_since %}<p class="block-sub"><span>{{ recording_since|date }}부터 기록</span></p>{% endif %}
+  </div>
   {% if total %}
   <div class="stats stats-2">
     <div class="stat"><strong>{{ total|number }}</strong><span>명령어 실행</span></div>
@@ -46,9 +97,6 @@
   </div>
   {% else %}
   <p class="empty">사용 기록이 없습니다.</p>
-  {% endif %}
-  {% if recording_since %}
-  <p class="footnote">{{ recording_since|date }}부터 기록합니다.</p>
   {% endif %}
 </section>
 {% endblock %}

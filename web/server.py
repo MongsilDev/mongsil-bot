@@ -36,6 +36,12 @@ SESSION_COOKIE = 'mb_session'
 STATE_COOKIE = 'mb_state'
 SESSION_TTL = 7 * 86400
 GUILDS_TTL = 60
+GUILD_INFO_TTL = 300
+
+VERIFICATION = {'none': '없음', 'low': '낮음', 'medium': '중간', 'high': '높음', 'highest': '매우 높음'}
+LOCALES = {'ko': '한국어', 'en-US': '영어', 'en-GB': '영어', 'ja': '일본어', 'zh-CN': '중국어 간체', 'zh-TW': '중국어 번체',
+           'ru': '러시아어', 'de': '독일어', 'fr': '프랑스어', 'es-ES': '스페인어', 'pt-BR': '포르투갈어', 'vi': '베트남어', 'th': '태국어'}
+FEATURES = {'COMMUNITY': '커뮤니티', 'PARTNERED': '파트너', 'VERIFIED': '인증됨', 'DISCOVERABLE': '서버 찾기'}
 
 # 봇에서 자주 쓰는 순서, 목록에 없는 명령은 맨 뒤
 COMMAND_ORDER = ['랭크', '랭킹', '이터컷', '플탐', '시즌', '동접', '강아지', '고양이', '설정', '정보']
@@ -45,6 +51,7 @@ base_url = ''
 client_secret = ''
 http: aiohttp.ClientSession = None
 guild_cache: dict[str, tuple[float, list]] = {}
+guild_info_cache: dict[int, tuple[float, dict]] = {}
 
 env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(ROOT / 'templates'),
@@ -361,6 +368,9 @@ async def index(request: web.Request):
 async def servers(request: web.Request):
     require_login(request)
     guilds = [g for g in await user_guilds(request) if can_manage(g)]
+    since = int(time.time()) - 30 * 86400
+    usage = dict(db.execute(
+        "SELECT guild_id, COUNT(*) FROM command_log WHERE ts >= ? GROUP BY guild_id", (since,)).fetchall())
     joined, others = [], []
     for g in sorted(guilds, key=lambda g: g['name'].lower()):
         gid = int(g['id'])
@@ -368,6 +378,7 @@ async def servers(request: web.Request):
         guild = client.get_guild(gid)
         if guild:
             item['members'] = guild.member_count
+            item['usage'] = usage.get(gid, 0)
             joined.append(item)
         else:
             item['invite'] = invite_url(gid)
@@ -389,8 +400,55 @@ async def managed_guild(request: web.Request) -> discord.Guild:
     return guild
 
 
+async def guild_counts(guild: discord.Guild) -> dict:
+    """온라인 수와 소유자 이름. 게이트웨이 캐시에 없어 REST로 받고 5분 캐시"""
+    cached = guild_info_cache.get(guild.id)
+    if cached and time.time() - cached[0] < GUILD_INFO_TTL:
+        return cached[1]
+    extra = {}
+    try:
+        full = await client.fetch_guild(guild.id, with_counts=True)
+        extra['online'] = full.approximate_presence_count
+    except discord.HTTPException as e:
+        logger.warning(f"서버 인원 조회 실패: {guild.id} {e}")
+    try:
+        owner = guild.get_member(guild.owner_id) or await guild.fetch_member(guild.owner_id)
+        extra['owner'] = owner.display_name
+    except discord.HTTPException as e:
+        logger.warning(f"서버 소유자 조회 실패: {guild.id} {e}")
+    guild_info_cache[guild.id] = (time.time(), extra)
+    return extra
+
+
 async def server_detail(request: web.Request):
     guild = await managed_guild(request)
+    extra = await guild_counts(guild)
+    perms = guild.me.guild_permissions
+    info = {
+        'banner': guild.banner.with_size(1024).url if guild.banner else None,
+        'description': guild.description,
+        'features': [FEATURES[f] for f in FEATURES if f in guild.features],
+        'online': extra.get('online'),
+        'owner': extra.get('owner'),
+        'boost_tier': guild.premium_tier,
+        'boosts': guild.premium_subscription_count or 0,
+        'text': len(guild.text_channels) + len(guild.forums),
+        'voice': len(guild.voice_channels) + len(guild.stage_channels),
+        'roles': max(len(guild.roles) - 1, 0),
+        'emojis': len(guild.emojis),
+        'emoji_limit': guild.emoji_limit,
+        'stickers': len(guild.stickers),
+        'sticker_limit': guild.sticker_limit,
+        'created': guild.created_at.astimezone(KST),
+        'verification': VERIFICATION.get(guild.verification_level.name, guild.verification_level.name),
+        'locale': LOCALES.get(str(guild.preferred_locale), str(guild.preferred_locale)),
+    }
+    permissions = [
+        ('관리자', perms.administrator, '모든 권한 포함'),
+        ('채널 보기', perms.view_channel, '이모지 확대'),
+        ('웹후크 관리', perms.manage_webhooks, '이모지 확대'),
+        ('메시지 관리', perms.manage_messages, '이모지 확대 원본 삭제'),
+    ]
     since = int(time.time()) - 30 * 86400
     rows = db.execute(
         "SELECT ts, user_id, command, status FROM command_log WHERE guild_id = ? AND ts >= ?",
@@ -404,6 +462,8 @@ async def server_detail(request: web.Request):
         guild={'id': guild.id, 'name': guild.name, 'icon': guild_icon(guild.id, guild.icon and guild.icon.key),
                'members': guild.member_count,
                'joined_at': guild.me.joined_at.astimezone(KST) if guild.me and guild.me.joined_at else None},
+        info=info,
+        permissions=permissions,
         zoom_enabled=guild.id not in load_disabled_servers(),
         can_webhook=guild.me.guild_permissions.manage_webhooks,
         total=len(rows),

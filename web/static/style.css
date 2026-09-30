@@ -1332,3 +1332,148 @@ a.guild:hover .chev {
     transition: none !important;
   }
 }
+
+/* 서버 상세 머리 */
+.guild-hero {
+  position: relative;
+  margin-top: 20px;
+}
+
+.guild-banner {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+}
+
+.guild-hero.has-banner .guild-head {
+  margin-top: 0;
+  padding: 0 24px;
+  align-items: flex-start;
+}
+
+.guild-hero.has-banner .gicon {
+  margin-top: -40px;
+  box-shadow: 0 0 0 5px var(--bg);
+}
+
+.guild-hero.has-banner .guild-head-text {
+  padding-top: 12px;
+}
+
+.guild-head-text {
+  min-width: 0;
+}
+
+.guild-desc {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.guild-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.guild-tags .tag {
+  color: var(--lavender);
+  background: var(--raised);
+}
+
+.stats-guild {
+  margin-top: 28px;
+}
+
+.stat strong .dot {
+  display: inline-block;
+  margin: 0 10px 6px 2px;
+  vertical-align: middle;
+}
+
+.guild-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 10px;
+}
+
+/* 키와 값 목록 */
+.facts-list {
+  margin: 0;
+}
+
+.facts-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.facts-list div:last-child {
+  border-bottom: 0;
+}
+
+.facts-list dt {
+  color: var(--muted);
+}
+
+.facts-list dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* 봇 권한 */
+.perm-state {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.perm-state.ok {
+  background: var(--on);
+}
+
+.perm-state.no {
+  background: var(--line-strong);
+}
+
+.perm-state.miss {
+  background: var(--warn);
+}
+
+.perm-name {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+}
+
+.perm-use {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.perm-value {
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .guild-banner {
+    height: 140px;
+  }
+
+  .guild-hero.has-banner .guild-head {
+    padding: 0 12px;
+  }
+
+  .guild-hero.has-banner .gicon {
+    margin-top: -32px;
+  }
+}
