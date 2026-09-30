@@ -12,7 +12,7 @@ from client import ERClient
 from utils import accounts, app_emojis, visual
 from utils.emojis import EMOJIS
 from utils.config import config
-from utils.errors import APIError, InvalidUidError, NotFoundError, ValidationError, handle_errors, validate_nickname
+from utils.errors import APIError, InvalidUidError, NotFoundError, handle_errors, validate_nickname
 from utils.layouts import create_error_layout, CooldownLayoutView
 
 KST = ZoneInfo('Asia/Seoul')
@@ -190,18 +190,13 @@ async def check_account(client: ERClient, uid: str) -> Optional[str]:
 
 
 async def resolve(client: ERClient, interaction: discord.Interaction, nickname: Optional[str],
-                  user: Optional[discord.User], after: AfterRegister) -> Optional[Target]:
-    """입력한 닉네임, 지정한 유저의 등록 닉네임, 내 등록 닉네임 순. 셋 다 없으면 등록 안내"""
-    if nickname and user:
-        raise ValidationError("닉네임과 유저 동시 지정", "닉네임과 유저 중 하나만 입력해주세요.")
+                  after: AfterRegister) -> Optional[Target]:
+    """입력한 닉네임, 없으면 내 등록 닉네임. 둘 다 없으면 등록 안내"""
     if nickname:
         return validate_nickname(nickname), None, None
-    target = user or interaction.user
-    account = accounts.get(target.id)
+    account = accounts.get(interaction.user.id)
     if account:
-        return account[1], account[0], target.id
-    if user and user.id != interaction.user.id:
-        raise NotFoundError("등록 닉네임 없음", f"{user.display_name} 님은 닉네임을 등록하지 않았습니다.")
+        return account[1], account[0], interaction.user.id
     await interaction.response.send_message(view=prompt_view(client, after), ephemeral=True)
     return None
 

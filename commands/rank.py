@@ -216,12 +216,12 @@ class Rank(commands.Cog):
         self.client = client
 
     @app_commands.command(name="랭크", description="시즌 랭크 전적")
-    @app_commands.describe(닉네임="이터널 리턴 닉네임, 비우면 내 닉네임", 유저="닉네임을 등록한 디스코드 유저")
+    @app_commands.describe(닉네임="이터널 리턴 닉네임, 비우면 내 닉네임")
     @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def rank_command(self, interaction: discord.Interaction,
-                           닉네임: Optional[str] = None, 유저: Optional[discord.User] = None):
+                           닉네임: Optional[str] = None):
         """유저의 랭크 정보를 조회합니다."""
-        target = await account.resolve(self.client, interaction, 닉네임, 유저, self.show)
+        target = await account.resolve(self.client, interaction, 닉네임, self.show)
         if target:
             await self.show(interaction, *target)
 

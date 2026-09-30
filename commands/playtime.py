@@ -269,12 +269,12 @@ class Playtime(commands.Cog):
         self.client = client
 
     @app_commands.command(name="플탐", description="최근 7일 플레이 타임")
-    @app_commands.describe(닉네임="이터널 리턴 닉네임, 비우면 내 닉네임", 유저="닉네임을 등록한 디스코드 유저")
+    @app_commands.describe(닉네임="이터널 리턴 닉네임, 비우면 내 닉네임")
     @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def playtime(self, interaction: discord.Interaction,
-                       닉네임: Optional[str] = None, 유저: Optional[discord.User] = None):
+                       닉네임: Optional[str] = None):
         """플레이어의 최근 7일 플레이 타임을 조회합니다."""
-        target = await account.resolve(self.client, interaction, 닉네임, 유저, self.show)
+        target = await account.resolve(self.client, interaction, 닉네임, self.show)
         if target:
             await self.show(interaction, *target)
 
