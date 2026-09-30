@@ -83,7 +83,7 @@ def _item(item, files: dict) -> str:
         acc = item.accessory
         side = ''
         if isinstance(acc, ui.Thumbnail):
-            side = f'<img class="dc-thumb" src="{html.escape(_media(acc.media.url, files))}" alt="" width="80" height="80">'
+            side = f'<img class="dc-thumb" src="{html.escape(_media(acc.media.url, files))}" alt="" width="80" height="80" loading="lazy" decoding="async">'
         elif isinstance(acc, ui.Button):
             side = _button(acc)
         return f'<div class="dc-section"><div class="dc-section-body">{body}</div>{side}</div>'
@@ -91,7 +91,7 @@ def _item(item, files: dict) -> str:
         return '<div class="dc-row">' + ''.join(_button(b) for b in item.children if isinstance(b, ui.Button)) + '</div>'
     if isinstance(item, ui.MediaGallery):
         return '<div class="dc-gallery">' + ''.join(
-            f'<img src="{html.escape(_media(m.media.url, files))}" alt="">' for m in item.items) + '</div>'
+            f'<img src="{html.escape(_media(m.media.url, files))}" alt="" loading="lazy" decoding="async">' for m in item.items) + '</div>'
     if isinstance(item, ui.Container):
         accent = f' style="--accent:#{item.accent_colour.value:06x}"' if item.accent_colour else ''
         return f'<div class="dc-container"{accent}>' + ''.join(_item(c, files) for c in item.children) + '</div>'

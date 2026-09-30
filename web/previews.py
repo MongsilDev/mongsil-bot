@@ -91,7 +91,7 @@ async def _build(client) -> None:
             if not image:
                 return None
             src = html.escape(image['url'])
-            return {'input': '', 'html': f'<img class="dc-image" src="{src}" alt="{name} 사진">'}
+            return {'input': '', 'html': f'<img class="dc-image" src="{src}" alt="{name} 사진" loading="lazy" decoding="async">'}
         return make
 
     async def info():
