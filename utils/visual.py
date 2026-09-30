@@ -242,7 +242,8 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
     img, d = _canvas(width, height)
     s = SCALE
     values = [start_rp] + [rp for rp, _ in games]
-    ticks = _ticks(min(values) - 10, max(values) + 10, 4)
+    pad = max((max(values) - min(values)) * 0.18, 20)
+    ticks = _ticks(min(values) - pad, max(values) + pad, 4)
     lo, hi = ticks[0], ticks[-1]
     left, right, top, bottom = 56, width - 64, 14, height - 52
     n = len(values)
@@ -273,4 +274,14 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
     d.ellipse([x - 4 * s, y - 4 * s, x + 4 * s, y + 4 * s], fill=SUBTEXT)
     x, y = line[-1]
     d.text((x + 10 * s, y), f'{values[-1]:,}', font=font(12, bold=True), fill=TEXT, anchor='lm')
+    top_i = max(range(n), key=lambda i: values[i])
+    low_i = min(range(n), key=lambda i: values[i])
+    label = font(11, bold=True)
+    for i, above in ((top_i, True), (low_i, False)):
+        if i == n - 1 or values[top_i] == values[low_i]:
+            continue
+        x, y = line[i]
+        x = min(max(x, (left + 20) * s), (right - 20) * s)
+        d.text((x, y - 9 * s if above else y + 9 * s), f'{values[i]:,}', font=label,
+               fill=TEXT if above else SUBTEXT, anchor='mb' if above else 'mt')
     return _png(img)
