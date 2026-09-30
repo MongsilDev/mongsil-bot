@@ -269,10 +269,9 @@ def create_season_layout(season_info: Optional[SeasonInfo], patches: Sequence[Pa
         return f"{t.month}/{t.day} {t.hour}시"
 
     if now < start:
-        status = f"시작까지 **{(start.date() - now.date()).days}일** | {when(start)} 시작"
+        status = f"{when(start)} 시작"
     elif now < end:
-        days = (end.date() - now.date()).days
-        status = (f"종료까지 **{days}일**" if days else "**오늘 종료**") + f" | {when(end)} 종료"
+        status = f"{when(end)} 종료" if end.date() != now.date() else "**오늘 종료**"
     else:
         status = f"{when(end)} 종료"
 
@@ -282,7 +281,7 @@ def create_season_layout(season_info: Optional[SeasonInfo], patches: Sequence[Pa
     view = ui.LayoutView(timeout=None)
     in_season = [p for p in patches if start.date() <= p.applied.date() <= end.date()]
     guesses = expected_patches(in_season, end)
-    children = [ui.TextDisplay(f"### {title}\n{status}")]
+    children = [ui.TextDisplay(f"### {title}\n-# {status}")]
     chart = visual.season_timeline(start, end, now, [(p.applied, p.version) for p in in_season],
                                    visual.COLOURS['season'], [(p.applied, p.version) for p in guesses])
     children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'season.png', chart))))

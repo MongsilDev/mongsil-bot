@@ -333,11 +333,11 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
 
 def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequence[Tuple[datetime, str]],
                     accent: int, guesses: Sequence[Tuple[datetime, str]] = (),
-                    width: int = 720, height: int = 118) -> bytes:
-    """시즌 기간 막대. 지난 구간 채움, 패치 적용일 눈금, 예상 패치일은 회색, 오늘 표시"""
+                    width: int = 720, height: int = 126) -> bytes:
+    """시즌 기간 막대. 지난 구간 채움과 지난 일수, 남은 일수, 패치 적용일 눈금, 예상 패치일은 회색, 오늘 표시"""
     img, d = _canvas(width, height)
     s = SCALE
-    left, right, cy, bar = 28, width - 28, 64, 7
+    left, right, cy, bar = 28, width - 28, 66, 12
     span = max((end - start).total_seconds(), 1)
 
     def x_of(t: datetime) -> float:
@@ -350,6 +350,11 @@ def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequen
         d.rounded_rectangle([left * s, (cy - bar) * s, today, (cy + bar) * s], radius=bar * s, fill=rgb)
 
     small, bold = font(11), font(12, bold=True)
+    passed, left_days = (now.date() - start.date()).days, (end.date() - now.date()).days
+    for text, x0, x1, col in ((f'{passed}일 지남', left * s, today - 14 * s, BG),
+                              (f'{left_days}일 남음', today + 14 * s, right * s, TEXT)):
+        if passed >= 0 and left_days >= 0 and x1 - x0 > d.textlength(text, font=bold) + 12 * s:
+            d.text(((x0 + x1) / 2, cy * s), text, font=bold, fill=col, anchor='mm')
     for when, label in marks:
         x = x_of(when)
         past = when <= now
@@ -362,7 +367,7 @@ def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequen
             d.line([(x, y * s), (x, (y + 2) * s)], fill=SUBTEXT, width=2 * s)
         d.text((x, (cy - bar - 15) * s), label, font=small, fill=SUBTEXT, anchor='mb')
 
-    d.ellipse([today - 9 * s, (cy - 9) * s, today + 9 * s, (cy + 9) * s], fill=(255, 255, 255), outline=BG, width=3 * s)
+    d.ellipse([today - 13 * s, (cy - 13) * s, today + 13 * s, (cy + 13) * s], fill=(255, 255, 255), outline=BG, width=3 * s)
     d.text((left * s, (cy + bar + 10) * s), f'{start.month}/{start.day}', font=small, fill=SUBTEXT, anchor='lt')
     d.text((right * s, (cy + bar + 10) * s), f'{end.month}/{end.day}', font=small, fill=SUBTEXT, anchor='rt')
     label_x = min(max(today, (left + 40) * s), (right - 40) * s)
