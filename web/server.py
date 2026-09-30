@@ -3,6 +3,7 @@
 """
 import asyncio
 import os
+import re
 import secrets
 import time
 from collections import Counter
@@ -246,7 +247,8 @@ def can_manage(g: dict) -> bool:
 async def login(request: web.Request):
     state = secrets.token_urlsafe(24)
     nxt = request.query.get('next', '/servers')
-    if not nxt.startswith('/') or nxt.startswith('//'):
+    # 역슬래시나 탭이 섞인 경로는 브라우저가 외부 주소로 해석해 내부 경로만 허용
+    if not re.fullmatch(r'/(servers(/\d+)?|admin)?', nxt):
         nxt = '/servers'
     params = {
         'client_id': client.application_id,
