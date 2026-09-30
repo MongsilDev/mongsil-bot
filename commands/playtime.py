@@ -8,8 +8,8 @@ from client import ERClient
 from discord import app_commands, ui
 from discord.ext import commands
 from utils.config import config
-from utils.layouts import create_loading_layout, send_card
-from utils.errors import handle_errors, validate_nickname, InvalidUidError, NotFoundError
+from utils.layouts import send_card
+from utils.errors import handle_errors, InvalidUidError, NotFoundError
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
 from commands import account
@@ -188,7 +188,7 @@ def create_playtime_layout(stats: PlayTimeStats) -> ui.LayoutView:
     if stats.previous_seconds is not None:
         diff = stats.total_seconds - stats.previous_seconds
         sign = '+' if diff >= 0 else '-'
-        sub.insert(0, f"지난 7일보다 **{sign}{format_duration(abs(diff)) if diff else '0분'}**")
+        sub.insert(0, f"이전 7일보다 **{sign}{format_duration(abs(diff)) if diff else '0분'}**")
     children = [ui.TextDisplay(
         f"### {stats.nickname}\n# {format_duration(stats.total_seconds)}\n-# 최근 7일 | " + " | ".join(sub))]
 

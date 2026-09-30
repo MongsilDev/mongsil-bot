@@ -90,7 +90,7 @@ def guild_block(guild: discord.Guild) -> Optional[ui.Item]:
     joined = guild.me.joined_at if guild.me else None
     if joined:
         joined = joined.astimezone(KST)
-        lines[-1] += f" | 봇 추가 {joined.year}. {joined.month}. {joined.day}."
+        lines[-1] += f" | 봇 추가 {joined.year}/{joined.month}/{joined.day}"
     usage = guild_usage(guild.id)
     if usage:
         top = ", ".join(f"/{name}" for name, _ in usage[:3])

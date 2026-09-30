@@ -44,7 +44,7 @@ LOCALES = {'ko': '한국어', 'en-US': '영어', 'en-GB': '영어', 'ja': '일�
 FEATURES = {'COMMUNITY': '커뮤니티', 'PARTNERED': '파트너', 'VERIFIED': '인증됨', 'DISCOVERABLE': '서버 찾기'}
 
 # 봇에서 자주 쓰는 순서, 목록에 없는 명령은 맨 뒤
-COMMAND_ORDER = ['랭크', '랭킹', '이터컷', '플탐', '시즌', '동접', '강아지', '고양이', '설정', '정보']
+COMMAND_ORDER = ['랭크', '랭킹', '이터컷', '플탐', '시즌', '동접', '계정', '강아지', '고양이', '설정', '정보']
 
 client: discord.Client = None
 base_url = ''

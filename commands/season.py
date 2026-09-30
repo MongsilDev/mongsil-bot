@@ -26,7 +26,7 @@ KST = ZoneInfo('Asia/Seoul')
 SEASON_ZERO_ID = 19  # 시즌 0이 되는 ID 값
 SEASON_NAME_OFFSET = 9  # Season16은 시즌7이므로, 9를 빼면 됨
 
-# 시즌 코드명 (API 미제공 → seasonID 기준 수동 매핑, 새 시즌마다 한 줄 추가)
+# 시즌 코드명은 API에 없어 seasonID별 수동 매핑, 새 시즌마다 한 줄 추가
 SEASON_CODENAMES: Dict[int, str] = {
     39: "쁘띠 미뇽",  # 정규 시즌 11
     41: "세일링",  # 정규 시즌 12

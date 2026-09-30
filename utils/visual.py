@@ -376,6 +376,8 @@ def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequen
     d.text((x, (cy - bar - 15) * s), '종료', font=small, fill=TEXT, anchor='mb')
     for when, label in guesses:
         x = x_of(when)
+        if x > (right - 36) * s:
+            continue
         for y in range(cy - bar - 12, cy - bar - 2, 4):
             d.line([(x, y * s), (x, (y + 2) * s)], fill=SUBTEXT, width=2 * s)
         d.text((x, (cy - bar - 15) * s), label, font=small, fill=SUBTEXT, anchor='mb')
@@ -440,5 +442,7 @@ def rp_histogram(values: Sequence[int], cuts: Sequence[Tuple[int, str, int]], st
     ticks = _ticks(lo, hi, 5)
     for tick in ticks:
         if lo < tick <= hi:
-            d.text((x_of(tick), (bottom + 8) * s), f'{tick:,.0f}', font=small, fill=SUBTEXT, anchor='mt')
+            x = x_of(tick)
+            anchor = 'rt' if x > (right - 24) * s else 'mt'
+            d.text((x, (bottom + 8) * s), f'{tick:,.0f}', font=small, fill=SUBTEXT, anchor=anchor)
     return _png(img)

@@ -102,7 +102,7 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
 
         if data and data.get('code') == 200:
             top_ranks = data.get('topRanks', [])
-            logger.info(f"랭킹 데이터 {len(top_ranks)}명 조회 완료")
+            logger.debug(f"랭킹 데이터 {len(top_ranks)}명 조회 완료")
             rank_history.record_ranks(season_id, top_ranks[:100])
             return top_ranks
         else:
