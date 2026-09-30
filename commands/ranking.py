@@ -87,9 +87,8 @@ class PaginationView(CooldownLayoutView):
         header = f"### {self.season_name} {SERVER_NAMES[RANKING_SERVER]} 랭킹"
         if any(u.change is not None for u in users):
             header += "\n-# 순위 변동은 24시간 전 기준"
-        children = [ui.TextDisplay(header), ui.Separator()]
-        for u in users:
-            children.append(ui.TextDisplay(format_user_text(u, u.nickname == self.highlight)))
+        children = [ui.TextDisplay(header), ui.Separator(),
+                    ui.TextDisplay("\n".join(format_user_text(u, u.nickname == self.highlight) for u in users))]
         self.add_item(ui.Container(*children, accent_colour=visual.colour('ranking')))
 
         self.add_item(ui.ActionRow(

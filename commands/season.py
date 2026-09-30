@@ -255,25 +255,23 @@ def create_season_layout(season_info: Optional[SeasonInfo], patch: Optional[Patc
         return f"{t.month}/{t.day} {t.hour}시"
 
     if now < start:
-        big, sub = d_day(start), f"{when(start)} 시작"
+        big = f"시작 {d_day(start)}"
     elif now < end:
-        weeks, days = divmod((end.date() - now.date()).days, 7)
-        left = " ".join(part for part in (f"{weeks}주" if weeks else "", f"{days}일" if days else "") if part)
-        big, sub = d_day(end), f"{when(end)} 종료" + (f" | 남은 기간 {left}" if left else "")
+        big = f"종료 {d_day(end)}"
     else:
-        big, sub = "종료", f"{when(end)} 종료"
+        big = "종료"
 
     codename = SEASON_CODENAMES.get(season_info.number)
     title = f"{season_info.name} | {codename}" if codename else season_info.name
 
-    children = [
-        ui.TextDisplay(f"### {title}"),
-        ui.TextDisplay(f"# {big}\n-# {sub}"),
-        ui.TextDisplay(f"{visual.gauge(progress / 100, 16)}  **{progress:.1f}%**\n-# {when(start)} 시작"),
-    ]
+    children = [ui.TextDisplay(
+        f"### {title}\n# {big}\n"
+        f"`{visual.gauge(progress / 100, 12)}` **{progress:.1f}%**\n"
+        f"-# {when(start)} ~ {when(end)}"
+    )]
     if patch:
         children.append(ui.Separator())
-        children.append(ui.TextDisplay(f"### 최근 패치\n**{patch.title}**\n-# {patch.posted.month}/{patch.posted.day} 게시"))
+        children.append(ui.TextDisplay(f"**{patch.title}**\n-# {patch.posted.month}/{patch.posted.day} 게시"))
         if patch.image:
             children.append(ui.MediaGallery(discord.MediaGalleryItem(patch.image)))
 

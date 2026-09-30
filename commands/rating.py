@@ -69,13 +69,13 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
     view = RatingView(client, season_id) if client and season_id else ui.LayoutView()
 
     def cut_block(tier: str, icon: str, rank: int, rp: Optional[int], index: int) -> str:
-        head = f"{app_emojis.tier(icon)} **{tier}** {rank:,}등".strip()
+        head = f"{app_emojis.tier(icon)} {tier} {rank:,}등".strip()
         if not rp:
-            return f"{head}\n정보 없음"
-        text = f"{head}\n## {rp:,} RP"
+            return f"{head} 정보 없음"
+        text = f"{head} **{rp:,}** RP"
         before = _day_ago(history, index)
         if before:
-            text += f"\n-# 24시간 전보다 {rp - before:+,}"
+            text += f" `24시간 {rp - before:+,}`"
         return text
 
     sub = [season_name, SERVER_NAMES[RANKING_SERVER]]
@@ -85,8 +85,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
             sub.append(f"시즌 종료 D-{days}" if days else "시즌 종료 D-day")
     children = [
         ui.TextDisplay("### 이터컷\n-# " + " | ".join(sub)),
-        ui.TextDisplay(cut_block('이터니티', '10', 300, eternity, 1)),
-        ui.TextDisplay(cut_block('데미갓', '9', 1000, demigod, 2)),
+        ui.TextDisplay(cut_block('이터니티', '10', 300, eternity, 1) + "\n" + cut_block('데미갓', '9', 1000, demigod, 2)),
     ]
 
     week_ago = time.time() - 7 * 86400
@@ -96,7 +95,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
         chart = visual.lines_chart([
             ([(stamp(h[0]), h[1]) for h in recent], visual.TIER_COLOURS['10']),
             ([(stamp(h[0]), h[2]) for h in recent], visual.TIER_COLOURS['9']),
-        ], hours=168 if recent[-1][0] - recent[0][0] > 2 * 86400 else 24, end_labels=True, legend=('이터니티', '데미갓'))
+        ], hours=168 if recent[-1][0] - recent[0][0] > 2 * 86400 else 24, end_labels=True, legend=('이터니티', '데미갓'), mark_extremes=True, label_low=True)
         if chart:
             url = visual.attach(view, 'cut.png', chart)
             children.append(ui.MediaGallery(discord.MediaGalleryItem(url)))

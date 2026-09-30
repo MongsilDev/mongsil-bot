@@ -45,15 +45,13 @@ class SettingsView(CooldownLayoutView):
         status_emoji = EMOJIS['on'] if is_enabled else EMOJIS['off']
 
         container = ui.Container(accent_colour=visual.colour('info'))
-        container.add_item(ui.TextDisplay("### 서버 설정"))
-        container.add_item(ui.Separator())
-        container.add_item(ui.TextDisplay(f"이모지 확대\n{status_emoji} **{status}**"))
+        container.add_item(ui.TextDisplay(f"### 서버 설정\n이모지 확대 {status_emoji} **{status}**"))
         usage = guild_usage(self.guild_id)
         if usage:
             total = sum(n for _, n in usage)
             top = " | ".join(f"/{name} {n:,}" for name, n in usage[:3])
             container.add_item(ui.Separator())
-            container.add_item(ui.TextDisplay(f"### 이 서버 사용량\n**{total:,}**회\n-# 최근 30일 | {top}"))
+            container.add_item(ui.TextDisplay(f"최근 30일 사용 **{total:,}**회\n-# {top}"))
         self.add_item(container)
 
         if is_enabled:

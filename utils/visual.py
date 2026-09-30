@@ -121,14 +121,15 @@ def _ticks(lo: float, hi: float, count: int = 5) -> List[float]:
 
 def line_chart(points: Sequence[Tuple[datetime, float]], accent: int, *, hours: int = 24,
                mark_extremes: bool = True, width: int = 720, height: int = 240) -> Optional[bytes]:
-    """시간 축 선 그래프. 아래 채움, 최고와 최저 점 표시"""
+    """시간 축 선 그래프. 아래 채움, 최고와 최저 표시"""
     return lines_chart([(points, accent)], hours=hours, mark_extremes=mark_extremes, fill=True,
-                       width=width, height=height)
+                       label_low=mark_extremes, width=width, height=height)
 
 
 def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], *, hours: int = 24,
                 mark_extremes: bool = False, fill: bool = False, end_labels: bool = False,
-                legend: Sequence[str] = (), width: int = 720, height: int = 240) -> Optional[bytes]:
+                legend: Sequence[str] = (), label_low: bool = False,
+                width: int = 720, height: int = 240) -> Optional[bytes]:
     colours = [accent for _, accent in series]
     series = [([(t, v) for t, v in pts if v is not None], accent) for pts, accent in series]
     series = [(pts, accent) for pts, accent in series if len(pts) >= 2]
@@ -141,7 +142,8 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
     t0, t1 = min(t for t, _ in everything), max(t for t, _ in everything)
     span = max((t1 - t0).total_seconds(), 1)
     lo, hi = min(v for _, v in everything), max(v for _, v in everything)
-    ticks = _ticks(max(lo - (hi - lo) * 0.08, 0) if lo >= 0 else lo, hi + (hi - lo) * 0.08)
+    low_pad = 0.2 if label_low else 0.08
+    ticks = _ticks(max(lo - (hi - lo) * low_pad, 0) if lo >= 0 else lo, hi + (hi - lo) * 0.08)
     lo, hi = ticks[0], ticks[-1]
 
     def xy(t: datetime, v: float) -> Tuple[float, float]:
@@ -181,7 +183,19 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
                 d.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=col, outline=BG, width=2 * s)
             x, y = line[hi_pt]
             x = min(max(x, left + 30 * s), right - 30 * s)
-            d.text((x, y - 10 * s), f'{pts[hi_pt][1]:,.0f}', font=font(12, bold=True), fill=TEXT, anchor='mb')
+            if not (end_labels and pts[hi_pt][1] == pts[-1][1]):
+                d.text((x, y - 10 * s), f'{pts[hi_pt][1]:,.0f}', font=font(12, bold=True), fill=TEXT, anchor='mb')
+            if label_low and pts[lo_pt][1] != pts[hi_pt][1] and not (end_labels and pts[lo_pt][1] == pts[-1][1]):
+                x, y = line[lo_pt]
+                x = min(max(x, left + 30 * s), right - 30 * s)
+                # 최저점 아래는 선이 지나가지 않음. 바닥이 가까우면 옆 아래로
+                if y + 26 * s <= bottom:
+                    pos, anchor = (x, y + 10 * s), 'mt'
+                elif x < right - 60 * s:
+                    pos, anchor = (x + 8 * s, y + 1 * s), 'lt'
+                else:
+                    pos, anchor = (x - 8 * s, y + 1 * s), 'rt'
+                d.text(pos, f'{pts[lo_pt][1]:,.0f}', font=font(12, bold=True), fill=SUBTEXT, anchor=anchor)
         x, y = line[-1]
         d.ellipse([x - 6 * s, y - 6 * s, x + 6 * s, y + 6 * s], fill=(255, 255, 255), outline=rgb, width=3 * s)
         if end_labels:

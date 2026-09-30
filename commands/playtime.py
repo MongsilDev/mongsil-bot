@@ -190,10 +190,8 @@ def create_playtime_layout(stats: PlayTimeStats) -> ui.LayoutView:
         diff = stats.total_seconds - stats.previous_seconds
         sign = '+' if diff >= 0 else '-'
         sub.insert(0, f"지난 7일보다 **{sign}{format_duration(abs(diff)) if diff else '0분'}**")
-    children = [
-        ui.TextDisplay(f"### {stats.nickname}\n-# 최근 7일 플레이 타임"),
-        ui.TextDisplay(f"# {format_duration(stats.total_seconds)}\n-# " + " | ".join(sub)),
-    ]
+    children = [ui.TextDisplay(
+        f"### {stats.nickname}\n# {format_duration(stats.total_seconds)}\n-# 최근 7일 | " + " | ".join(sub))]
 
     labels = [f"{d.month}/{d.day} {WEEKDAYS[d.weekday()]}" for d in dates]
     totals = [_short(stats.daily_stats[d]) for d in dates]
@@ -204,12 +202,15 @@ def create_playtime_layout(stats: PlayTimeStats) -> ui.LayoutView:
     lines = [f"하루 평균 **{format_duration(stats.total_seconds // 7)}**"]
     if stats.games_played:
         lines[0] += f" | 게임당 **{format_duration(stats.total_seconds // stats.games_played)}**"
+    extra = []
     peak = _peak_hours(stats.hourly)
     if peak:
-        lines.append(f"주 플레이 시간대 **{peak[0]}시~{peak[1]}시**")
+        extra.append(f"주 시간대 **{peak[0]}시~{peak[1]}시**")
     if stats.longest and stats.longest[1] >= 1800:
         start, length = stats.longest
-        lines.append(f"최장 연속 **{format_duration(length)}** {start.month}/{start.day} {WEEKDAYS[start.weekday()]}")
+        extra.append(f"최장 연속 **{format_duration(length)}** {start.month}/{start.day}")
+    if extra:
+        lines.append(" | ".join(extra))
     lines.append("-# " + " | ".join(f"{name} {count}게임" for name, count in stats.mode_counts.items()))
     children.append(ui.TextDisplay("\n".join(lines)))
 
