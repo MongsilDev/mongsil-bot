@@ -6,7 +6,7 @@ import discord
 from discord import ui
 from discord.ext import commands
 from discord import app_commands
-from typing import Optional, Dict, Tuple
+from typing import Dict, List, Optional, Tuple
 from client import ERClient
 from commands.season import get_ranked_season, get_season_info
 
@@ -63,8 +63,8 @@ def _day_ago(history, index: int) -> Optional[int]:
 
 def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], season_name: str,
                          season_id: Optional[int] = None, season_end: Optional[datetime] = None,
-                         client: Optional[ERClient] = None) -> ui.LayoutView:
-    """레이팅 정보 LayoutView를 생성합니다."""
+                         client: Optional[ERClient] = None, top: Optional[List[Dict]] = None) -> ui.LayoutView:
+    """레이팅 정보 LayoutView를 생성합니다. top은 아시아1 상위 목록"""
     eternity, demigod = cut_rp(rank_300), cut_rp(rank_1000)
     history = rank_history.cut_history(season_id) if season_id else []
     view = RatingView(client, season_id) if client and season_id else ui.LayoutView()
@@ -88,6 +88,20 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
         ui.TextDisplay("### 이터컷\n-# " + " | ".join(sub)),
         ui.TextDisplay(cut_block('이터니티', '10', 300, eternity, 1) + "\n" + cut_block('데미갓', '9', 1000, demigod, 2)),
     ]
+
+    ranked = [r for r in top or [] if r.get('mmr')]
+    if ranked:
+        cuts = [(rp, name, visual.TIER_COLOURS[icon]) for rp, name, icon in
+                ((eternity, '이터니티', '10'), (demigod, '데미갓', '9')) if rp]
+        chart = visual.rp_histogram([int(r['mmr']) for r in ranked[:1000]], cuts)
+        if chart:
+            children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'cut_spread.png', chart))))
+        by_rank = {r['rank']: int(r['mmr']) for r in ranked}
+        facts = [f"{rank}등 {by_rank[rank]:,}" for rank in (1, 100, 500) if rank in by_rank]
+        if eternity:
+            chasing = sum(1 for r in ranked if r['rank'] > 300 and int(r['mmr']) >= eternity - 50)
+            facts.append(f"이터니티 컷까지 50 RP 이내 {chasing}명")
+        children.append(ui.TextDisplay("-# " + " | ".join(facts)))
 
     week_ago = time.time() - 7 * 86400
     recent = [h for h in history if h[0] >= week_ago]
@@ -203,8 +217,9 @@ class Rating(commands.Cog):
             return
 
         season_info = await get_season_info()
+        top = await fetch_ranking_data(self.client, season_id)
         view = create_rating_layout(rank_300, rank_1000, season_name, season_id,
-                                    season_info.end_date if season_info else None, self.client)
+                                    season_info.end_date if season_info else None, self.client, top)
         view.message = await interaction.followup.send(view=view, files=visual.files_of(view), wait=True)
 
 async def setup(client: ERClient):

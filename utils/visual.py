@@ -393,3 +393,52 @@ def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequen
         hi = right * s - d.textlength(end_text, font=small) - 10 * s - half
         d.text((min(max(today, lo), hi), y), label, font=bold, fill=TEXT, anchor='mt')
     return _png(img)
+
+
+def rp_histogram(values: Sequence[int], cuts: Sequence[Tuple[int, str, int]], step: int = 50,
+                 width: int = 720, height: int = 220) -> Optional[bytes]:
+    """상위권 RP 분포 막대. cuts는 (컷 RP, 이름, 색), 각 유저를 자기 구간 색으로 쌓음"""
+    if not values:
+        return None
+    img, d = _canvas(width, height)
+    s = SCALE
+    left, right, top, bottom = 44, width - 16, 30, height - 30
+    lo = min(values)
+    hi = lo + ((max(values) - lo) // step + 1) * step
+    ordered = sorted(cuts, key=lambda c: -c[0])
+    other = _mix(BG, (255, 255, 255), 0.25)
+    bins: List[Dict[Tuple[int, int, int], int]] = [dict() for _ in range((hi - lo) // step)]
+    for v in values:
+        col = next((_hex(c) for rp, _, c in ordered if v >= rp), other)
+        cell = bins[min((v - lo) // step, len(bins) - 1)]
+        cell[col] = cell.get(col, 0) + 1
+    peak = max((sum(b.values()) for b in bins), default=0) or 1
+    slot = (right - left) / len(bins)
+
+    def x_of(rp: float) -> float:
+        return (left + (rp - lo) / (hi - lo) * (right - left)) * s
+
+    small, bold = font(11), font(12, bold=True)
+    for count in _ticks(0, peak, 3):
+        if count <= peak:
+            y = (bottom - count / peak * (bottom - top)) * s
+            d.line([(left * s, y), (right * s, y)], fill=GRID, width=s)
+            d.text(((left - 6) * s, y), f'{count:,.0f}', font=small, fill=SUBTEXT, anchor='rm')
+    rank_of = {_hex(c): i for i, (_, _, c) in enumerate(sorted(cuts, key=lambda c: c[0]))}
+    for i, cell in enumerate(bins):
+        base = bottom
+        x0 = (left + i * slot) * s + s
+        for col, count in sorted(cell.items(), key=lambda kv: rank_of.get(kv[0], -1)):
+            h = count / peak * (bottom - top)
+            d.rectangle([x0, (base - h) * s, x0 + (slot - 2) * s, base * s], fill=col)
+            base -= h
+    for rp, name, c in cuts:
+        x = x_of(rp)
+        for y in range(top - 6, bottom, 6):
+            d.line([(x, y * s), (x, (y + 3) * s)], fill=_hex(c), width=2 * s)
+        d.text((x + 6 * s, (top - 8) * s), f'{name} {rp:,}', font=bold, fill=_hex(c), anchor='lm')
+    ticks = _ticks(lo, hi, 5)
+    for tick in ticks:
+        if lo < tick <= hi:
+            d.text((x_of(tick), (bottom + 8) * s), f'{tick:,.0f}', font=small, fill=SUBTEXT, anchor='mt')
+    return _png(img)

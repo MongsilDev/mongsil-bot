@@ -62,7 +62,7 @@ async def _build(client) -> None:
         a, b = await fetch_rating_info(client, season_id)
         live['eternity'], live['demigod'] = cut_rp(a), cut_rp(b)
         info = await get_season_info()
-        view = create_rating_layout(a, b, season_name, season_id, info.end_date if info else None)
+        view = create_rating_layout(a, b, season_name, season_id, info.end_date if info else None, top=top)
         return {'input': '', 'html': render_view(view)}
 
     async def playtime():
