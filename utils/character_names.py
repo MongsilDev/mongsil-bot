@@ -1,5 +1,5 @@
 """
-캐릭터 이름 유틸리티
+실험체 이름 유틸리티
 """
 import re
 from typing import Dict
@@ -8,7 +8,7 @@ from .api_client import api_client
 from .config import config
 from .logging_config import get_logger
 
-logger = get_logger('캐릭터명')
+logger = get_logger('실험체명')
 
 # L10N 수신 실패 시 폴백, 기동 후 L10N 값으로 덮어씀
 CHARACTER_NAMES: Dict[int, str] = {
@@ -28,7 +28,7 @@ _L10N_NAME = re.compile(r"^Character/Name/(\d+)┃(.+)$", re.MULTILINE)
 
 
 async def refresh_character_names() -> None:
-    """L10N Korean 파일에서 캐릭터 이름을 다시 읽는다. 실패하면 기존 값 유지."""
+    """L10N Korean 파일에서 실험체 이름을 다시 읽는다. 실패하면 기존 값 유지."""
     try:
         meta = await api_client.get(f"{config.api_url}/l10n/Korean", use_cache=False)
         session = await api_client.get_session()
@@ -37,14 +37,14 @@ async def refresh_character_names() -> None:
             text = await response.text(encoding='utf-8')
         names = {int(code): name.strip() for code, name in _L10N_NAME.findall(text)}
     except Exception as e:
-        logger.warning(f"캐릭터 이름 갱신 실패, 기존 목록 유지: {type(e).__name__}: {e}")
+        logger.warning(f"실험체 이름 갱신 실패, 기존 목록 유지: {type(e).__name__}: {e}")
         return
 
     if names:
         CHARACTER_NAMES.update(names)
-        logger.info(f"캐릭터 이름 {len(names)}개 갱신")
+        logger.info(f"실험체 이름 {len(names)}개 갱신")
 
 
 def get_character_name(character_code: int) -> str:
-    """캐릭터 코드를 이름으로 변환합니다."""
-    return CHARACTER_NAMES.get(character_code, f"캐릭터{character_code}")
+    """실험체 코드를 이름으로 변환합니다."""
+    return CHARACTER_NAMES.get(character_code, f"실험체{character_code}")

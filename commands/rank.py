@@ -98,21 +98,20 @@ def create_rank_layout(
 
     view = RankView(client, actual_nickname) if client else ui.LayoutView()
     icon_url = f"https://cdn.mongsil.dev/mongsilbot/tier2/{icon}.png"
-    header_text = (
-        f"## {actual_nickname}\n"
-        f"### {tier} | {mmr:,} RP\n"
-        f"-# {season_name}" + (f" | {place}" if place else "")
-    )
-    container_items = [ui.Section(ui.TextDisplay(header_text), accessory=ui.Thumbnail(media=icon_url))]
-
+    header_lines = [
+        f"## {actual_nickname}",
+        f"{tier} **{mmr:,}** RP",
+        f"-# {season_name}" + (f" | {place}" if place else ""),
+    ]
     goal = next_goal(tier, mmr, cuts)
     if goal:
         label, left, ratio = goal
-        container_items.append(ui.TextDisplay(f"{visual.gauge(ratio)}  **{ratio * 100:.0f}%**\n-# {label}까지 {left:,} RP"))
+        header_lines.append(f"`{visual.gauge(ratio, 10)}` {label}까지 **{left:,}** RP")
+    container_items = [ui.Section(ui.TextDisplay("\n".join(header_lines)), accessory=ui.Thumbnail(media=icon_url))]
 
     # 탑1은 솔로 승률과 같은 지표라 표시하지 않는다
     stats_text = (
-        f"**{games:,}**게임 | 승률 **{win_rate:.0f}%** | 탑3 **{float(stats.get('top3', 0.0)) * 100:.0f}%**\n"
+        f"**{games:,}**게임 | 승률 **{win_rate:.0f}%** | "
         f"평균 **{float(stats.get('averageRank', 0.0)):.1f}**등 | "
         f"킬 **{float(stats.get('averageKills', 0.0)):.1f}** | "
         f"어시 **{float(stats.get('averageAssistants', 0.0)):.1f}**"
@@ -128,30 +127,27 @@ def create_rank_layout(
             [(int(g['mmrAfter']), p) for g, p in zip(oldest_first, places)],
             visual.TIER_COLOURS.get(icon, visual.TIER_COLOURS['0']),
         )
-        container_items += [ui.Separator(), ui.TextDisplay(
-            f"### 최근 {len(recent)}게임\n"
-            f"평균 **{sum(places) / len(places):.1f}**등 | 탑3 **{sum(p <= 3 for p in places)}**회 | RP **{gain:+,}**"
-        )]
+        container_items.append(ui.TextDisplay(
+            f"-# 최근 {len(recent)}게임 | 평균 {sum(places) / len(places):.1f}등 | RP {gain:+,}"
+        ))
         if chart:
             url = visual.attach(view, 'rank.png', chart)
             container_items.append(ui.MediaGallery(discord.MediaGalleryItem(url)))
 
     top_characters = sorted(stats.get('characterStats') or [], key=lambda x: x.get('totalGames', 0), reverse=True)[:3]
     if top_characters:
-        char_lines = []
+        char_lines = ["-# 모스트 실험체"]
         for char in top_characters:
             code = char.get('characterCode', 0)
             char_games = char.get('totalGames', 0)
             char_win = (char.get('wins', 0) / char_games * 100) if char_games else 0.0
-            char_top3 = (char.get('top3', 0) / char_games * 100) if char_games else 0.0
             face = app_emojis.character(code)
             char_lines.append(
                 (f"{face} " if face else "") +
-                f"**{get_character_name(code)}** "
-                f"{char_games}게임 | 승률 {char_win:.0f}% | 탑3 {char_top3:.0f}%"
+                f"**{get_character_name(code)}** {char_games}게임 | 승률 {char_win:.0f}%"
             )
         container_items.append(ui.Separator())
-        container_items.append(ui.TextDisplay("### 모스트 캐릭터\n" + "\n".join(char_lines)))
+        container_items.append(ui.TextDisplay("\n".join(char_lines)))
 
     view.add_item(ui.Container(*container_items, accent_colour=visual.tier_colour(icon)))
     row = ui.ActionRow(
