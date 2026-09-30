@@ -86,7 +86,7 @@ def guild_block(guild: discord.Guild) -> Optional[ui.Item]:
     from commands.settings import guild_usage
     from utils.emoji_zoom import load_disabled_servers
 
-    lines = [f"### {guild.name}", f"멤버 **{guild.member_count or 0:,}**명"]
+    lines = ["### 이 서버", f"멤버 **{guild.member_count or 0:,}**명"]
     joined = guild.me.joined_at if guild.me else None
     if joined:
         joined = joined.astimezone(KST)
@@ -94,11 +94,10 @@ def guild_block(guild: discord.Guild) -> Optional[ui.Item]:
     usage = guild_usage(guild.id)
     if usage:
         top = ", ".join(f"/{name}" for name, _ in usage[:3])
-        lines.append(f"최근 30일 명령어 **{sum(n for _, n in usage):,}**회 | 많이 쓴 명령어 {top}")
+        lines.append(f"최근 30일 명령어 **{sum(n for _, n in usage):,}**회 | {top}")
     zoom = "꺼짐" if guild.id in load_disabled_servers() else "켜짐"
-    lines.append(f"-# 이모지 확대 {zoom}")
-    text = ui.TextDisplay("\n".join(lines))
-    return ui.Section(text, accessory=ui.Thumbnail(media=guild.icon.url)) if guild.icon else text
+    lines.append(f"이모지 확대 {zoom}")
+    return ui.TextDisplay("\n".join(lines))
 
 
 def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = None) -> ui.LayoutView:
@@ -115,28 +114,23 @@ def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = No
     else:
         ping_emoji = PING_EMOJIS['bad']
 
-    header = ui.TextDisplay(
-        f"## 몽실봇\n이터널 리턴 정보 봇\n-# {days_since_start:,}일째 운영 중 | {config.developer_tag}"
-    )
-    user = client.user
-    top = ui.Section(header, accessory=ui.Thumbnail(media=user.display_avatar.url)) if user else header
-
     joins, leaves = guild_changes()
     servers = f"서버 **{len(client.guilds):,}**개"
     if joins or leaves:
         servers += f" `30일 +{joins} -{leaves}`"
+    accounts_total = registered_count()
+    if accounts_total:
+        servers += f" | 닉네임 등록 **{accounts_total:,}**명"
     lines = [
+        f"-# 이터널 리턴 정보 봇 | {days_since_start:,}일째 운영 중 | {config.developer_tag}",
         servers,
         f"업타임 **{format_uptime(client)}** | {ping_emoji} 핑 **{ping_ms:.0f}**ms",
     ]
     runs, favourite = today_usage()
     if runs:
-        lines.append(f"오늘 명령어 **{runs:,}**회" + (f" | 가장 많이 쓴 명령어 **/{favourite}**" if favourite else ""))
-    accounts_total = registered_count()
-    if accounts_total:
-        lines.append(f"닉네임 등록 **{accounts_total:,}**명")
+        lines.append(f"오늘 명령어 **{runs:,}**회" + (f" | 많이 쓴 명령어 /{favourite}" if favourite else ""))
 
-    children = [top, ui.Separator(), ui.TextDisplay("\n".join(lines))]
+    children = [ui.TextDisplay("\n".join(lines))]
     if guild:
         children += [ui.Separator(), guild_block(guild)]
     footer = [f"discord.py {discord.__version__}", f"Python {platform.python_version()}"]
