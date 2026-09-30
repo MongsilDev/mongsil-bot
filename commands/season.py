@@ -264,44 +264,19 @@ def create_season_layout(season_info: Optional[SeasonInfo], patches: Sequence[Pa
 
     now = datetime.now(KST)
     start, end = season_info.start_date, season_info.end_date
-
-    def when(t: datetime) -> str:
-        return f"{t.month}/{t.day} {t.hour}시"
-
-    if now < start:
-        status = f"{when(start)} 시작"
-    elif now < end:
-        status = f"{when(end)} 종료" if end.date() != now.date() else "**오늘 종료**"
-    else:
-        status = f"{when(end)} 종료"
-
     codename = SEASON_CODENAMES.get(season_info.number)
     title = f"{season_info.name} | {codename}" if codename else season_info.name
 
     view = ui.LayoutView(timeout=None)
     in_season = [p for p in patches if start.date() <= p.applied.date() <= end.date()]
     guesses = expected_patches(in_season, end)
-    children = [ui.TextDisplay(f"### {title}\n-# {status}")]
-    chart = visual.season_timeline(start, end, now, [(p.applied, p.version) for p in in_season],
+    chart = visual.season_timeline(title, start, end, now, [(p.applied, p.version) for p in in_season],
                                    visual.COLOURS['season'], [(p.applied, p.version) for p in guesses])
-    children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'season.png', chart))))
+    view.add_item(ui.Container(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'season.png', chart))),
+                               accent_colour=visual.colour('season')))
 
     current = [p for p in patches if p.applied <= now]
     upcoming = [p for p in patches if p.applied > now]
-    notes = []
-    if current:
-        notes.append(f"현재 패치 {current[-1].version}")
-    if upcoming:
-        notes.append(f"다음 패치 {upcoming[0].version} {upcoming[0].applied.month}/{upcoming[0].applied.day}")
-    elif guesses:
-        g = guesses[0]
-        notes.append(f"다음 패치 {g.version} {g.applied.month}/{g.applied.day} 예상")
-    if guesses:
-        notes.append("회색은 2주 주기 예상일")
-    if notes:
-        children.append(ui.TextDisplay("-# " + " | ".join(notes)))
-    view.add_item(ui.Container(*children, accent_colour=visual.colour('season')))
-
     latest = (upcoming or current or [None])[0 if upcoming else -1]
     view.add_item(ui.ActionRow(
         ui.Button(style=discord.ButtonStyle.link, label="공식 사이트", url="https://playeternalreturn.com/", emoji=EMOJIS['web']),
