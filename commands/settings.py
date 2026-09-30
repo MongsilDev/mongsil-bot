@@ -1,3 +1,7 @@
+import sqlite3
+import time
+from typing import List, Tuple
+
 import discord
 from discord import Interaction
 from discord.ext import commands
@@ -10,8 +14,21 @@ from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emoji_zoom import load_disabled_servers, save_disabled_servers
 from utils.emojis import EMOJIS
+from utils import usage_db, visual
 
 logger = get_logger('설정')
+
+def guild_usage(guild_id: int) -> List[Tuple[str, int]]:
+    since = int(time.time()) - 30 * 86400
+    try:
+        rows = usage_db.db.execute(
+            "SELECT command, COUNT(*) AS n FROM command_log WHERE guild_id = ? AND ts >= ? GROUP BY command ORDER BY n DESC",
+            (guild_id, since),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    return [(r['command'], r['n']) for r in rows]
+
 
 class SettingsView(CooldownLayoutView):
     def __init__(self, guild_id: int):
@@ -27,10 +44,16 @@ class SettingsView(CooldownLayoutView):
         status = "켜짐" if is_enabled else "꺼짐"
         status_emoji = EMOJIS['on'] if is_enabled else EMOJIS['off']
 
-        container = ui.Container(accent_colour=discord.Colour.blurple())
+        container = ui.Container(accent_colour=visual.colour('info'))
         container.add_item(ui.TextDisplay("### 서버 설정"))
         container.add_item(ui.Separator())
         container.add_item(ui.TextDisplay(f"이모지 확대\n{status_emoji} **{status}**"))
+        usage = guild_usage(self.guild_id)
+        if usage:
+            total = sum(n for _, n in usage)
+            top = " | ".join(f"/{name} {n:,}" for name, n in usage[:3])
+            container.add_item(ui.Separator())
+            container.add_item(ui.TextDisplay(f"### 이 서버 사용량\n**{total:,}**회\n-# 최근 30일 | {top}"))
         self.add_item(container)
 
         if is_enabled:

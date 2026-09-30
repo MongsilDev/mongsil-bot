@@ -1,4 +1,9 @@
+import os
+import sqlite3
+import subprocess
 from datetime import datetime
+from typing import Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import discord
 from discord import ui
@@ -9,29 +14,62 @@ from client import ERClient
 from utils.config import config
 from utils.errors import handle_errors
 from utils.emojis import EMOJIS, PING_EMOJIS
+from utils import usage_db, visual
 
 SERVICE_START = datetime(2023, 6, 15)
+KST = ZoneInfo('Asia/Seoul')
+
+
+UPDATES_CHANNEL = "https://discord.com/channels/1173385068450951269/1173385069507924033"
+
+
+def _last_update() -> Optional[datetime]:
+    """배포본의 마지막 커밋 시각. 폴러가 push를 당기면 봇이 재시작되므로 기동 때 한 번만 읽음"""
+    try:
+        out = subprocess.run(['git', 'log', '-1', '--format=%ct'], capture_output=True, text=True, timeout=5,
+                             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        return datetime.fromtimestamp(int(out.stdout.strip()), KST)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+LAST_UPDATE = _last_update()
 
 
 def format_uptime(client: ERClient) -> str:
     uptime = client.uptime
-    if uptime is None:
-        return "0분"
+    if uptime is None or uptime.total_seconds() < 60:
+        return "방금 재시작"
     hours, remainder = divmod(uptime.seconds, 3600)
     parts = []
     if uptime.days:
         parts.append(f"{uptime.days}일")
     if hours:
         parts.append(f"{hours}시간")
-    parts.append(f"{remainder // 60}분")
+    if not uptime.days:
+        parts.append(f"{remainder // 60}분")
     return " ".join(parts)
+
+
+def today_usage() -> Tuple[int, Optional[str]]:
+    midnight = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        rows = usage_db.db.execute(
+            "SELECT command, COUNT(*) AS n FROM command_log WHERE ts >= ? GROUP BY command ORDER BY n DESC",
+            (int(midnight.timestamp()),),
+        ).fetchall()
+    except sqlite3.Error:
+        return 0, None
+    return sum(r['n'] for r in rows), rows[0]['command'] if rows else None
 
 
 def create_bot_info_layout(client: ERClient) -> ui.LayoutView:
     """봇 정보 LayoutView를 생성합니다."""
     days_since_start = (datetime.now() - SERVICE_START).days
 
-    ping_ms = (client.latency or 0.0) * 1000
+    latency = client.latency
+    # 첫 하트비트 전에는 nan
+    ping_ms = 0.0 if latency != latency else (latency or 0.0) * 1000
     if ping_ms < 100:
         ping_emoji = PING_EMOJIS['good']
     elif ping_ms < 200:
@@ -39,23 +77,36 @@ def create_bot_info_layout(client: ERClient) -> ui.LayoutView:
     else:
         ping_emoji = PING_EMOJIS['bad']
 
+    header = ui.TextDisplay(
+        f"## 몽실봇\n이터널 리턴 정보 봇\n-# {days_since_start:,}일째 운영 중 | {config.developer_tag}"
+    )
+    user = client.user
+    top = ui.Section(header, accessory=ui.Thumbnail(media=user.display_avatar.url)) if user else header
+
+    lines = [
+        f"서버 **{len(client.guilds):,}**개 | 업타임 **{format_uptime(client)}** | {ping_emoji} 핑 **{ping_ms:.0f}**ms",
+    ]
+    runs, favourite = today_usage()
+    if runs:
+        lines.append(f"오늘 명령어 **{runs:,}**회" + (f" | 가장 많이 쓴 명령어 **/{favourite}**" if favourite else ""))
+    if LAST_UPDATE:
+        lines.append(f"-# 마지막 업데이트 {LAST_UPDATE.month}/{LAST_UPDATE.day}")
+
     view = ui.LayoutView(timeout=None)
-    view.add_item(ui.Container(
-        ui.TextDisplay(f"### 몽실봇\n-# {days_since_start:,}일째 운영 중 | {config.developer_tag}"),
-        ui.Separator(),
-        ui.TextDisplay(
-            f"서버 **{len(client.guilds):,}**개 | "
-            f"업타임 **{format_uptime(client)}** | "
-            f"{ping_emoji} 핑 **{ping_ms:.0f}**ms"
-        ),
-        accent_colour=discord.Colour.blurple(),
-    ))
+    view.add_item(ui.Container(top, ui.Separator(), ui.TextDisplay("\n".join(lines)),
+                               accent_colour=visual.colour('info')))
     view.add_item(ui.ActionRow(
         ui.Button(
             style=discord.ButtonStyle.link,
             label="지원 서버",
             url=config.support_server,
             emoji=EMOJIS['support'],
+        ),
+        ui.Button(
+            style=discord.ButtonStyle.link,
+            label="업데이트 소식",
+            url=UPDATES_CHANNEL,
+            emoji=EMOJIS['patch_note'],
         ),
         ui.Button(
             style=discord.ButtonStyle.link,
