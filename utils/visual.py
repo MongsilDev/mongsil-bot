@@ -183,9 +183,9 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
                 d.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=col, outline=BG, width=2 * s)
             x, y = line[hi_pt]
             x = min(max(x, left + 30 * s), right - 30 * s)
-            if not (end_labels and pts[hi_pt][1] == pts[-1][1]):
+            if pts[hi_pt][1] != pts[-1][1]:
                 d.text((x, y - 10 * s), f'{pts[hi_pt][1]:,.0f}', font=font(12, bold=True), fill=TEXT, anchor='mb')
-            if label_low and pts[lo_pt][1] != pts[hi_pt][1] and not (end_labels and pts[lo_pt][1] == pts[-1][1]):
+            if label_low and pts[lo_pt][1] != pts[hi_pt][1] and pts[lo_pt][1] != pts[-1][1]:
                 x, y = line[lo_pt]
                 x = min(max(x, left + 30 * s), right - 30 * s)
                 # 최저점 아래는 선이 지나가지 않음. 바닥이 가까우면 옆 아래로
@@ -259,7 +259,7 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
     pad = max((max(values) - min(values)) * 0.18, 20)
     ticks = _ticks(min(values) - pad, max(values) + pad, 4)
     lo, hi = ticks[0], ticks[-1]
-    left, right, top, bottom = 56, width - 64, 14, height - 52
+    left, right, top, bottom = 56, width - 18, 14, height - 52
     n = len(values)
 
     def xy(i: int, v: float) -> Tuple[float, float]:
@@ -286,13 +286,11 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
         d.text((x, cy), str(place), font=chip, fill=BG, anchor='mm')
     x, y = line[0]
     d.ellipse([x - 4 * s, y - 4 * s, x + 4 * s, y + 4 * s], fill=SUBTEXT)
-    x, y = line[-1]
-    d.text((x + 10 * s, y), f'{values[-1]:,}', font=font(12, bold=True), fill=TEXT, anchor='lm')
     top_i = max(range(n), key=lambda i: values[i])
     low_i = min(range(n), key=lambda i: values[i])
     label = font(11, bold=True)
     for i, above in ((top_i, True), (low_i, False)):
-        if i == n - 1 or values[top_i] == values[low_i]:
+        if values[i] == values[-1] or values[top_i] == values[low_i]:
             continue
         x, y = line[i]
         x = min(max(x, (left + 20) * s), (right - 20) * s)

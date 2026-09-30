@@ -271,7 +271,7 @@ def create_season_layout(season_info: Optional[SeasonInfo], patch: Optional[Patc
     )]
     if patch:
         children.append(ui.Separator())
-        children.append(ui.TextDisplay(f"**{patch.title}**\n-# {patch.posted.month}/{patch.posted.day} 게시"))
+        children.append(ui.TextDisplay(f"**{patch.title}**"))
         if patch.image:
             children.append(ui.MediaGallery(discord.MediaGalleryItem(patch.image)))
 

@@ -2,7 +2,6 @@ import os
 import pickle
 from collections import deque
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 from typing import Optional
 
 import discord
@@ -25,8 +24,6 @@ logger = get_logger('동접')
 STEAM_API_URL = 'https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/'
 
 FAIL_ALERT_THRESHOLD = 5
-
-KST = ZoneInfo('Asia/Seoul')
 
 # 1분 간격 7일
 MAX_POINTS = 10080
@@ -64,37 +61,6 @@ class ConcurrentData:
         for t, c in reversed(older):
             self.data.appendleft((t, c))
         return len(older)
-
-    def get_statistics(self, hours: int = 24):
-        """최근 24시간 범위의 통계를 계산합니다.
-
-        deque는 개수(1440) 기준이라 수집 공백이 있으면 24시간 밖 데이터가
-        남아 있을 수 있어 시간으로 한 번 더 거른다.
-        """
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-        recent = [(t, c) for t, c in self.data if _as_utc(t) >= cutoff]
-
-        if not recent:
-            return {
-                'max_count': 0,
-                'max_time': None,
-                'min_count': 0,
-                'min_time': None,
-                'data_count': 0
-            }
-
-        max_data = max(recent, key=lambda x: (x[1], _as_utc(x[0])))
-        # 점검 시간에 Steam이 0을 돌려줘 최저값에서는 뺌
-        positive = [r for r in recent if r[1] > 0] or recent
-        min_data = min(positive, key=lambda x: (x[1], _as_utc(x[0])))
-
-        return {
-            'max_count': max_data[1],
-            'max_time': _as_utc(max_data[0]),
-            'min_count': min_data[1],
-            'min_time': _as_utc(min_data[0]),
-            'data_count': len(recent)
-        }
 
     def series(self, hours: int = 24, bucket_minutes: int = 5):
         """차트용 구간 평균. 점검 중 0명 기록은 제외"""
@@ -230,19 +196,6 @@ def create_concurrent_layout(current_count: int) -> ui.LayoutView:
     if chart:
         url = visual.attach(view, 'concurrent.png', chart)
         children.append(ui.MediaGallery(discord.MediaGalleryItem(url)))
-
-    lines = []
-    for hours, label in ((24, "24시간"), (24 * 7, "7일")):
-        stats = concurrent_data.get_statistics(hours)
-        if stats['data_count'] and stats['max_time']:
-            peak = stats['max_time'].astimezone(KST)
-            when = f"<t:{int(peak.timestamp())}:t>" if hours == 24 else f"{peak.month}/{peak.day} {peak.hour}시"
-            line = f"{label} 최고 **{stats['max_count']:,}**명 {when}"
-            if hours == 24:
-                line += f" | 최저 **{stats['min_count']:,}**명 <t:{int(stats['min_time'].timestamp())}:t>"
-            lines.append(line)
-    if lines:
-        children.append(ui.TextDisplay("\n".join(lines)))
 
     view.add_item(ui.Container(*children, accent_colour=visual.colour('concurrent')))
 

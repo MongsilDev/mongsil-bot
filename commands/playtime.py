@@ -172,14 +172,6 @@ def _short(seconds: int) -> str:
     return f"{hours}시간 {minutes}분" if hours else f"{minutes}분"
 
 
-def _peak_hours(hourly: List[List[int]], width: int = 3) -> Optional[Tuple[int, int]]:
-    by_hour = [sum(row[h] for row in hourly) for h in range(24)]
-    if not any(by_hour):
-        return None
-    start = max(range(24), key=lambda h: sum(by_hour[(h + i) % 24] for i in range(width)))
-    return start, (start + width) % 24 or 24
-
-
 def create_playtime_layout(stats: PlayTimeStats) -> ui.LayoutView:
     """플레이 타임 LayoutView를 생성합니다."""
     view = ui.LayoutView()
@@ -202,15 +194,9 @@ def create_playtime_layout(stats: PlayTimeStats) -> ui.LayoutView:
     lines = [f"하루 평균 **{format_duration(stats.total_seconds // 7)}**"]
     if stats.games_played:
         lines[0] += f" | 게임당 **{format_duration(stats.total_seconds // stats.games_played)}**"
-    extra = []
-    peak = _peak_hours(stats.hourly)
-    if peak:
-        extra.append(f"주 시간대 **{peak[0]}시~{peak[1]}시**")
     if stats.longest and stats.longest[1] >= 1800:
         start, length = stats.longest
-        extra.append(f"최장 연속 **{format_duration(length)}** {start.month}/{start.day}")
-    if extra:
-        lines.append(" | ".join(extra))
+        lines.append(f"최장 연속 **{format_duration(length)}** {start.month}/{start.day}")
     lines.append("-# " + " | ".join(f"{name} {count}게임" for name, count in stats.mode_counts.items()))
     children.append(ui.TextDisplay("\n".join(lines)))
 
