@@ -1,3 +1,5 @@
+import asyncio
+
 import discord
 from discord import ui
 from discord.ext import commands
@@ -12,6 +14,7 @@ from utils.layouts import create_error_layout
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
+from utils import visual
 
 logger = get_logger('시즌')
 
@@ -208,45 +211,74 @@ async def get_season_info() -> Optional[SeasonInfo]:
         name=get_season_name(season_id, season_data.get('seasonName', '')),
     )
 
-def create_season_layout(season_info: Optional[SeasonInfo]) -> ui.LayoutView:
+PATCH_NOTES_API = 'https://playeternalreturn.com/api/v1/posts/news?category=patchnote&page=1&hl=ko-KR'
+PATCH_NOTES_URL = "https://playeternalreturn.com/posts/news?categoryPath=patchnote&hl=ko-KR"
+
+
+class PatchNote(NamedTuple):
+    title: str
+    posted: datetime
+    url: str
+    image: Optional[str]
+
+
+async def fetch_latest_patch_note() -> Optional[PatchNote]:
+    """공식 사이트 최신 패치 노트. 실패하면 None"""
+    try:
+        from utils.api_client import api_client
+        data = await api_client.get(PATCH_NOTES_API, ttl=1800)
+        article = max(data['articles'], key=lambda a: a['created_at'])
+        text = article['i18ns'].get('ko_KR') or next(iter(article['i18ns'].values()))
+        posted = datetime.fromisoformat(article['created_at'].replace('Z', '+00:00')).astimezone(KST)
+        return PatchNote(text['title'], posted, article.get('url') or PATCH_NOTES_URL, article.get('thumbnail_url'))
+    except Exception as e:
+        logger.warning(f"패치 노트 조회 실패: {type(e).__name__}: {e}")
+        return None
+
+
+def create_season_layout(season_info: Optional[SeasonInfo], patch: Optional[PatchNote] = None) -> ui.LayoutView:
     """시즌 정보 LayoutView를 생성합니다."""
     if not season_info:
         return create_error_layout("현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
 
     now = datetime.now(KST)
-    total = (season_info.end_date - season_info.start_date).total_seconds()
-    elapsed = (now - season_info.start_date).total_seconds()
+    start, end = season_info.start_date, season_info.end_date
+    total = (end - start).total_seconds()
+    elapsed = (now - start).total_seconds()
     progress = min(max(elapsed / total * 100, 0), 100) if total > 0 else 0
 
     def d_day(target: datetime) -> str:
         days = (target.date() - now.date()).days
-        return f"**D-{days}**" if days > 0 else "**D-day**"
+        return f"D-{days}" if days > 0 else "D-day"
 
-    if now < season_info.start_date:
-        remaining = f"시작 {d_day(season_info.start_date)}"
-    elif now < season_info.end_date:
-        remaining = f"종료 {d_day(season_info.end_date)}"
+    def when(t: datetime) -> str:
+        return f"{t.month}/{t.day} {t.hour}시"
+
+    if now < start:
+        big, sub = d_day(start), f"{when(start)} 시작"
+    elif now < end:
+        weeks, days = divmod((end.date() - now.date()).days, 7)
+        left = " ".join(part for part in (f"{weeks}주" if weeks else "", f"{days}일" if days else "") if part)
+        big, sub = d_day(end), f"{when(end)} 종료" + (f" | 남은 기간 {left}" if left else "")
     else:
-        remaining = "종료됨"
-
-    filled = round(progress / 10)
-    progress_bar = "▰" * filled + "▱" * (10 - filled)
+        big, sub = "종료", f"{when(end)} 종료"
 
     codename = SEASON_CODENAMES.get(season_info.number)
     title = f"{season_info.name} | {codename}" if codename else season_info.name
 
-    view = ui.LayoutView(timeout=None)
-    view.add_item(ui.Container(
+    children = [
         ui.TextDisplay(f"### {title}"),
-        ui.Separator(),
-        ui.TextDisplay(
-            f"**{season_info.start_date.month}/{season_info.start_date.day} {season_info.start_date.hour}시** ~ "
-            f"**{season_info.end_date.month}/{season_info.end_date.day} {season_info.end_date.hour}시**\n"
-            f"{remaining}"
-        ),
-        ui.TextDisplay(f"{progress_bar}  **{progress:.1f}%**"),
-        accent_colour=discord.Colour.blurple(),
-    ))
+        ui.TextDisplay(f"# {big}\n-# {sub}"),
+        ui.TextDisplay(f"{visual.gauge(progress / 100, 16)}  **{progress:.1f}%**\n-# {when(start)} 시작"),
+    ]
+    if patch:
+        children.append(ui.Separator())
+        children.append(ui.TextDisplay(f"### 최근 패치\n**{patch.title}**\n-# {patch.posted.month}/{patch.posted.day} 게시"))
+        if patch.image:
+            children.append(ui.MediaGallery(discord.MediaGalleryItem(patch.image, description=patch.title)))
+
+    view = ui.LayoutView(timeout=None)
+    view.add_item(ui.Container(*children, accent_colour=visual.colour('season')))
     view.add_item(ui.ActionRow(
         ui.Button(
             style=discord.ButtonStyle.link,
@@ -257,7 +289,7 @@ def create_season_layout(season_info: Optional[SeasonInfo]) -> ui.LayoutView:
         ui.Button(
             style=discord.ButtonStyle.link,
             label="패치 노트",
-            url="https://playeternalreturn.com/posts/news?categoryPath=patchnote&hl=ko-KR",
+            url=patch.url if patch else PATCH_NOTES_URL,
             emoji=EMOJIS['patch_note'],
         ),
     ))
@@ -280,8 +312,8 @@ class Season(commands.Cog):
         """
         await interaction.response.defer()
 
-        season_info = await get_season_info()
-        layout = create_season_layout(season_info)
+        season_info, patch = await asyncio.gather(get_season_info(), fetch_latest_patch_note())
+        layout = create_season_layout(season_info, patch)
 
         await interaction.followup.send(view=layout)
 

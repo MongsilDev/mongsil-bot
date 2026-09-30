@@ -26,7 +26,7 @@ async def _build(client) -> None:
     from commands.rank import build_rank_view
     from commands.ranking import PaginationView, get_ranking_info
     from commands.rating import create_rating_layout, cut_rp, fetch_rating_info
-    from commands.season import create_season_layout, get_ranked_season, get_season_info
+    from commands.season import create_season_layout, fetch_latest_patch_note, get_ranked_season, get_season_info
     from commands.settings import SettingsView
     from utils.animal_utils import fetch_animal_image
     from utils.rank_helpers import fetch_ranking_data
@@ -73,7 +73,7 @@ async def _build(client) -> None:
         info = await get_season_info()
         if info:
             live['season_name'], live['season_start'], live['season_end'] = info.name, info.start_date, info.end_date
-        return info and {'input': '', 'html': render_view(create_season_layout(info))}
+        return info and {'input': '', 'html': render_view(create_season_layout(info, await fetch_latest_patch_note()))}
 
     async def concurrent():
         count = await get_current_player_count()
