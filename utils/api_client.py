@@ -88,14 +88,15 @@ class OptimizedAPIClient:
             del self._cache[oldest_key]
             del self._cache_times[oldest_key]
     
-    async def get(self, url: str, params: Optional[Dict] = None, use_cache: bool = True, ttl: Optional[int] = None) -> Dict[str, Any]:
-        """GET 요청을 수행합니다. ttl은 이 요청의 캐시 유효 시간(초), 없으면 config.cache_ttl."""
+    async def get(self, url: str, params: Optional[Dict] = None, use_cache: bool = True, ttl: Optional[int] = None,
+                  refresh: bool = False) -> Dict[str, Any]:
+        """GET 요청을 수행합니다. ttl은 이 요청의 캐시 유효 시간(초), 없으면 config.cache_ttl. refresh면 캐시를 건너뛰고 새 값으로 채움."""
         MAX_RETRIES = 3
 
         cache_key = self._get_cache_key(url, params)
 
         # 캐시 확인
-        if use_cache and self._is_cache_valid(cache_key, ttl or config.cache_ttl):
+        if use_cache and not refresh and self._is_cache_valid(cache_key, ttl or config.cache_ttl):
             # LRU: 최근 사용 항목으로 이동
             self._cache.move_to_end(cache_key)
             return self._cache[cache_key]

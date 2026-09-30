@@ -83,7 +83,8 @@ async def fetch_user_stats_solo(
         raise APIError(f"네트워크 오류: {e}", "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
 
 
-async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool = True) -> Optional[List[Dict]]:
+async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool = True,
+                             refresh: bool = False) -> Optional[List[Dict]]:
     """
     시즌 랭킹 데이터를 가져옵니다.
 
@@ -98,7 +99,7 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
     try:
         url = f"{config.api_url}/rank/top/{season_id}/3/{RANKING_SERVER}"
 
-        data = await client.api_client.get(url, use_cache=use_cache, ttl=300)
+        data = await client.api_client.get(url, use_cache=use_cache, ttl=300, refresh=refresh)
 
         if data and data.get('code') == 200:
             top_ranks = data.get('topRanks', [])

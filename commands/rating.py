@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import discord
 from discord import ui
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 from typing import Dict, List, Optional, Tuple
 from client import ERClient
@@ -198,6 +198,26 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
 class Rating(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
+        self.warm_ranking.start()
+
+    def cog_unload(self):
+        self.warm_ranking.cancel()
+
+    # 랭킹 목록 캐시는 5분. 그 전에 새로 받아 두어 명령이 목록을 기다리지 않게 함
+    @tasks.loop(minutes=4)
+    async def warm_ranking(self):
+        season = await get_ranked_season()
+        if not season:
+            return
+        try:
+            await fetch_ranking_data(self.client, season[0], refresh=True)
+            await fetch_rating_info(self.client, season[0])
+        except Exception as e:
+            logger.warning(f"랭킹 목록 미리 받기 실패: {type(e).__name__}: {e}")
+
+    @warm_ranking.before_loop
+    async def before_warm_ranking(self):
+        await self.client.wait_until_ready()
 
     @app_commands.command(name="이터컷", description="이터니티와 데미갓 컷")
     @handle_errors(user_message="레이팅 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
