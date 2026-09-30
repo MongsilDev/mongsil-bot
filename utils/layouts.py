@@ -2,6 +2,7 @@
 LayoutView 기반 공통 레이아웃 유틸리티
 discord.py 2.7+ Components V2 사용
 """
+import asyncio
 import logging
 import time
 import discord
@@ -79,13 +80,23 @@ class CooldownLayoutView(ui.LayoutView):
                 pass
 
 
+# 이 안에 결과가 준비되면 로딩 카드 없이 바로 보냄. 디스코드 왕복 한 번이 약 0.3초
+FAST_REPLY_SECONDS = 1.0
+
+
 async def send_card(interaction: discord.Interaction, loading: str, build):
-    """로딩 카드를 먼저 보내고 build 결과로 교체. 이미 응답한 인터랙션은 새 메시지로"""
+    """결과가 빨리 나오면 바로 보내고, 늦으면 로딩 카드를 먼저 보낸 뒤 교체. 이미 응답한 인터랙션은 새 메시지로"""
     from . import visual
     if not interaction.response.is_done():
-        await interaction.response.send_message(view=create_loading_layout(loading))
-        view = await build()
-        await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
+        task = asyncio.ensure_future(build())
+        try:
+            view = await asyncio.wait_for(asyncio.shield(task), FAST_REPLY_SECONDS)
+        except asyncio.TimeoutError:
+            await interaction.response.send_message(view=create_loading_layout(loading))
+            view = await task
+            await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
+        else:
+            await interaction.response.send_message(view=view, files=visual.files_of(view))
         return view, await interaction.original_response()
     from .errors import BotError
     message = await interaction.followup.send(view=create_loading_layout(loading), wait=True)
