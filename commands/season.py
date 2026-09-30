@@ -1,11 +1,12 @@
 import asyncio
+import re
 
 import discord
 from discord import ui
 from discord.ext import commands
 from discord import app_commands
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, Tuple, NamedTuple
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 from client import ERClient
 
@@ -216,82 +217,80 @@ PATCH_NOTES_URL = "https://playeternalreturn.com/posts/news?categoryPath=patchno
 
 
 class PatchNote(NamedTuple):
-    title: str
-    posted: datetime
+    version: str
+    applied: datetime
     url: str
-    image: Optional[str]
 
 
-async def fetch_latest_patch_note() -> Optional[PatchNote]:
-    """공식 사이트 최신 패치 노트. 실패하면 None"""
+PATCH_TITLE = re.compile(r'(\d{4})\.(\d{2})\.(\d{2})\s*-\s*(\d+\.\d+)\s*패치')
+
+
+async def fetch_patch_notes() -> List[PatchNote]:
+    """공식 사이트 정기 패치 노트, 적용일 순. 핫픽스 제외. 실패하면 빈 목록"""
     try:
         from utils.api_client import api_client
         data = await api_client.get(PATCH_NOTES_API, ttl=1800)
-        article = max(data['articles'], key=lambda a: a['created_at'])
-        text = article['i18ns'].get('ko_KR') or next(iter(article['i18ns'].values()))
-        posted = datetime.fromisoformat(article['created_at'].replace('Z', '+00:00')).astimezone(KST)
-        return PatchNote(text['title'], posted, article.get('url') or PATCH_NOTES_URL, article.get('thumbnail_url'))
+        notes = []
+        for article in data['articles']:
+            text = article['i18ns'].get('ko_KR') or next(iter(article['i18ns'].values()))
+            m = PATCH_TITLE.search(text['title'])
+            if m:
+                applied = datetime(int(m[1]), int(m[2]), int(m[3]), 11, tzinfo=KST)
+                notes.append(PatchNote(m[4], applied, article.get('url') or PATCH_NOTES_URL))
+        return sorted(notes, key=lambda n: n.applied)
     except Exception as e:
         logger.warning(f"패치 노트 조회 실패: {type(e).__name__}: {e}")
-        return None
+        return []
 
 
-def create_season_layout(season_info: Optional[SeasonInfo], patch: Optional[PatchNote] = None) -> ui.LayoutView:
+def create_season_layout(season_info: Optional[SeasonInfo], patches: Sequence[PatchNote] = ()) -> ui.LayoutView:
     """시즌 정보 LayoutView를 생성합니다."""
     if not season_info:
         return create_error_layout("현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
 
     now = datetime.now(KST)
     start, end = season_info.start_date, season_info.end_date
-    total = (end - start).total_seconds()
-    elapsed = (now - start).total_seconds()
-    progress = min(max(elapsed / total * 100, 0), 100) if total > 0 else 0
-
-    def d_day(target: datetime) -> str:
-        days = (target.date() - now.date()).days
-        return f"D-{days}" if days > 0 else "D-day"
 
     def when(t: datetime) -> str:
         return f"{t.month}/{t.day} {t.hour}시"
 
     if now < start:
-        big = f"시작 {d_day(start)}"
+        status = f"시작까지 **{(start.date() - now.date()).days}일** | {when(start)} 시작"
     elif now < end:
-        big = f"종료 {d_day(end)}"
+        days = (end.date() - now.date()).days
+        status = (f"종료까지 **{days}일**" if days else "**오늘 종료**") + f" | {when(end)} 종료"
     else:
-        big = "종료"
+        status = f"{when(end)} 종료"
 
     codename = SEASON_CODENAMES.get(season_info.number)
     title = f"{season_info.name} | {codename}" if codename else season_info.name
 
-    children = [ui.TextDisplay(
-        f"### {title}\n# {big}\n"
-        f"`{visual.gauge(progress / 100, 12)}` **{progress:.1f}%**\n"
-        f"-# {when(start)} ~ {when(end)}"
-    )]
-    if patch:
-        children.append(ui.Separator())
-        children.append(ui.TextDisplay(f"**{patch.title}**"))
-        if patch.image:
-            children.append(ui.MediaGallery(discord.MediaGalleryItem(patch.image)))
-
     view = ui.LayoutView(timeout=None)
+    in_season = [p for p in patches if start.date() <= p.applied.date() <= end.date()]
+    children = [ui.TextDisplay(f"### {title}\n{status}")]
+    chart = visual.season_timeline(start, end, now, [(p.applied, p.version) for p in in_season],
+                                   visual.COLOURS['season'])
+    children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'season.png', chart))))
+
+    current = [p for p in patches if p.applied <= now]
+    upcoming = [p for p in patches if p.applied > now]
+    notes = []
+    if current:
+        notes.append(f"현재 패치 {current[-1].version}")
+    if upcoming:
+        notes.append(f"다음 패치 {upcoming[0].version} {upcoming[0].applied.month}/{upcoming[0].applied.day}")
+    if notes:
+        children.append(ui.TextDisplay("-# " + " | ".join(notes)))
     view.add_item(ui.Container(*children, accent_colour=visual.colour('season')))
+
+    latest = (upcoming or current or [None])[0 if upcoming else -1]
     view.add_item(ui.ActionRow(
-        ui.Button(
-            style=discord.ButtonStyle.link,
-            label="공식 사이트",
-            url="https://playeternalreturn.com/",
-            emoji=EMOJIS['web'],
-        ),
-        ui.Button(
-            style=discord.ButtonStyle.link,
-            label="패치 노트",
-            url=patch.url if patch else PATCH_NOTES_URL,
-            emoji=EMOJIS['patch_note'],
-        ),
+        ui.Button(style=discord.ButtonStyle.link, label="공식 사이트", url="https://playeternalreturn.com/", emoji=EMOJIS['web']),
+        ui.Button(style=discord.ButtonStyle.link, label=f"{latest.version} 패치 노트" if latest else "패치 노트",
+                  url=latest.url if latest else PATCH_NOTES_URL, emoji=EMOJIS['patch_note']),
     ))
     return view
+
 
 class Season(commands.Cog):
     """시즌 관련 명령어를 처리하는 Cog"""
@@ -310,10 +309,10 @@ class Season(commands.Cog):
         """
         await interaction.response.defer()
 
-        season_info, patch = await asyncio.gather(get_season_info(), fetch_latest_patch_note())
-        layout = create_season_layout(season_info, patch)
+        season_info, patches = await asyncio.gather(get_season_info(), fetch_patch_notes())
+        layout = create_season_layout(season_info, patches)
 
-        await interaction.followup.send(view=layout)
+        await interaction.followup.send(view=layout, files=visual.files_of(layout))
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

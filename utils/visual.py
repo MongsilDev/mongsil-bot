@@ -329,3 +329,36 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
         d.text((x, y - 9 * s if above else y + 9 * s), f'{values[i]:,}', font=label,
                fill=TEXT if above else SUBTEXT, anchor='mb' if above else 'mt')
     return _png(img)
+
+
+def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequence[Tuple[datetime, str]],
+                    accent: int, width: int = 720, height: int = 118) -> bytes:
+    """시즌 기간 막대. 지난 구간 채움, 패치 적용일 눈금, 오늘 표시"""
+    img, d = _canvas(width, height)
+    s = SCALE
+    left, right, cy, bar = 28, width - 28, 64, 7
+    span = max((end - start).total_seconds(), 1)
+
+    def x_of(t: datetime) -> float:
+        return (left + min(max((t - start).total_seconds() / span, 0), 1) * (right - left)) * s
+
+    rgb = _hex(accent)
+    d.rounded_rectangle([left * s, (cy - bar) * s, right * s, (cy + bar) * s], radius=bar * s, fill=GRID)
+    today = x_of(now)
+    if today > left * s:
+        d.rounded_rectangle([left * s, (cy - bar) * s, today, (cy + bar) * s], radius=bar * s, fill=rgb)
+
+    small, bold = font(11), font(12, bold=True)
+    for when, label in marks:
+        x = x_of(when)
+        past = when <= now
+        d.line([(x, (cy - bar - 12) * s), (x, (cy - bar - 2) * s)], fill=TEXT if past else rgb, width=2 * s)
+        d.text((x, (cy - bar - 15) * s), label, font=bold if not past else small,
+               fill=TEXT if past else rgb, anchor='mb')
+
+    d.ellipse([today - 9 * s, (cy - 9) * s, today + 9 * s, (cy + 9) * s], fill=(255, 255, 255), outline=BG, width=3 * s)
+    d.text((left * s, (cy + bar + 10) * s), f'{start.month}/{start.day}', font=small, fill=SUBTEXT, anchor='lt')
+    d.text((right * s, (cy + bar + 10) * s), f'{end.month}/{end.day}', font=small, fill=SUBTEXT, anchor='rt')
+    label_x = min(max(today, (left + 40) * s), (right - 40) * s)
+    d.text((label_x, (cy + bar + 10) * s), f'오늘 {now.month}/{now.day}', font=bold, fill=TEXT, anchor='mt')
+    return _png(img)
