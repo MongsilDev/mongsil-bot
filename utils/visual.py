@@ -108,6 +108,35 @@ def _mix(a: Tuple[int, int, int], b: Tuple[int, int, int], t: float) -> Tuple[in
     return tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
+def _smooth(line: Sequence[Tuple[float, float]], steps: int = 10) -> List[Tuple[float, float]]:
+    """단조 3차 보간. 점 사이를 곡선으로 잇되 최고와 최저를 넘지 않음"""
+    n = len(line)
+    if n < 3:
+        return list(line)
+    xs, ys = [p[0] for p in line], [p[1] for p in line]
+    h = [max(xs[i + 1] - xs[i], 1e-9) for i in range(n - 1)]
+    d = [(ys[i + 1] - ys[i]) / h[i] for i in range(n - 1)]
+    m = [d[0]] + [0.0 if d[i - 1] * d[i] <= 0 else (d[i - 1] + d[i]) / 2 for i in range(1, n - 1)] + [d[-1]]
+    for i in range(n - 1):
+        if d[i] == 0:
+            m[i] = m[i + 1] = 0.0
+            continue
+        a, b = m[i] / d[i], m[i + 1] / d[i]
+        if a * a + b * b > 9:
+            t = 3 / math.sqrt(a * a + b * b)
+            m[i], m[i + 1] = t * a * d[i], t * b * d[i]
+    out = []
+    for i in range(n - 1):
+        for k in range(steps):
+            t = k / steps
+            h00, h10 = 2 * t ** 3 - 3 * t ** 2 + 1, t ** 3 - 2 * t ** 2 + t
+            h01, h11 = -2 * t ** 3 + 3 * t ** 2, t ** 3 - t ** 2
+            out.append((xs[i] + t * h[i],
+                        h00 * ys[i] + h10 * h[i] * m[i] + h01 * ys[i + 1] + h11 * h[i] * m[i + 1]))
+    out.append(line[-1])
+    return out
+
+
 def _ticks(lo: float, hi: float, count: int = 5) -> List[float]:
     raw = max(hi - lo, 1) / count
     mag = 10 ** math.floor(math.log10(raw))
@@ -165,15 +194,16 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
 
     for pts, accent in series:
         line = [xy(t, v) for t, v in pts]
+        curve = _smooth(line)
         rgb = _hex(accent)
         if fill:
             layer = Image.new('RGB', img.size, _mix(BG, rgb, 0.28))
             mask = Image.new('L', img.size, 0)
-            ImageDraw.Draw(mask).polygon(line + [(line[-1][0], bottom), (line[0][0], bottom)], fill=255)
+            ImageDraw.Draw(mask).polygon(curve + [(line[-1][0], bottom), (line[0][0], bottom)], fill=255)
             fade = Image.linear_gradient('L').resize(img.size)
             mask = Image.composite(mask, Image.new('L', img.size, 0), fade.point(lambda p: 255 - p))
             img.paste(layer, (0, 0), mask)
-        d.line(line, fill=rgb, width=3 * s, joint='curve')
+        d.line(curve, fill=rgb, width=3 * s, joint='curve')
 
         if mark_extremes:
             hi_pt = max(range(len(pts)), key=lambda i: pts[i][1])
@@ -274,7 +304,7 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
 
     rgb = _hex(accent)
     line = [xy(i, v) for i, v in enumerate(values)]
-    d.line(line, fill=rgb, width=3 * s, joint='curve')
+    d.line(_smooth(line), fill=rgb, width=3 * s, joint='curve')
     chip = font(11, bold=True)
     radius = min(11, (right - left) / n / 2 - 1)
     for i, (_, place) in enumerate(games, start=1):
