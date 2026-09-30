@@ -65,7 +65,9 @@ class ConcurrentData:
             }
 
         max_data = max(recent, key=lambda x: (x[1], _as_utc(x[0])))
-        min_data = min(recent, key=lambda x: (x[1], _as_utc(x[0])))
+        # 점검 시간에 Steam이 0을 돌려줘 최저값에서는 뺌
+        positive = [r for r in recent if r[1] > 0] or recent
+        min_data = min(positive, key=lambda x: (x[1], _as_utc(x[0])))
 
         return {
             'max_count': max_data[1],
