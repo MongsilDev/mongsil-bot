@@ -53,7 +53,7 @@ class AnimalView(CooldownLayoutView):
         self.clear_items()
         self.__dict__.pop('_card_files', None)
         url = visual.attach(self, filename, image)
-        children = [ui.MediaGallery(discord.MediaGalleryItem(url, description=f"{self.animal_name} 사진"))]
+        children = [ui.MediaGallery(discord.MediaGalleryItem(url))]
         if breeds:
             children.append(ui.TextDisplay(f"-# {', '.join(breeds)}"))
         self.add_item(ui.Container(*children, accent_colour=visual.colour('animal')))

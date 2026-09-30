@@ -216,7 +216,7 @@ def create_concurrent_layout(current_count: int) -> ui.LayoutView:
     chart = visual.line_chart(points, visual.COLOURS['concurrent'])
     if chart:
         url = visual.attach(view, 'concurrent.png', chart)
-        children.append(ui.MediaGallery(discord.MediaGalleryItem(url, description="최근 24시간 동시 접속자 그래프")))
+        children.append(ui.MediaGallery(discord.MediaGalleryItem(url)))
 
     if stats['data_count'] > 0 and stats['max_time']:
         max_ts = int(stats['max_time'].timestamp())

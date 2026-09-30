@@ -134,7 +134,7 @@ def create_rank_layout(
         )]
         if chart:
             url = visual.attach(view, 'rank.png', chart)
-            container_items.append(ui.MediaGallery(discord.MediaGalleryItem(url, description="최근 게임 RP와 순위")))
+            container_items.append(ui.MediaGallery(discord.MediaGalleryItem(url)))
 
     top_characters = sorted(stats.get('characterStats') or [], key=lambda x: x.get('totalGames', 0), reverse=True)[:3]
     if top_characters:

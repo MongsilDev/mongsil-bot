@@ -275,7 +275,7 @@ def create_season_layout(season_info: Optional[SeasonInfo], patch: Optional[Patc
         children.append(ui.Separator())
         children.append(ui.TextDisplay(f"### 최근 패치\n**{patch.title}**\n-# {patch.posted.month}/{patch.posted.day} 게시"))
         if patch.image:
-            children.append(ui.MediaGallery(discord.MediaGalleryItem(patch.image, description=patch.title)))
+            children.append(ui.MediaGallery(discord.MediaGalleryItem(patch.image)))
 
     view = ui.LayoutView(timeout=None)
     view.add_item(ui.Container(*children, accent_colour=visual.colour('season')))

@@ -99,7 +99,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
         ], hours=168 if recent[-1][0] - recent[0][0] > 2 * 86400 else 24, end_labels=True, legend=('이터니티', '데미갓'))
         if chart:
             url = visual.attach(view, 'cut.png', chart)
-            children.append(ui.MediaGallery(discord.MediaGalleryItem(url, description="최근 7일 이터니티와 데미갓 컷")))
+            children.append(ui.MediaGallery(discord.MediaGalleryItem(url)))
 
     footnote = f"<t:{int(datetime.now(timezone.utc).timestamp())}:t> 기준"
     if eternity and demigod:

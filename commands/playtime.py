@@ -199,7 +199,7 @@ def create_playtime_layout(stats: PlayTimeStats) -> ui.LayoutView:
     totals = [_short(stats.daily_stats[d]) for d in dates]
     chart = visual.heatmap(stats.hourly, labels, visual.COLOURS['playtime'], totals)
     url = visual.attach(view, 'playtime.png', chart)
-    children.append(ui.MediaGallery(discord.MediaGalleryItem(url, description="최근 7일 시간대별 플레이 타임")))
+    children.append(ui.MediaGallery(discord.MediaGalleryItem(url)))
 
     lines = [f"하루 평균 **{format_duration(stats.total_seconds // 7)}**"]
     if stats.games_played:
