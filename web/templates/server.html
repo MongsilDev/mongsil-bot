@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_chart.html" import columns, guild_icon %}
+{% block title %}{{ guild.name }} - 몽실봇{% endblock %}
+{% block main %}
+<a class="back" href="/servers"><svg width="7" height="12" viewBox="0 0 7 12" aria-hidden="true"><path d="M6 1L1 6l5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>내 서버</a>
+
+<header class="guild-head">
+  {{ guild_icon(guild, 64) }}
+  <div>
+    <h1>{{ guild.name }}</h1>
+    <p class="guild-sub">
+      <span>멤버 {{ guild.members|number }}명</span>
+      {% if guild.joined_at %}<span>{{ guild.joined_at|date }} 추가</span>{% endif %}
+    </p>
+  </div>
+</header>
+
+<section class="block">
+  <h2>설정</h2>
+  <div class="panel">
+    <div class="setting">
+      <span id="zoom-label" class="setting-label">이모지 확대</span>
+      <button type="button" class="switch" role="switch" aria-checked="{{ 'true' if zoom_enabled else 'false' }}" aria-labelledby="zoom-label" data-url="/servers/{{ guild.id }}/emoji-zoom"{% if not can_webhook and not zoom_enabled %} disabled{% endif %}></button>
+    </div>
+    {% if not can_webhook %}
+    <p class="notice">봇에 웹후크 관리 권한이 없어 이모지 확대가 동작하지 않습니다. 몽실봇 역할에 웹후크 관리 권한을 준 뒤 새로고침해주세요.</p>
+    {% endif %}
+    <p class="notice notice-error" id="zoom-error" role="alert" hidden></p>
+  </div>
+</section>
+
+<section class="block">
+  <h2>최근 30일 사용량</h2>
+  {% if total %}
+  <div class="figures figures-small">
+    <div class="figure"><strong>{{ total|number }}회</strong><span>명령어 실행</span></div>
+    <div class="figure"><strong>{{ users|number }}명</strong><span>사용한 유저</span></div>
+  </div>
+  {{ columns(chart, '명령어 실행') }}
+  <ul class="rows tally">
+    {% for name, count in by_command %}
+    <li><code class="cmd">/{{ name }}</code><span class="num">{{ count|number }}회</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">사용 기록이 없습니다.</p>
+  {% endif %}
+  {% if recording_since %}
+  <p class="footnote">{{ recording_since|date }}부터 기록합니다.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>{% block title %}몽실봇{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css?v={{ static_version }}">
+{% if session %}
+<meta name="csrf" content="{{ session.csrf }}">
+{% endif %}
+<script src="/static/app.js?v={{ static_version }}" defer></script>
+</head>
+<body>
+<header class="bar">
+  <div class="bar-inner">
+    <a class="wordmark" href="/">몽실봇</a>
+    <nav class="nav">
+      {% if session %}
+      <a href="/servers"{% if path.startswith('/servers') %} aria-current="page"{% endif %}>내 서버</a>
+      {% if is_owner %}
+      <a href="/admin"{% if path == '/admin' %} aria-current="page"{% endif %}>운영 현황</a>
+      {% endif %}
+      <details class="account">
+        <summary aria-label="계정"><img src="{{ session_avatar(session) }}" alt="" width="28" height="28"></summary>
+        <div class="account-menu">
+          <span class="account-name">{{ session.username }}</span>
+          <form method="post" action="/logout">
+            <input type="hidden" name="csrf" value="{{ session.csrf }}">
+            <button type="submit">로그아웃</button>
+          </form>
+        </div>
+      </details>
+      {% else %}
+      <a class="nav-login" href="/login">로그인</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+<main class="{% block main_class %}page{% endblock %}">
+{% block main %}{% endblock %}
+</main>
+<footer class="foot">
+  <a href="{{ support_server }}">지원 서버</a>
+  <a href="https://mongsil.dev">mongsil.dev</a>
+</footer>
+</body>
+</html>

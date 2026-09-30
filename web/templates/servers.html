@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_chart.html" import guild_icon %}
+{% block title %}내 서버 - 몽실봇{% endblock %}
+{% block main %}
+<h1 class="page-title">내 서버</h1>
+
+{% if joined %}
+<section class="block">
+  <h2>봇이 있는 서버</h2>
+  <ul class="guilds">
+    {% for g in joined %}
+    <li>
+      <a class="guild" href="/servers/{{ g.id }}">
+        {{ guild_icon(g) }}
+        <span class="guild-text">
+          <span class="guild-name">{{ g.name }}</span>
+          <span class="guild-meta">멤버 {{ g.members|number }}명</span>
+        </span>
+        <svg class="chev" width="8" height="14" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if others %}
+<section class="block">
+  <h2>봇이 없는 서버</h2>
+  <ul class="guilds">
+    {% for g in others %}
+    <li>
+      <div class="guild">
+        {{ guild_icon(g) }}
+        <span class="guild-text"><span class="guild-name">{{ g.name }}</span></span>
+        <a class="btn btn-small" href="{{ g.invite }}">봇 추가</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if not joined and not others %}
+<p class="empty">서버 관리 권한이 있는 서버가 없습니다.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block main_class %}page home{% endblock %}
+{% block main %}
+<section class="hero">
+  {% if avatar %}
+  <img class="bot-avatar" src="{{ avatar }}" alt="" width="112" height="112">
+  {% endif %}
+  <h1>몽실봇</h1>
+  <p class="lede">이터널 리턴 전적을 디스코드에서 조회합니다.</p>
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ invite }}">서버에 추가</a>
+    <a class="btn" href="/servers">대시보드</a>
+  </div>
+</section>
+
+<section class="figures" aria-label="현황">
+  <div class="figure"><strong>{{ guild_count|number }}</strong><span>서버</span></div>
+  <div class="figure"><strong>{{ user_count|compact }}</strong><span>사용자</span></div>
+  <div class="figure"><strong>{{ days|number }}일</strong><span>운영</span></div>
+</section>
+
+<section class="block">
+  <h2>명령어</h2>
+  <ul class="rows commands">
+    {% for c in commands %}
+    <li>
+      <code class="cmd">/{{ c.name }}{% for p in c.params %} <span class="param">{{ p }}</span>{% endfor %}</code>
+      <span class="desc">{{ c.description }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

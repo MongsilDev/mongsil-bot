@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% from "_chart.html" import columns, guild_icon %}
+{% block title %}운영 현황 - 몽실봇{% endblock %}
+{% block main %}
+<h1 class="page-title">운영 현황</h1>
+
+<section class="figures figures-wide" aria-label="현재 상태">
+  <div class="figure"><strong>{{ guild_count|number }}</strong><span>서버</span></div>
+  <div class="figure"><strong>{{ user_count|compact }}</strong><span>사용자</span></div>
+  <div class="figure"><strong>{{ today_count|number }}</strong><span>오늘 실행</span></div>
+  <div class="figure"><strong>{{ uptime|duration }}</strong><span>업타임</span></div>
+  <div class="figure"><strong>{{ latency }}ms</strong><span>게이트웨이 핑</span></div>
+</section>
+
+<section class="block">
+  <h2>명령어 실행</h2>
+  <p class="block-sub">
+    <span>최근 30일 {{ total|number }}회</span>
+    <span>유저 {{ users_30|number }}명</span>
+    <span>오류 {{ error_count|number }}회{% if total %} ({{ '%.1f'|format(error_count / total * 100) }}%){% endif %}</span>
+  </p>
+  {{ columns(chart, '명령어 실행') }}
+  {% if commands %}
+  <table class="data">
+    <thead><tr><th scope="col">명령어</th><th scope="col" class="num">실행</th><th scope="col" class="num">오류</th><th scope="col" class="num">응답 중앙값</th></tr></thead>
+    <tbody>
+    {% for c in commands %}
+    <tr>
+      <td><code class="cmd">/{{ c.name }}</code></td>
+      <td class="num">{{ c.count|number }}</td>
+      <td class="num{% if c.errors %} warn{% endif %}">{{ c.errors|number }}</td>
+      <td class="num">{% if c.median is not none %}{{ c.median|number }}ms{% else %}-{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if recording_since %}
+  <p class="footnote">{{ recording_since|date }}부터 기록합니다.</p>
+  {% endif %}
+</section>
+
+<div class="split">
+  <section class="block">
+    <h2>서버 변동</h2>
+    <p class="block-sub"><span>최근 30일 참가 {{ joins|number }}</span><span>퇴장 {{ leaves|number }}</span></p>
+    {% if events %}
+    <ul class="rows events">
+      {% for e in events %}
+      <li>
+        <span class="tag {{ e.kind }}">{{ '참가' if e.kind == 'join' else '퇴장' }}</span>
+        <span class="event-name">{{ e.name or e.guild_id }}</span>
+        <time class="muted" datetime="{{ e.when.isoformat() }}">{{ e.when|shortdate }}</time>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">기록된 변동이 없습니다.</p>
+    {% endif %}
+  </section>
+
+  <section class="block">
+    <h2>많이 쓰는 서버</h2>
+    <p class="block-sub"><span>최근 30일 실행 횟수</span></p>
+    {% if top_guilds %}
+    <ol class="rows ranked">
+      {% for g in top_guilds %}
+      <li><span class="event-name{% if g.gone %} muted{% endif %}">{{ g.name }}</span><span class="num">{{ g.count|number }}</span></li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="empty">기록이 없습니다.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="block">
+  <div class="block-head">
+    <h2>전체 서버</h2>
+    <input class="filter" type="search" placeholder="이름 또는 ID" aria-label="서버 검색" data-filter="#guild-table">
+  </div>
+  <div class="scroll">
+    <table class="data" id="guild-table">
+      <thead><tr><th scope="col">서버</th><th scope="col" class="num">멤버</th><th scope="col" class="num">추가한 날</th></tr></thead>
+      <tbody>
+      {% for g in guilds %}
+      <tr data-search="{{ g.name|lower }} {{ g.id }}">
+        <td><span class="cell-guild">{{ guild_icon(g, 24) }}<span>{{ g.name }}</span></span></td>
+        <td class="num">{{ g.members|number }}</td>
+        <td class="num muted">{% if g.joined_at %}{{ g.joined_at|numdate }}{% else %}-{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="empty" hidden data-empty-for="#guild-table">일치하는 서버가 없습니다.</p>
+  </div>
+</section>
+
+<section class="block">
+  <h2>최근 오류</h2>
+  {% if logs %}
+  <ul class="logs">
+    {% for l in logs %}
+    <li class="log {{ l.level|lower }}">
+      <span class="log-time">{{ l.time }}</span>
+      <span class="log-level">{{ l.level }}</span>
+      <span class="log-source">{{ l.source }}</span>
+      <span class="log-msg">{{ l.message }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">최근 로그에 오류가 없습니다.</p>
+  {% endif %}
+</section>
+{% endblock %}

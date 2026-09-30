@@ -1,0 +1,43 @@
+{% macro columns(chart, name, unit='회') %}
+<figure class="chart">
+  <div class="plot" tabindex="0" role="group" aria-label="{{ name }}, 방향키로 날짜 이동">
+    <div class="grid">
+      <div class="gridline" style="bottom:100%"><span>{{ chart.top|number }}</span></div>
+      {% if chart.mid %}
+      <div class="gridline" style="bottom:50%"><span>{{ chart.mid|number }}</span></div>
+      {% endif %}
+      <div class="gridline base" style="bottom:0"><span>0</span></div>
+    </div>
+    <div class="cols">
+      {% for s in chart.series %}
+      <div class="col{% if s.value %} has{% endif %}" data-label="{{ s.label }}" data-value="{{ s.value|number }}{{ unit }}"><i style="height:{{ s.pct }}%"></i></div>
+      {% endfor %}
+    </div>
+    <div class="tip" hidden><strong></strong><span></span></div>
+  </div>
+  <div class="xaxis">
+    <span>{{ chart.series[0].short }}</span>
+    <span>{{ chart.series[chart.series|length // 2].short }}</span>
+    <span>오늘</span>
+  </div>
+  <details class="table-view">
+    <summary>표로 보기</summary>
+    <table>
+      <thead><tr><th scope="col">날짜</th><th scope="col" class="num">{{ name }}</th></tr></thead>
+      <tbody>
+      {% for s in chart.series|reverse %}
+      <tr><td>{{ s.label }}</td><td class="num">{{ s.value|number }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+</figure>
+{% endmacro %}
+
+{% macro guild_icon(g, size=48) %}
+{% if g.icon %}
+<img class="gicon" src="{{ g.icon }}" alt="" width="{{ size }}" height="{{ size }}" loading="lazy">
+{% else %}
+<span class="gicon gicon-text" style="width:{{ size }}px;height:{{ size }}px" aria-hidden="true">{{ g.name|initials }}</span>
+{% endif %}
+{% endmacro %}

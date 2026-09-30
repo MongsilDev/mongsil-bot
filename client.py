@@ -11,6 +11,7 @@ from utils.layouts import create_error_layout
 from utils.logging_config import get_logger
 from utils.api_client import api_client
 from utils.character_names import refresh_character_names
+from utils.usage_db import record_command, record_guild_event
 
 logger = get_logger(__name__)
 
@@ -29,6 +30,7 @@ class ERClient(commands.Bot):
 
         self.api_client = api_client
         self.start_time = None  # main.py에서 설정됨
+        self.dashboard = None
 
         # 이름만 on_tree_error인 메서드는 아무 데도 연결되지 않는다. 명시적으로 바인딩해야 동작.
         self.tree.on_error = self.on_tree_error
@@ -82,6 +84,16 @@ class ERClient(commands.Bot):
 
             self.refresh_names.start()
 
+            if os.getenv('DASHBOARD_URL') and os.getenv('DASHBOARD_CLIENT_SECRET'):
+                # 대시보드 설정 오류로 봇까지 내려가지 않게 여기서 끊음
+                try:
+                    from web.server import start_dashboard
+                    self.dashboard = await start_dashboard(self)
+                except Exception:
+                    logger.error("대시보드 시작 실패", exc_info=True)
+            else:
+                logger.info("대시보드 꺼짐 (DASHBOARD_URL, DASHBOARD_CLIENT_SECRET 필요)")
+
             # 커맨드 동기화는 SYNC_COMMANDS=1 환경변수가 설정된 경우에만 수행
             # 매 재시작마다 sync하면 Discord rate limit에 걸려 연결 끊김/재연결 반복 발생
             if os.getenv('SYNC_COMMANDS') == '1':
@@ -109,10 +121,18 @@ class ERClient(commands.Bot):
     async def on_guild_join(self, guild):
         """봇이 새 서버에 참가했을 때 호출됩니다."""
         logger.info(f"서버 참가: {guild.name} (ID: {guild.id}, 멤버: {guild.member_count})")
+        record_guild_event(guild.id, guild.name, guild.member_count, 'join')
 
     async def on_guild_remove(self, guild):
         """봇이 서버에서 제거되었을 때 호출됩니다."""
         logger.info(f"서버 제거: {guild.name} (ID: {guild.id})")
+        record_guild_event(guild.id, guild.name, guild.member_count, 'leave')
+
+    async def on_app_command_completion(self, interaction: discord.Interaction, command):
+        # handle_errors가 잡은 실패도 여기로 온다. 상태는 extras에 표시됨
+        ms = (discord.utils.utcnow() - interaction.created_at).total_seconds() * 1000
+        record_command(interaction.guild_id, interaction.user.id, command.qualified_name,
+                       interaction.extras.get('status', 'ok'), int(ms))
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         error_message = "명령어 실행 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
@@ -123,10 +143,16 @@ class ERClient(commands.Bot):
             error_message = f"명령어를 너무 자주 사용했습니다. {math.ceil(error.retry_after)}초 후에 다시 시도해주세요."
 
         # 권한/쿨다운은 예상된 유저 조건이라 WARNING (Sentry는 ERROR 이상만 수집)
-        if isinstance(error, (app_commands.CheckFailure, app_commands.CommandOnCooldown)):
+        blocked = isinstance(error, (app_commands.CheckFailure, app_commands.CommandOnCooldown))
+        if blocked:
             logger.warning(f"명령어 차단: {error}")
         else:
             logger.error(f"명령어 실행 오류: {error}", exc_info=True)
+
+        if interaction.command:
+            ms = (discord.utils.utcnow() - interaction.created_at).total_seconds() * 1000
+            record_command(interaction.guild_id, interaction.user.id, interaction.command.qualified_name,
+                           'user' if blocked else 'error', int(ms))
 
         try:
             layout = create_error_layout(error_message)
@@ -142,6 +168,8 @@ class ERClient(commands.Bot):
     async def close(self):
         """봇 종료 시 리소스를 정리합니다."""
         try:
+            if self.dashboard:
+                await self.dashboard.cleanup()
             await self.api_client.close()
             logger.info("리소스 정리 완료")
         except Exception as e:

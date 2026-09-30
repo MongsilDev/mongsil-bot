@@ -109,6 +109,8 @@ def handle_errors(
 
                 interaction = _find_interaction(args)
                 if interaction:
+                    user_fault = isinstance(e, (NotFoundError, ValidationError))
+                    interaction.extras['status'] = 'user' if user_fault else 'error'
                     await _send_error(interaction, e.user_message)
 
                 return None
@@ -118,6 +120,7 @@ def handle_errors(
 
                 interaction = _find_interaction(args)
                 if interaction:
+                    interaction.extras['status'] = 'error'
                     await _send_error(interaction, user_message)
 
                 return None
