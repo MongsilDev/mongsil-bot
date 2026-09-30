@@ -1,11 +1,14 @@
 """
 봇이 보내는 LayoutView를 디스코드 다크 테마와 비슷한 HTML로 변환. 웹 미리보기용
 """
+import base64
 import html
 import re
 from datetime import datetime, timedelta, timezone
 
 from discord import ButtonStyle, ui
+
+from utils.visual import attached
 
 KST = timezone(timedelta(hours=9))
 
@@ -14,6 +17,7 @@ INLINE = [
     (re.compile(r'`([^`]+)`'), r'<code>\1</code>'),
 ]
 TIMESTAMP = re.compile(r'&lt;t:(\d+):([tTdDfFR])&gt;')
+CUSTOM_EMOJI = re.compile(r'&lt;(a?):(\w+):(\d+)&gt;')
 
 
 def _timestamp(m: re.Match) -> str:
@@ -32,6 +36,7 @@ def _inline(text: str) -> str:
     out = html.escape(text, quote=False)
     for pattern, repl in INLINE:
         out = pattern.sub(repl, out)
+    out = CUSTOM_EMOJI.sub(lambda m: f'<img class="dc-custom-emoji" src="https://cdn.discordapp.com/emojis/{m[3]}.{"gif" if m[1] else "png"}" alt="">', out)
     return TIMESTAMP.sub(_timestamp, out)
 
 
@@ -61,17 +66,24 @@ def _button(b: ui.Button) -> str:
     return f'<span class="dc-button dc-{style}{disabled}">{emoji}{label}{external}</span>'
 
 
-def _item(item) -> str:
+def _media(url: str, files: dict) -> str:
+    name = url.removeprefix('attachment://')
+    if url.startswith('attachment://') and name in files:
+        return 'data:image/png;base64,' + base64.b64encode(files[name]).decode()
+    return url
+
+
+def _item(item, files: dict) -> str:
     if isinstance(item, ui.TextDisplay):
         return f'<div class="dc-text">{markdown(item.content)}</div>'
     if isinstance(item, ui.Separator):
         return '<hr class="dc-sep">' if item.visible else '<div class="dc-gap"></div>'
     if isinstance(item, ui.Section):
-        body = ''.join(_item(c) for c in item.children)
+        body = ''.join(_item(c, files) for c in item.children)
         acc = item.accessory
         side = ''
         if isinstance(acc, ui.Thumbnail):
-            side = f'<img class="dc-thumb" src="{html.escape(acc.media.url)}" alt="" width="80" height="80">'
+            side = f'<img class="dc-thumb" src="{html.escape(_media(acc.media.url, files))}" alt="" width="80" height="80">'
         elif isinstance(acc, ui.Button):
             side = _button(acc)
         return f'<div class="dc-section"><div class="dc-section-body">{body}</div>{side}</div>'
@@ -79,12 +91,13 @@ def _item(item) -> str:
         return '<div class="dc-row">' + ''.join(_button(b) for b in item.children if isinstance(b, ui.Button)) + '</div>'
     if isinstance(item, ui.MediaGallery):
         return '<div class="dc-gallery">' + ''.join(
-            f'<img src="{html.escape(m.media.url)}" alt="">' for m in item.items) + '</div>'
+            f'<img src="{html.escape(_media(m.media.url, files))}" alt="">' for m in item.items) + '</div>'
     if isinstance(item, ui.Container):
         accent = f' style="--accent:#{item.accent_colour.value:06x}"' if item.accent_colour else ''
-        return f'<div class="dc-container"{accent}>' + ''.join(_item(c) for c in item.children) + '</div>'
+        return f'<div class="dc-container"{accent}>' + ''.join(_item(c, files) for c in item.children) + '</div>'
     return ''
 
 
 def render_view(view: ui.LayoutView) -> str:
-    return ''.join(_item(c) for c in view.children)
+    files = attached(view)
+    return ''.join(_item(c, files) for c in view.children)

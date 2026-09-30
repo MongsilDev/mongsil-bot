@@ -217,6 +217,24 @@
   margin-left: 2px;
 }
 
+.dc-gallery {
+  display: grid;
+  gap: 4px;
+}
+
+.dc-gallery img {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+}
+
+.dc-custom-emoji {
+  width: 1.375em;
+  height: 1.375em;
+  vertical-align: -0.3em;
+  object-fit: contain;
+}
+
 .dc-image {
   max-width: 360px;
   max-height: 300px;

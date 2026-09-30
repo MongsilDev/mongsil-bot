@@ -11,6 +11,7 @@ from utils.layouts import create_error_layout
 from utils.logging_config import get_logger
 from utils.api_client import api_client
 from utils.character_names import refresh_character_names
+from utils import app_emojis
 from utils.usage_db import record_command, record_guild_event
 
 logger = get_logger(__name__)
@@ -82,6 +83,7 @@ class ERClient(commands.Bot):
             ]:
                 await self.load_extension(module)
 
+            await app_emojis.load(self)
             self.refresh_names.start()
 
             if os.getenv('DASHBOARD_URL') and os.getenv('DASHBOARD_CLIENT_SECRET'):
@@ -109,6 +111,7 @@ class ERClient(commands.Bot):
     async def refresh_names(self):
         """시즌 중 추가되는 신규 실험체 이름 반영"""
         await refresh_character_names()
+        await app_emojis.sync_characters(self)
 
     async def on_disconnect(self):
         """봇이 연결이 끊어졌을 때 호출됩니다."""
