@@ -75,7 +75,7 @@ class Rating(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
-    @app_commands.command(name="이터컷", description="이터니티와 데미갓 RP 컷 조회")
+    @app_commands.command(name="이터컷", description="이터니티와 데미갓 컷")
     @handle_errors(user_message="레이팅 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def rating_command(self, interaction: discord.Interaction):
         """현재 시즌의 이터니티/데미갓 컷을 확인합니다."""

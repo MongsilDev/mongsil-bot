@@ -240,7 +240,8 @@ def create_season_layout(season_info: Optional[SeasonInfo]) -> ui.LayoutView:
         ui.TextDisplay(f"### {title}"),
         ui.Separator(),
         ui.TextDisplay(
-            f"**{season_info.start_date:%m/%d %H시}** ~ **{season_info.end_date:%m/%d %H시}**\n"
+            f"**{season_info.start_date.month}/{season_info.start_date.day} {season_info.start_date.hour}시** ~ "
+            f"**{season_info.end_date.month}/{season_info.end_date.day} {season_info.end_date.hour}시**\n"
             f"{remaining}"
         ),
         ui.TextDisplay(f"{progress_bar}  **{progress:.1f}%**"),
@@ -268,7 +269,7 @@ class Season(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
-    @app_commands.command(name="시즌", description="현재 시즌 정보 조회")
+    @app_commands.command(name="시즌", description="현재 시즌 기간")
     @handle_errors(user_message="시즌 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def season_command(self, interaction: discord.Interaction):
         """

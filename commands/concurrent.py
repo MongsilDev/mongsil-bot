@@ -59,14 +59,19 @@ class ConcurrentData:
             return {
                 'max_count': 0,
                 'max_time': None,
+                'min_count': 0,
+                'min_time': None,
                 'data_count': 0
             }
 
         max_data = max(recent, key=lambda x: (x[1], _as_utc(x[0])))
+        min_data = min(recent, key=lambda x: (x[1], _as_utc(x[0])))
 
         return {
             'max_count': max_data[1],
             'max_time': _as_utc(max_data[0]),
+            'min_count': min_data[1],
+            'min_time': _as_utc(min_data[0]),
             'data_count': len(recent)
         }
 
@@ -178,9 +183,11 @@ def create_concurrent_layout(current_count: int) -> ui.LayoutView:
 
     if stats['data_count'] > 0 and stats['max_time']:
         max_ts = int(stats['max_time'].timestamp())
+        min_ts = int(stats['min_time'].timestamp())
         children.append(ui.Separator())
         children.append(ui.TextDisplay(
-            f"24시간 최고 **{stats['max_count']:,}**명, <t:{max_ts}:t>"
+            f"24시간 최고 **{stats['max_count']:,}**명 <t:{max_ts}:t>\n"
+            f"24시간 최저 **{stats['min_count']:,}**명 <t:{min_ts}:t>"
         ))
 
     view = ui.LayoutView(timeout=None)
@@ -205,7 +212,7 @@ class Concurrent(commands.Cog):
         # 봇 종료 시 마지막 데이터 저장
         concurrent_data.save_to_file()
 
-    @app_commands.command(name="동접", description="현재 동시 접속자 수와 24시간 통계")
+    @app_commands.command(name="동접", description="이터널 리턴 동시 접속자")
     @handle_errors(user_message="동시 접속자 수를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def concurrent_command(self, interaction: discord.Interaction):
         """현재 이터널 리턴의 동시 접속자 수를 확인합니다."""

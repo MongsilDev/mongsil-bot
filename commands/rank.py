@@ -67,7 +67,7 @@ def create_rank_layout(
     icon_url = f"https://cdn.mongsil.dev/mongsilbot/tier2/{TierSystem.get_tier_icon(tier)}.png"
     header_text = (
         f"## {actual_nickname}\n"
-        f"**{tier}** | {mmr:,} RP\n"
+        f"{tier} | **{mmr:,}** RP\n"
         f"-# {season_name}" + (f" | {place}" if place else "")
     )
     goal = next_goal(tier, mmr, cuts)
@@ -115,12 +115,41 @@ def create_rank_layout(
     return view
 
 
+async def build_rank_view(client: ERClient, nickname: str) -> ui.LayoutView:
+    """닉네임으로 랭크 카드를 만든다. 명령과 웹 미리보기가 같이 씀"""
+    season = await get_ranked_season()
+    if not season:
+        raise APIError("시즌 정보를 가져올 수 없습니다.", "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
+    season_id, season_name = season
+
+    user_id = await client.get_user_nickname(nickname)
+    if not user_id:
+        raise NotFoundError(
+            f"유저를 찾을 수 없습니다: {nickname}",
+            f"'{nickname}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요."
+        )
+
+    stats, user_rank = await asyncio.gather(
+        fetch_user_stats_solo(client, user_id, season_id, use_cache=True),
+        fetch_user_rank(client, user_id, season_id),
+    )
+
+    # 순위 컷은 아시아1 목록만 있어 다른 서버 유저는 컷 목표를 생략
+    cuts = (None, None)
+    if (user_rank and user_rank.get('serverCode') == RANKING_SERVER
+            and int(stats.get('mmr', 0)) >= TierSystem.TIERS["미스릴"]["base"]):
+        rank_300, rank_1000 = await fetch_rating_info(client, season_id)
+        cuts = (cut_rp(rank_300), cut_rp(rank_1000))
+
+    return create_rank_layout(nickname, stats, user_rank, season_name, cuts)
+
+
 class Rank(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
-    @app_commands.command(name="랭크", description="유저 랭크 정보 조회")
-    @app_commands.describe(닉네임="조회할 유저의 닉네임 (2-20자, 특수문자 제외)")
+    @app_commands.command(name="랭크", description="시즌 랭크 전적")
+    @app_commands.describe(닉네임="이터널 리턴 닉네임")
     @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def rank_command(self, interaction: discord.Interaction, 닉네임: str):
         """유저의 랭크 정보를 조회합니다."""
@@ -128,32 +157,7 @@ class Rank(commands.Cog):
         validated_nickname = validate_nickname(닉네임)
 
         await interaction.response.send_message(view=create_loading_layout("랭크 조회 중"))
-
-        season = await get_ranked_season()
-        if not season:
-            raise APIError("시즌 정보를 가져올 수 없습니다.", "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
-        season_id, season_name = season
-
-        user_id = await self.client.get_user_nickname(validated_nickname)
-        if not user_id:
-            raise NotFoundError(
-                f"유저를 찾을 수 없습니다: {validated_nickname}",
-                f"'{validated_nickname}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요."
-            )
-
-        stats, user_rank = await asyncio.gather(
-            fetch_user_stats_solo(self.client, user_id, season_id, use_cache=True),
-            fetch_user_rank(self.client, user_id, season_id),
-        )
-
-        # 순위 컷은 아시아1 목록만 있어 다른 서버 유저는 컷 목표를 생략
-        cuts = (None, None)
-        if (user_rank and user_rank.get('serverCode') == RANKING_SERVER
-                and int(stats.get('mmr', 0)) >= TierSystem.TIERS["미스릴"]["base"]):
-            rank_300, rank_1000 = await fetch_rating_info(self.client, season_id)
-            cuts = (cut_rp(rank_300), cut_rp(rank_1000))
-
-        view = create_rank_layout(validated_nickname, stats, user_rank, season_name, cuts)
+        view = await build_rank_view(self.client, validated_nickname)
         await interaction.edit_original_response(view=view, embeds=[], attachments=[])
 
 async def setup(client: ERClient):

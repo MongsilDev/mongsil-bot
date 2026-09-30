@@ -197,7 +197,7 @@ class Ranking(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
-    @app_commands.command(name="랭킹", description="아시아1 서버 상위 100명 랭킹 조회")
+    @app_commands.command(name="랭킹", description="아시아1 상위 100명 순위")
     @handle_errors(user_message="랭킹 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def ranking_command(self, interaction: discord.Interaction):
         """랭킹을 보여줍니다."""

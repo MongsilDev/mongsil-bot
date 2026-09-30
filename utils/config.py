@@ -27,6 +27,7 @@ class BotConfig:
     developer_tag: str = 'mongsil.dev'
     support_server: str = 'https://discord.gg/4QSFVsNNkE'
     bot_invite: str = 'https://discord.com/oauth2/authorize?client_id=1118780504490131557'
+    dashboard_url: str = os.getenv('DASHBOARD_URL', 'https://bot.mongsil.dev')
 
     # UI 타임아웃 설정 (초 단위)
     view_timeout_interactive: int = 300  # 상호작용 버튼 (5분)

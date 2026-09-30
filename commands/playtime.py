@@ -143,7 +143,7 @@ def create_playtime_layout(stats: PlayTimeStats) -> ui.LayoutView:
     children.append(ui.Separator())
 
     # Summary stats - two clean lines
-    summary = f"**{stats.games_played}**게임 | 총 **{format_duration(stats.total_seconds)}** 플레이"
+    summary = f"**{stats.games_played}**게임 | 총 **{format_duration(stats.total_seconds)}**"
     summary += f"\n일일 평균 **{format_duration(daily_avg)}**"
     if stats.games_played > 0:
         avg_game = stats.total_seconds // stats.games_played
@@ -218,8 +218,8 @@ class Playtime(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
-    @app_commands.command(name="플탐", description="최근 7일 플레이 타임 조회")
-    @app_commands.describe(닉네임="조회할 유저의 닉네임 (2-20자, 특수문자 제외)")
+    @app_commands.command(name="플탐", description="최근 7일 플레이 타임")
+    @app_commands.describe(닉네임="이터널 리턴 닉네임")
     @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def playtime(
         self,

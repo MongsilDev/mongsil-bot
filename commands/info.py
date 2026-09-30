@@ -41,7 +41,7 @@ def create_bot_info_layout(client: ERClient) -> ui.LayoutView:
 
     view = ui.LayoutView(timeout=None)
     view.add_item(ui.Container(
-        ui.TextDisplay(f"### 몽실봇\n-# {SERVICE_START:%Y.%m.%d} 개시, D+{days_since_start} | {config.developer_tag}"),
+        ui.TextDisplay(f"### 몽실봇\n-# {days_since_start:,}일째 운영 중 | {config.developer_tag}"),
         ui.Separator(),
         ui.TextDisplay(
             f"서버 **{len(client.guilds):,}**개 | "
@@ -59,9 +59,15 @@ def create_bot_info_layout(client: ERClient) -> ui.LayoutView:
         ),
         ui.Button(
             style=discord.ButtonStyle.link,
-            label="봇 초대하기",
+            label="서버에 추가",
             url=config.bot_invite,
             emoji=EMOJIS['invite'],
+        ),
+        ui.Button(
+            style=discord.ButtonStyle.link,
+            label="대시보드",
+            url=config.dashboard_url,
+            emoji=EMOJIS['web'],
         ),
     ))
     return view
@@ -73,7 +79,7 @@ class Info(commands.Cog):
 
     @app_commands.command(
         name="정보",
-        description="봇 정보 조회"
+        description="봇 상태"
     )
     @handle_errors(user_message="봇 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def info_command(self, interaction: discord.Interaction):

@@ -24,7 +24,7 @@ class SettingsView(CooldownLayoutView):
         disabled_servers = load_disabled_servers()
         is_enabled = self.guild_id not in disabled_servers
 
-        status = "활성화" if is_enabled else "비활성화"
+        status = "켜짐" if is_enabled else "꺼짐"
         status_emoji = EMOJIS['on'] if is_enabled else EMOJIS['off']
 
         container = ui.Container(accent_colour=discord.Colour.blurple())
@@ -33,12 +33,13 @@ class SettingsView(CooldownLayoutView):
         container.add_item(ui.TextDisplay(f"이모지 확대\n{status_emoji} **{status}**"))
         self.add_item(container)
 
-        # 토글 버튼
         if is_enabled:
-            btn = ui.Button(style=discord.ButtonStyle.danger, label="이모지 확대 비활성화", custom_id="toggle_emoji")
+            btn = ui.Button(style=discord.ButtonStyle.danger, label="끄기", custom_id="toggle_emoji")
         else:
-            btn = ui.Button(style=discord.ButtonStyle.success, label="이모지 확대 활성화", custom_id="toggle_emoji")
-        self.add_item(ui.ActionRow(btn))
+            btn = ui.Button(style=discord.ButtonStyle.success, label="켜기", custom_id="toggle_emoji")
+        dashboard = ui.Button(style=discord.ButtonStyle.link, label="대시보드", emoji=EMOJIS['web'],
+                              url=f"{config.dashboard_url}/servers/{self.guild_id}")
+        self.add_item(ui.ActionRow(btn, dashboard))
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         if not await super().interaction_check(interaction):
@@ -83,7 +84,7 @@ class Settings(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
-    @app_commands.command(name="설정", description="서버 봇 설정 관리")
+    @app_commands.command(name="설정", description="서버 설정")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
     @handle_errors(user_message="설정을 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")

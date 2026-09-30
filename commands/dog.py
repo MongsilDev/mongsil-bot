@@ -11,7 +11,7 @@ class Dog(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
 
-    @app_commands.command(name="강아지", description="무작위 강아지 사진")
+    @app_commands.command(name="강아지", description="강아지 사진")
     @handle_errors(user_message="강아지 사진을 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def dog_command(self, interaction: discord.Interaction):
         """무작위 강아지 사진을 보여줍니다."""
