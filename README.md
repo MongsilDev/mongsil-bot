@@ -14,10 +14,13 @@
 - `/설정`: 서버별 이모지 확대 기능 켜고 끄기. 서버 관리 권한이 있어야 보인다
 - `/정보`: 봇 정보
 - 커스텀 이모지만 있는 메시지를 웹훅으로 확대해 다시 보낸다
+- 웹 대시보드: 디스코드 계정으로 로그인해 관리 권한이 있는 서버의 설정을 바꾸고 최근 30일 명령어 사용량을 본다. 봇 소유자에게는 전체 서버, 명령어별 실행과 오류, 서버 참가와 퇴장, 최근 오류 로그를 보여주는 운영 현황 화면이 추가로 열린다
 
 ## 동작 방식
 
 bser Open API로 전적을 조회하고 현재 시즌은 API에서 자동으로 감지한다. API 클라이언트는 응답을 캐시하고 동시 요청 수를 제한하며 429 응답을 받으면 대기 후 재시도한다. 동시 접속자 수는 Steam Web API에서 가져온다.
+
+대시보드는 봇 프로세스 안에서 aiohttp 서버로 돌아 봇의 서버 목록과 설정을 그대로 읽고 쓴다. 명령어 실행과 서버 참가, 퇴장 기록, 로그인 세션은 SQLite 파일 `data/dashboard.db`에 쌓인다. 로그인은 Discord OAuth2의 `identify`, `guilds` 범위만 쓴다.
 
 ## 실행
 
@@ -43,3 +46,6 @@ python main.py
 | STEAM_API_KEY | Steam Web API 키. 없으면 `/동접`이 동작하지 않는다 |
 | SENTRY_DSN | Sentry DSN. 비워 두면 어디로도 전송하지 않는다 |
 | SYNC_COMMANDS | `1`이면 시작 시 슬래시 명령을 동기화한다 |
+| DASHBOARD_URL | 대시보드 공개 주소. 예: `https://bot.example.com`. 개발자 포털 OAuth2 Redirects에 `<주소>/auth/callback`을 등록해야 한다 |
+| DASHBOARD_CLIENT_SECRET | 개발자 포털 OAuth2의 Client Secret. 이 값과 DASHBOARD_URL이 둘 다 있어야 대시보드가 켜진다 |
+| DASHBOARD_PORT | 대시보드 포트. 기본 8095 |
