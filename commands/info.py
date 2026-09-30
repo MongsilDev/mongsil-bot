@@ -121,8 +121,10 @@ def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = No
     accounts_total = registered_count()
     if accounts_total:
         servers += f" | 닉네임 등록 **{accounts_total:,}**명"
+    header = ui.TextDisplay(f"### 몽실봇\n이터널 리턴 정보 봇\n-# {days_since_start:,}일째 운영 중 | {config.developer_tag}")
+    user = client.user
+    top = ui.Section(header, accessory=ui.Thumbnail(media=user.display_avatar.url)) if user else header
     lines = [
-        f"### 몽실봇\n-# 이터널 리턴 정보 봇 | {days_since_start:,}일째 운영 중 | {config.developer_tag}",
         servers,
         f"업타임 **{format_uptime(client)}** | {ping_emoji} 핑 **{ping_ms:.0f}**ms",
     ]
@@ -130,7 +132,7 @@ def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = No
     if runs:
         lines.append(f"오늘 명령어 **{runs:,}**회" + (f" | 많이 쓴 명령어 /{favourite}" if favourite else ""))
 
-    children = [ui.TextDisplay("\n".join(lines))]
+    children = [top, ui.Separator(), ui.TextDisplay("\n".join(lines))]
     if guild:
         children += [ui.Separator(), guild_block(guild)]
     footer = [f"discord.py {discord.__version__}", f"Python {platform.python_version()}"]
