@@ -141,7 +141,7 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
     t0, t1 = min(t for t, _ in everything), max(t for t, _ in everything)
     span = max((t1 - t0).total_seconds(), 1)
     lo, hi = min(v for _, v in everything), max(v for _, v in everything)
-    ticks = _ticks(max(lo - (hi - lo) * 0.08, 0) if lo >= 0 else lo, hi + (hi - lo) * 0.15)
+    ticks = _ticks(max(lo - (hi - lo) * 0.08, 0) if lo >= 0 else lo, hi + (hi - lo) * 0.08)
     lo, hi = ticks[0], ticks[-1]
 
     def xy(t: datetime, v: float) -> Tuple[float, float]:

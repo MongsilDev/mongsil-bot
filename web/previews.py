@@ -81,7 +81,7 @@ async def _build(client) -> None:
             return None
         live['players'] = count
         # 24시간 추이 스파크라인용, 30분 간격으로 줄임
-        samples = [c for _, c in list(concurrent_data.data)[::30] if c > 0]
+        samples = [round(c) for _, c in concurrent_data.series(hours=24, bucket_minutes=30)]
         live['players_series'] = samples + [count]
         return {'input': '', 'html': render_view(create_concurrent_layout(count))}
 

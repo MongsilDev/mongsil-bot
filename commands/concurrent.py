@@ -2,6 +2,7 @@ import os
 import pickle
 from collections import deque
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 import discord
@@ -25,8 +26,13 @@ STEAM_API_URL = 'https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrent
 
 FAIL_ALERT_THRESHOLD = 5
 
-# 1분 간격 48시간. 어제 같은 시각과 비교하려고 이틀치 보관
-MAX_POINTS = 2880
+KST = ZoneInfo('Asia/Seoul')
+
+# 1분 간격 7일
+MAX_POINTS = 10080
+
+# 수집 시작 전 구간을 1시간 간격 공개 기록으로 채움
+BACKFILL_URL = 'https://steamcharts.com/app/1049590/chart-data.json'
 
 
 def _as_utc(t: datetime) -> datetime:
@@ -49,13 +55,23 @@ class ConcurrentData:
         # 24시간이 지난 데이터는 deque가 자동으로 제거
         self.data.append((time, count))
 
-    def get_statistics(self):
+    def backfill(self, points) -> int:
+        """가장 오래된 기록 이전 7일 구간만 앞에 채움. 채운 개수"""
+        now = datetime.now(timezone.utc)
+        oldest = _as_utc(self.data[0][0]) if self.data else now
+        older = sorted((t, c) for t, c in points if now - timedelta(days=7) <= t < oldest - timedelta(minutes=30))
+        older = older[-(MAX_POINTS - len(self.data)):] if len(self.data) < MAX_POINTS else []
+        for t, c in reversed(older):
+            self.data.appendleft((t, c))
+        return len(older)
+
+    def get_statistics(self, hours: int = 24):
         """최근 24시간 범위의 통계를 계산합니다.
 
         deque는 개수(1440) 기준이라 수집 공백이 있으면 24시간 밖 데이터가
         남아 있을 수 있어 시간으로 한 번 더 거른다.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         recent = [(t, c) for t, c in self.data if _as_utc(t) >= cutoff]
 
         if not recent:
@@ -200,7 +216,6 @@ async def get_current_player_count() -> Optional[int]:
 def create_concurrent_layout(current_count: int) -> ui.LayoutView:
     """동시 접속자 수 LayoutView를 생성합니다."""
     now = datetime.now(timezone.utc)
-    stats = concurrent_data.get_statistics()
     view = ui.LayoutView(timeout=None)
 
     sub = f"<t:{int(now.timestamp())}:t> 기준"
@@ -212,19 +227,25 @@ def create_concurrent_layout(current_count: int) -> ui.LayoutView:
         ui.TextDisplay(f"# {current_count:,}명\n-# {sub}"),
     ]
 
-    points = concurrent_data.series() + [(now, current_count)]
-    chart = visual.line_chart(points, visual.COLOURS['concurrent'])
+    points = concurrent_data.series(hours=24 * 7, bucket_minutes=30) + [(now, current_count)]
+    span = (points[-1][0] - points[0][0]).total_seconds() / 3600
+    chart = visual.line_chart(points, visual.COLOURS['concurrent'], hours=span, height=260)
     if chart:
         url = visual.attach(view, 'concurrent.png', chart)
         children.append(ui.MediaGallery(discord.MediaGalleryItem(url)))
 
-    if stats['data_count'] > 0 and stats['max_time']:
-        max_ts = int(stats['max_time'].timestamp())
-        min_ts = int(stats['min_time'].timestamp())
-        children.append(ui.TextDisplay(
-            f"최고 **{stats['max_count']:,}**명 <t:{max_ts}:t> | 최저 **{stats['min_count']:,}**명 <t:{min_ts}:t>\n"
-            f"-# 최근 24시간"
-        ))
+    lines = []
+    for hours, label in ((24, "24시간"), (24 * 7, "7일")):
+        stats = concurrent_data.get_statistics(hours)
+        if stats['data_count'] and stats['max_time']:
+            peak = stats['max_time'].astimezone(KST)
+            when = f"<t:{int(peak.timestamp())}:t>" if hours == 24 else f"{peak.month}/{peak.day} {peak.hour}시"
+            line = f"{label} 최고 **{stats['max_count']:,}**명 {when}"
+            if hours == 24:
+                line += f" | 최저 **{stats['min_count']:,}**명 <t:{int(stats['min_time'].timestamp())}:t>"
+            lines.append(line)
+    if lines:
+        children.append(ui.TextDisplay("\n".join(lines)))
 
     view.add_item(ui.Container(*children, accent_colour=visual.colour('concurrent')))
 
@@ -307,6 +328,17 @@ class Concurrent(commands.Cog):
     async def before_save_concurrent_data(self):
         """태스크 시작 전 대기"""
         await self.client.wait_until_ready()
+        if concurrent_data.data and datetime.now(timezone.utc) - _as_utc(concurrent_data.data[0][0]) >= timedelta(days=6, hours=23):
+            return
+        try:
+            raw = await api_client.get(BACKFILL_URL, use_cache=False)
+            added = concurrent_data.backfill(
+                [(datetime.fromtimestamp(ms / 1000, timezone.utc), int(c)) for ms, c in raw if c])
+            if added:
+                concurrent_data.save_to_file()
+                logger.info(f"동접 과거 기록 {added}개 채움")
+        except Exception as e:
+            logger.warning(f"동접 과거 기록 채우기 실패: {type(e).__name__}: {e}")
         # 태스크 시작 로그 제거 (불필요한 정보)
 
 async def setup(client):
