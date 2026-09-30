@@ -4,7 +4,7 @@
 from typing import Optional, Dict, List
 from client import ERClient
 from utils.config import config
-from utils.errors import APIError, NotFoundError
+from utils.errors import APIError, InvalidUidError, NotFoundError
 from utils.logging_config import get_logger
 from utils import rank_history
 
@@ -67,10 +67,10 @@ async def fetch_user_stats_solo(
             error_msg = data.get('message') if data else 'No response'
             # 탈퇴한 계정은 닉네임 검색 인덱스에 남아 uid 조회는 되지만
             # 통계 조회가 User Not Found로 떨어진다. 유저 조건이지 장애가 아니다.
-            # (무작위 uid나 숫자 userNum은 401이라 이 분기에 오지 않는다)
-            if error_msg == 'User Not Found':
-                logger.warning(f"유저 통계 User Not Found, uid={user_id}")
-                raise NotFoundError(
+            # 저장해 둔 uid가 무효가 되면 401 Unauthorized
+            if error_msg in ('User Not Found', 'Unauthorized'):
+                logger.warning(f"유저 통계 {error_msg}, uid={user_id}")
+                raise InvalidUidError(
                     f"유저 통계 없음(uid 무효): {user_id}",
                     "유저 정보를 찾을 수 없습니다. 닉네임을 바꿨다면 새 닉네임으로 조회해주세요."
                 )

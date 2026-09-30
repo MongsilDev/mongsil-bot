@@ -9,7 +9,7 @@ from discord.ext import commands
 from client import ERClient
 from utils import accounts, visual
 from utils.config import config
-from utils.errors import NotFoundError, ValidationError, handle_errors, validate_nickname
+from utils.errors import APIError, InvalidUidError, NotFoundError, ValidationError, handle_errors, validate_nickname
 from utils.layouts import create_error_layout, CooldownLayoutView
 
 KST = ZoneInfo('Asia/Seoul')
@@ -72,10 +72,12 @@ class RegisterModal(ui.Modal, title="닉네임 등록"):
         name = validate_nickname(self.nickname.value)
         await interaction.response.defer()
         uid = await self.client.get_user_nickname(name)
-        if not uid:
+        current = await check_account(self.client, uid) if uid else None
+        if current is None:
             await interaction.followup.send(
                 view=create_error_layout(f"'{name}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요."), ephemeral=True)
             return
+        name = current or name
         if not accounts.save(interaction.user.id, uid, name):
             await interaction.followup.send(
                 view=create_error_layout("닉네임을 저장하지 못했습니다. 잠시 후 다시 시도해주세요."), ephemeral=True)
@@ -83,6 +85,41 @@ class RegisterModal(ui.Modal, title="닉네임 등록"):
         await interaction.edit_original_response(view=account_view(self.client, interaction.user.id))
         if self.after:
             await self.after(interaction, name, uid, interaction.user.id)
+
+
+REREGISTER = "게임에서 닉네임을 바꿨다면 /계정에서 다시 등록해주세요."
+
+
+async def with_account(client: ERClient, owner: Optional[int], nickname: str, uid: Optional[str], run):
+    """등록 계정으로 조회. uid가 무효면 등록 닉네임으로 uid를 다시 찾고, 그래도 안 되면 재등록 안내"""
+    try:
+        return await run(uid)
+    except InvalidUidError:
+        if not owner:
+            raise
+    fresh = await client.get_user_nickname(nickname)
+    if fresh and fresh != uid:
+        try:
+            result = await run(fresh)
+        except InvalidUidError:
+            pass
+        else:
+            accounts.save(owner, fresh, nickname)
+            return result
+    raise NotFoundError(f"등록 계정 조회 실패: {nickname}", f"등록한 '{nickname}' 계정을 조회할 수 없습니다.\n{REREGISTER}")
+
+
+async def check_account(client: ERClient, uid: str) -> Optional[str]:
+    """등록 전 확인. 조회되는 계정이면 최근 게임의 닉네임, 없으면 빈 문자열. 무효 계정이면 None"""
+    url = f"{config.api_url}/user/games/uid/{uid}"
+    data = await client.api_client.get(url, ttl=300)
+    if not data or data.get('message') in ('User Not Found', 'Unauthorized'):
+        client.api_client.uncache(url)
+        return None
+    if data.get('code') not in (200, 404):
+        raise APIError(f"계정 확인 실패: {data.get('message')}", "닉네임을 확인하지 못했습니다. 잠시 후 다시 시도해주세요.")
+    games = data.get('userGames') or []
+    return games[0].get('nickname', '') if games else ''
 
 
 async def resolve(client: ERClient, interaction: discord.Interaction, nickname: Optional[str],

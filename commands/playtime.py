@@ -9,7 +9,7 @@ from discord import app_commands, ui
 from discord.ext import commands
 from utils.config import config
 from utils.layouts import create_loading_layout, send_card
-from utils.errors import handle_errors, validate_nickname, NotFoundError
+from utils.errors import handle_errors, validate_nickname, InvalidUidError, NotFoundError
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
 from commands import account
@@ -74,6 +74,10 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Tup
             if not data:
                 logger.error("게임 기록 조회 실패")
                 return games, False
+            if data.get('message') in ('User Not Found', 'Unauthorized'):
+                client.api_client.uncache(url)
+                raise InvalidUidError(f"게임 기록 {data['message']}: {user_id}",
+                                      "유저 정보를 찾을 수 없습니다. 닉네임을 바꿨다면 새 닉네임으로 조회해주세요.")
             for game in data.get('userGames', data.get('games', [])):
                 try:
                     started = datetime.strptime(game['startDtm'], "%Y-%m-%dT%H:%M:%S.%f%z").astimezone(KST)
@@ -94,6 +98,8 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Tup
             next_cursor = data['next']
             request_count += 1
         return games, False
+    except InvalidUidError:
+        raise
     except Exception as e:
         logger.error(f"게임 기록 조회 중 오류: {e}", exc_info=True)
         raise
@@ -275,7 +281,8 @@ class Playtime(commands.Cog):
     @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def show(self, interaction: discord.Interaction, nickname: str, uid: Optional[str], owner: Optional[int]):
         view, _ = await send_card(interaction, "플레이 타임 조회 중",
-                                  lambda: build_playtime_view(self.client, nickname, uid))
+                                  lambda: account.with_account(self.client, owner, nickname, uid,
+                                                               lambda u: build_playtime_view(self.client, nickname, u)))
         if view is not None and owner and view.nickname:
             accounts.rename(owner, view.nickname)
 

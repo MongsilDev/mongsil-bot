@@ -62,6 +62,11 @@ class NotFoundError(BotError):
     pass
 
 
+class InvalidUidError(NotFoundError):
+    """uid로 조회가 안 되는 계정. 탈퇴했거나 닉네임을 바꿔 uid가 달라진 경우"""
+    pass
+
+
 def _find_interaction(args) -> Optional[discord.Interaction]:
     """데코레이터가 감싼 함수 인자에서 Interaction을 찾는다."""
     for arg in args:

@@ -13,6 +13,7 @@ from commands.season import get_ranked_season, get_season_info
 from utils.config import config
 from utils.layouts import create_error_layout, CooldownLayoutView
 from utils.errors import handle_errors, validate_nickname, NotFoundError
+from commands import account
 from utils import accounts, app_emojis, rank_history, visual
 from utils.logging_config import get_logger
 from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_ranking_data, fetch_user_rank, fetch_user_stats_solo
@@ -122,7 +123,7 @@ class RatingView(CooldownLayoutView):
     async def open_modal(self, interaction: discord.Interaction):
         account = accounts.get(interaction.user.id)
         if account:
-            await compare(self.client, self.season_id, interaction, account[1], account[0])
+            await compare(self.client, self.season_id, interaction, account[1], account[0], interaction.user.id)
         else:
             await interaction.response.send_modal(CompareModal(self.client, self.season_id))
 
@@ -141,16 +142,20 @@ class CompareModal(ui.Modal, title="내 RP와 비교"):
 
 @handle_errors(user_message="RP를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
 async def compare(client: ERClient, season_id: int, interaction: discord.Interaction,
-                  name: str, user_id: Optional[str] = None):
+                  name: str, user_id: Optional[str] = None, owner: Optional[int] = None):
     name = name if user_id else validate_nickname(name)
     await interaction.response.defer(ephemeral=True, thinking=True)
-    user_id = user_id or await client.get_user_nickname(name)
-    if not user_id:
-        raise NotFoundError(f"유저를 찾을 수 없습니다: {name}", f"'{name}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요.")
-    stats, user_rank = await asyncio.gather(
-        fetch_user_stats_solo(client, user_id, season_id),
-        fetch_user_rank(client, user_id, season_id),
-    )
+
+    async def load(uid: Optional[str]):
+        uid = uid or await client.get_user_nickname(name)
+        if not uid:
+            raise NotFoundError(f"유저를 찾을 수 없습니다: {name}", f"'{name}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요.")
+        return (uid, *await asyncio.gather(
+            fetch_user_stats_solo(client, uid, season_id),
+            fetch_user_rank(client, uid, season_id),
+        ))
+
+    user_id, stats, user_rank = await account.with_account(client, owner, name, user_id, load)
     rank_300, rank_1000 = await fetch_rating_info(client, season_id)
     mmr = int(stats.get('mmr', 0))
     current = stats.get('nickname') or (user_rank or {}).get('nickname') or name
