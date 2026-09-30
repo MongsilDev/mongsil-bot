@@ -122,7 +122,7 @@ def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = No
     if accounts_total:
         servers += f" | 닉네임 등록 **{accounts_total:,}**명"
     lines = [
-        f"-# 이터널 리턴 정보 봇 | {days_since_start:,}일째 운영 중 | {config.developer_tag}",
+        f"### 몽실봇\n-# 이터널 리턴 정보 봇 | {days_since_start:,}일째 운영 중 | {config.developer_tag}",
         servers,
         f"업타임 **{format_uptime(client)}** | {ping_emoji} 핑 **{ping_ms:.0f}**ms",
     ]
