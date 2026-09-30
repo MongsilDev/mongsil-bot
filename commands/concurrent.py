@@ -16,6 +16,7 @@ from utils.layouts import create_error_layout
 from utils.errors import APIError, handle_errors
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
+from utils import visual
 
 logger = get_logger('동접')
 
@@ -23,6 +24,9 @@ logger = get_logger('동접')
 STEAM_API_URL = 'https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/'
 
 FAIL_ALERT_THRESHOLD = 5
+
+# 1분 간격 48시간. 어제 같은 시각과 비교하려고 이틀치 보관
+MAX_POINTS = 2880
 
 
 def _as_utc(t: datetime) -> datetime:
@@ -33,8 +37,7 @@ class ConcurrentData:
     """동시접속자 데이터 관리 클래스"""
 
     def __init__(self, data_dir: str = 'data'):
-        # 24시간 * 60분 = 1440개 최대
-        self.data = deque(maxlen=1440)
+        self.data = deque(maxlen=MAX_POINTS)
         self.data_dir = data_dir
         self.file_path = os.path.join(data_dir, 'concurrent_data.pkl')
 
@@ -77,6 +80,26 @@ class ConcurrentData:
             'data_count': len(recent)
         }
 
+    def series(self, hours: int = 24, bucket_minutes: int = 5):
+        """차트용 구간 평균. 점검 중 0명 기록은 제외"""
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        buckets = {}
+        for t, c in self.data:
+            t = _as_utc(t)
+            if t < cutoff or c <= 0:
+                continue
+            key = t.replace(minute=t.minute - t.minute % bucket_minutes, second=0, microsecond=0)
+            buckets.setdefault(key, []).append(c)
+        return [(k, sum(v) / len(v)) for k, v in sorted(buckets.items())]
+
+    def count_at(self, when: datetime, tolerance_minutes: int = 5) -> Optional[int]:
+        best = None
+        for t, c in self.data:
+            gap = abs((_as_utc(t) - when).total_seconds())
+            if c > 0 and gap <= tolerance_minutes * 60 and (best is None or gap < best[0]):
+                best = (gap, c)
+        return best[1] if best else None
+
     def save_to_file(self):
         """pickle로 데이터를 저장합니다."""
         try:
@@ -113,7 +136,9 @@ class ConcurrentData:
             try:
                 with open(file_path, 'rb') as f:
                     data = pickle.load(f)
-                    return data
+                if data.data.maxlen != MAX_POINTS:
+                    data.data = deque(data.data, maxlen=MAX_POINTS)
+                return data
             except (pickle.PickleError, OSError, EOFError) as e:
                 logger.warning(f"파일 로드 실패: {e}")
             except Exception as e:
@@ -174,26 +199,34 @@ async def get_current_player_count() -> Optional[int]:
 
 def create_concurrent_layout(current_count: int) -> ui.LayoutView:
     """동시 접속자 수 LayoutView를 생성합니다."""
-    now_ts = int(datetime.now(timezone.utc).timestamp())
+    now = datetime.now(timezone.utc)
     stats = concurrent_data.get_statistics()
+    view = ui.LayoutView(timeout=None)
 
+    sub = f"<t:{int(now.timestamp())}:t> 기준"
+    yesterday = concurrent_data.count_at(now - timedelta(hours=24))
+    if yesterday:
+        sub += f" | 어제 이 시각보다 **{(current_count - yesterday) / yesterday * 100:+.1f}%**"
     children = [
         ui.TextDisplay("### 이터널 리턴 동시 접속자"),
-        ui.Separator(),
-        ui.TextDisplay(f"## {current_count:,}명\n-# <t:{now_ts}:t> 기준"),
+        ui.TextDisplay(f"# {current_count:,}명\n-# {sub}"),
     ]
+
+    points = concurrent_data.series() + [(now, current_count)]
+    chart = visual.line_chart(points, visual.COLOURS['concurrent'])
+    if chart:
+        url = visual.attach(view, 'concurrent.png', chart)
+        children.append(ui.MediaGallery(discord.MediaGalleryItem(url, description="최근 24시간 동시 접속자 그래프")))
 
     if stats['data_count'] > 0 and stats['max_time']:
         max_ts = int(stats['max_time'].timestamp())
         min_ts = int(stats['min_time'].timestamp())
-        children.append(ui.Separator())
         children.append(ui.TextDisplay(
-            f"24시간 최고 **{stats['max_count']:,}**명 <t:{max_ts}:t>\n"
-            f"24시간 최저 **{stats['min_count']:,}**명 <t:{min_ts}:t>"
+            f"최고 **{stats['max_count']:,}**명 <t:{max_ts}:t> | 최저 **{stats['min_count']:,}**명 <t:{min_ts}:t>\n"
+            f"-# 최근 24시간"
         ))
 
-    view = ui.LayoutView(timeout=None)
-    view.add_item(ui.Container(*children, accent_colour=discord.Colour.blurple()))
+    view.add_item(ui.Container(*children, accent_colour=visual.colour('concurrent')))
 
     view.add_item(ui.ActionRow(
         ui.Button(style=discord.ButtonStyle.link, label="SteamDB",
@@ -239,7 +272,7 @@ class Concurrent(commands.Cog):
 
         layout = create_concurrent_layout(current_count)
 
-        await interaction.followup.send(view=layout)
+        await interaction.followup.send(view=layout, files=visual.files_of(layout))
 
     @tasks.loop(minutes=1)
     async def save_concurrent_data(self):
