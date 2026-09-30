@@ -1,3 +1,5 @@
+import asyncio
+import time
 from datetime import datetime, timezone
 
 import discord
@@ -6,12 +8,14 @@ from discord.ext import commands
 from discord import app_commands
 from typing import Optional, Dict, Tuple
 from client import ERClient
-from commands.season import get_ranked_season
+from commands.season import get_ranked_season, get_season_info
 
-from utils.layouts import create_error_layout
-from utils.errors import handle_errors
+from utils.config import config
+from utils.layouts import create_error_layout, CooldownLayoutView
+from utils.errors import handle_errors, validate_nickname, NotFoundError
+from utils import app_emojis, rank_history, visual
 from utils.logging_config import get_logger
-from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_ranking_data
+from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_ranking_data, fetch_user_rank, fetch_user_stats_solo
 from utils.tier_system import TierSystem
 
 logger = get_logger('레이팅')
@@ -39,6 +43,7 @@ async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[
             if rank_300 and rank_1000:
                 break
 
+        rank_history.record_cuts(season_id, cut_rp(rank_300), cut_rp(rank_1000))
         return rank_300, rank_1000
     except Exception as e:
         logger.error(f"레이팅 정보 조회 중 오류 발생: {e}", exc_info=True)
@@ -49,26 +54,109 @@ def cut_rp(user: Optional[Dict]) -> Optional[int]:
     return max(int(user.get('mmr', 0)), TierSystem.RANKED_GATE) if user else None
 
 
-def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], season_name: str) -> ui.LayoutView:
+def _day_ago(history, index: int) -> Optional[int]:
+    now = time.time()
+    old = [h for h in history if now - h[0] >= 20 * 3600 and h[index]]
+    return min(old, key=lambda h: abs(now - h[0] - 86400))[index] if old else None
+
+
+def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], season_name: str,
+                         season_id: Optional[int] = None, season_end: Optional[datetime] = None,
+                         client: Optional[ERClient] = None) -> ui.LayoutView:
     """레이팅 정보 LayoutView를 생성합니다."""
     eternity, demigod = cut_rp(rank_300), cut_rp(rank_1000)
+    history = rank_history.cut_history(season_id) if season_id else []
+    view = RatingView(client, season_id) if client and season_id else ui.LayoutView()
 
-    def cut_line(tier: str, rank: int, rp: Optional[int]) -> str:
-        return f"{tier} **{rp:,}** RP `{rank}등`" if rp else f"{tier} 정보 없음"
+    def cut_block(tier: str, icon: str, rank: int, rp: Optional[int], index: int) -> str:
+        head = f"{app_emojis.tier(icon)} **{tier}** {rank:,}등".strip()
+        if not rp:
+            return f"{head}\n정보 없음"
+        text = f"{head}\n## {rp:,} RP"
+        before = _day_ago(history, index)
+        if before:
+            text += f"\n-# 24시간 전보다 {rp - before:+,}"
+        return text
+
+    sub = [season_name, SERVER_NAMES[RANKING_SERVER]]
+    if season_end:
+        days = (season_end.date() - datetime.now(season_end.tzinfo).date()).days
+        if days >= 0:
+            sub.append(f"시즌 종료 D-{days}" if days else "시즌 종료 D-day")
+    children = [
+        ui.TextDisplay("### 이터컷\n-# " + " | ".join(sub)),
+        ui.TextDisplay(cut_block('이터니티', '10', 300, eternity, 1)),
+        ui.TextDisplay(cut_block('데미갓', '9', 1000, demigod, 2)),
+    ]
+
+    week_ago = time.time() - 7 * 86400
+    recent = [h for h in history if h[0] >= week_ago]
+    if len(recent) >= 3 and recent[-1][0] - recent[0][0] >= 6 * 3600:
+        stamp = lambda ts: datetime.fromtimestamp(ts, timezone.utc)
+        chart = visual.lines_chart([
+            ([(stamp(h[0]), h[1]) for h in recent], visual.TIER_COLOURS['10']),
+            ([(stamp(h[0]), h[2]) for h in recent], visual.TIER_COLOURS['9']),
+        ], hours=168 if recent[-1][0] - recent[0][0] > 2 * 86400 else 24, end_labels=True, legend=('이터니티', '데미갓'))
+        if chart:
+            url = visual.attach(view, 'cut.png', chart)
+            children.append(ui.MediaGallery(discord.MediaGalleryItem(url, description="최근 7일 이터니티와 데미갓 컷")))
 
     footnote = f"<t:{int(datetime.now(timezone.utc).timestamp())}:t> 기준"
     if eternity and demigod:
         footnote = f"컷 차이 {eternity - demigod:,} RP | {footnote}"
+    children.append(ui.TextDisplay(f"-# {footnote}"))
 
-    view = ui.LayoutView()
-    view.add_item(ui.Container(
-        ui.TextDisplay(f"### 이터컷\n-# {season_name} | {SERVER_NAMES[RANKING_SERVER]}"),
-        ui.Separator(),
-        ui.TextDisplay(f"{cut_line('이터니티', 300, eternity)}\n{cut_line('데미갓', 1000, demigod)}"),
-        ui.TextDisplay(f"-# {footnote}"),
-        accent_colour=discord.Colour.blurple(),
-    ))
+    view.add_item(ui.Container(*children, accent_colour=visual.colour('cut')))
+    if isinstance(view, RatingView):
+        view.add_item(ui.ActionRow(view.compare_button))
     return view
+
+
+class RatingView(CooldownLayoutView):
+    def __init__(self, client: ERClient, season_id: int):
+        super().__init__(timeout=config.view_timeout_interactive)
+        self.client = client
+        self.season_id = season_id
+        self.compare_button = ui.Button(style=discord.ButtonStyle.secondary, label="내 RP와 비교", emoji="🔍")
+        self.compare_button.callback = self.open_modal
+
+    async def open_modal(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(CompareModal(self.client, self.season_id))
+
+
+class CompareModal(ui.Modal, title="내 RP와 비교"):
+    nickname = ui.TextInput(label="닉네임", max_length=20)
+
+    def __init__(self, client: ERClient, season_id: int):
+        super().__init__()
+        self.client = client
+        self.season_id = season_id
+
+    @handle_errors(user_message="RP를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    async def on_submit(self, interaction: discord.Interaction):
+        name = validate_nickname(self.nickname.value)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        user_id = await self.client.get_user_nickname(name)
+        if not user_id:
+            raise NotFoundError(f"유저를 찾을 수 없습니다: {name}", f"'{name}' 유저를 찾을 수 없습니다.\n닉네임을 다시 확인해주세요.")
+        stats, user_rank = await asyncio.gather(
+            fetch_user_stats_solo(self.client, user_id, self.season_id),
+            fetch_user_rank(self.client, user_id, self.season_id),
+        )
+        rank_300, rank_1000 = await fetch_rating_info(self.client, self.season_id)
+        mmr = int(stats.get('mmr', 0))
+        lines = [f"### {stats.get('nickname', name)}\n**{mmr:,}** RP"]
+        for tier, icon, cut in (('이터니티', '10', cut_rp(rank_300)), ('데미갓', '9', cut_rp(rank_1000))):
+            if not cut:
+                continue
+            gap = cut - mmr
+            state = f"컷까지 **{gap:,}** RP" if gap > 0 else f"컷보다 **{-gap:,}** RP 위"
+            lines.append(f"{app_emojis.tier(icon)} {tier} {state}".strip())
+        if user_rank and user_rank.get('serverCode') not in (None, RANKING_SERVER):
+            lines.append(f"-# 컷은 {SERVER_NAMES[RANKING_SERVER]} 기준")
+        view = ui.LayoutView()
+        view.add_item(ui.Container(ui.TextDisplay("\n".join(lines)), accent_colour=visual.colour('cut')))
+        await interaction.followup.send(view=view, ephemeral=True)
 
 
 class Rating(commands.Cog):
@@ -97,8 +185,10 @@ class Rating(commands.Cog):
             await interaction.followup.send(view=error_view)
             return
 
-        view = create_rating_layout(rank_300, rank_1000, season_name)
-        await interaction.followup.send(view=view)
+        season_info = await get_season_info()
+        view = create_rating_layout(rank_300, rank_1000, season_name, season_id,
+                                    season_info.end_date if season_info else None, self.client)
+        view.message = await interaction.followup.send(view=view, files=visual.files_of(view), wait=True)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

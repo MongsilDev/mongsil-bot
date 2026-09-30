@@ -20,7 +20,7 @@ updated_at = 0.0
 
 
 async def _build(client) -> None:
-    from commands.concurrent import create_concurrent_layout, get_current_player_count
+    from commands.concurrent import concurrent_data, create_concurrent_layout, get_current_player_count
     from commands.info import create_bot_info_layout
     from commands.playtime import create_playtime_layout, get_playtime_info
     from commands.rank import build_rank_view
@@ -61,7 +61,9 @@ async def _build(client) -> None:
     async def rating():
         a, b = await fetch_rating_info(client, season_id)
         live['eternity'], live['demigod'] = cut_rp(a), cut_rp(b)
-        return {'input': '', 'html': render_view(create_rating_layout(a, b, season_name))}
+        info = await get_season_info()
+        view = create_rating_layout(a, b, season_name, season_id, info.end_date if info else None)
+        return {'input': '', 'html': render_view(view)}
 
     async def playtime():
         stats = leader and await get_playtime_info(client, leader)
@@ -70,7 +72,7 @@ async def _build(client) -> None:
     async def season_card():
         info = await get_season_info()
         if info:
-            live['season_name'], live['season_end'] = info.name, info.end_date
+            live['season_name'], live['season_start'], live['season_end'] = info.name, info.start_date, info.end_date
         return info and {'input': '', 'html': render_view(create_season_layout(info))}
 
     async def concurrent():
@@ -78,6 +80,9 @@ async def _build(client) -> None:
         if count is None:
             return None
         live['players'] = count
+        # 24시간 추이 스파크라인용, 30분 간격으로 줄임
+        samples = [c for _, c in list(concurrent_data.data)[::30] if c > 0]
+        live['players_series'] = samples + [count]
         return {'input': '', 'html': render_view(create_concurrent_layout(count))}
 
     def animal(url, name):

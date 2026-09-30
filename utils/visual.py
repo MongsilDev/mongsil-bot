@@ -122,15 +122,25 @@ def _ticks(lo: float, hi: float, count: int = 5) -> List[float]:
 def line_chart(points: Sequence[Tuple[datetime, float]], accent: int, *, hours: int = 24,
                mark_extremes: bool = True, width: int = 720, height: int = 240) -> Optional[bytes]:
     """시간 축 선 그래프. 아래 채움, 최고와 최저 점 표시"""
-    pts = [(t, v) for t, v in points if v is not None]
-    if len(pts) < 2:
+    return lines_chart([(points, accent)], hours=hours, mark_extremes=mark_extremes, fill=True,
+                       width=width, height=height)
+
+
+def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], *, hours: int = 24,
+                mark_extremes: bool = False, fill: bool = False, end_labels: bool = False,
+                legend: Sequence[str] = (), width: int = 720, height: int = 240) -> Optional[bytes]:
+    colours = [accent for _, accent in series]
+    series = [([(t, v) for t, v in pts if v is not None], accent) for pts, accent in series]
+    series = [(pts, accent) for pts, accent in series if len(pts) >= 2]
+    if not series:
         return None
     img, d = _canvas(width, height)
     s = SCALE
-    left, right, top, bottom = 56 * s, (width - 16) * s, 16 * s, (height - 30) * s
-    t0, t1 = pts[0][0], pts[-1][0]
+    left, right, top, bottom = 56 * s, (width - (64 if end_labels else 16)) * s, (32 if legend else 16) * s, (height - 30) * s
+    everything = [p for pts, _ in series for p in pts]
+    t0, t1 = min(t for t, _ in everything), max(t for t, _ in everything)
     span = max((t1 - t0).total_seconds(), 1)
-    lo, hi = min(v for _, v in pts), max(v for _, v in pts)
+    lo, hi = min(v for _, v in everything), max(v for _, v in everything)
     ticks = _ticks(max(lo - (hi - lo) * 0.08, 0) if lo >= 0 else lo, hi + (hi - lo) * 0.15)
     lo, hi = ticks[0], ticks[-1]
 
@@ -143,39 +153,44 @@ def line_chart(points: Sequence[Tuple[datetime, float]], accent: int, *, hours: 
         y = bottom - (v - lo) / (hi - lo) * (bottom - top)
         d.line([(left, y), (right, y)], fill=GRID, width=s)
         d.text((left - 8 * s, y), f'{v:,.0f}', font=small, fill=SUBTEXT, anchor='rm')
-    step = 6 if hours >= 24 else max(1, hours // 4)
     tick = (t0.astimezone(KST) + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
     while tick <= t1:
-        if tick.hour % step == 0 or hours > 48:
-            x, _ = xy(tick, lo)
-            label = f'{tick.hour}시' if hours <= 48 else f'{tick.month}/{tick.day}'
-            if hours > 48 and tick.hour != 0:
-                tick += timedelta(hours=1)
-                continue
-            d.text((x, bottom + 8 * s), label, font=small, fill=SUBTEXT, anchor='mt')
+        if hours <= 48 and tick.hour % 6 == 0:
+            d.text((xy(tick, lo)[0], bottom + 8 * s), f'{tick.hour}시', font=small, fill=SUBTEXT, anchor='mt')
+        elif hours > 48 and tick.hour == 0:
+            d.text((xy(tick, lo)[0], bottom + 8 * s), f'{tick.month}/{tick.day}', font=small, fill=SUBTEXT, anchor='mt')
         tick += timedelta(hours=1)
 
-    line = [xy(t, v) for t, v in pts]
-    rgb = _hex(accent)
-    fill = Image.new('RGB', img.size, _mix(BG, rgb, 0.28))
-    mask = Image.new('L', img.size, 0)
-    ImageDraw.Draw(mask).polygon(line + [(line[-1][0], bottom), (line[0][0], bottom)], fill=255)
-    fade = Image.linear_gradient('L').resize(img.size)
-    mask = Image.composite(mask, Image.new('L', img.size, 0), fade.point(lambda p: 255 - p))
-    img.paste(fill, (0, 0), mask)
-    d.line(line, fill=rgb, width=3 * s, joint='curve')
+    for pts, accent in series:
+        line = [xy(t, v) for t, v in pts]
+        rgb = _hex(accent)
+        if fill:
+            layer = Image.new('RGB', img.size, _mix(BG, rgb, 0.28))
+            mask = Image.new('L', img.size, 0)
+            ImageDraw.Draw(mask).polygon(line + [(line[-1][0], bottom), (line[0][0], bottom)], fill=255)
+            fade = Image.linear_gradient('L').resize(img.size)
+            mask = Image.composite(mask, Image.new('L', img.size, 0), fade.point(lambda p: 255 - p))
+            img.paste(layer, (0, 0), mask)
+        d.line(line, fill=rgb, width=3 * s, joint='curve')
 
-    if mark_extremes:
-        hi_pt = max(range(len(pts)), key=lambda i: pts[i][1])
-        lo_pt = min(range(len(pts)), key=lambda i: pts[i][1] if pts[i][1] > 0 else float('inf'))
-        for i, col in ((hi_pt, rgb), (lo_pt, SUBTEXT)):
-            x, y = line[i]
-            d.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=col, outline=BG, width=2 * s)
-        x, y = line[hi_pt]
-        x = min(max(x, left + 30 * s), right - 30 * s)
-        d.text((x, y - 10 * s), f'{pts[hi_pt][1]:,.0f}', font=font(12, bold=True), fill=TEXT, anchor='mb')
-    x, y = line[-1]
-    d.ellipse([x - 6 * s, y - 6 * s, x + 6 * s, y + 6 * s], fill=(255, 255, 255), outline=rgb, width=3 * s)
+        if mark_extremes:
+            hi_pt = max(range(len(pts)), key=lambda i: pts[i][1])
+            lo_pt = min(range(len(pts)), key=lambda i: pts[i][1] if pts[i][1] > 0 else float('inf'))
+            for i, col in ((hi_pt, rgb), (lo_pt, SUBTEXT)):
+                x, y = line[i]
+                d.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=col, outline=BG, width=2 * s)
+            x, y = line[hi_pt]
+            x = min(max(x, left + 30 * s), right - 30 * s)
+            d.text((x, y - 10 * s), f'{pts[hi_pt][1]:,.0f}', font=font(12, bold=True), fill=TEXT, anchor='mb')
+        x, y = line[-1]
+        d.ellipse([x - 6 * s, y - 6 * s, x + 6 * s, y + 6 * s], fill=(255, 255, 255), outline=rgb, width=3 * s)
+        if end_labels:
+            d.text((x + 10 * s, y), f'{pts[-1][1]:,.0f}', font=font(12, bold=True), fill=rgb, anchor='lm')
+    x = left + 10 * s
+    for label, accent in zip(legend, colours):
+        d.ellipse([x, 8 * s, x + 10 * s, 18 * s], fill=_hex(accent))
+        d.text((x + 16 * s, 13 * s), label, font=font(12, bold=True), fill=TEXT, anchor='lm')
+        x += (30 + len(label) * 13) * s
     return _png(img)
 
 
