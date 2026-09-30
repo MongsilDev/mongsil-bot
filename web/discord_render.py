@@ -16,6 +16,7 @@ INLINE = [
     (re.compile(r'\*\*(.+?)\*\*'), r'<strong>\1</strong>'),
     (re.compile(r'`([^`]+)`'), r'<code>\1</code>'),
 ]
+TIER_ICON = re.compile(r'^https://cdn\.mongsil\.dev/mongsilbot/tier2/(\d+)\.png$')
 TIMESTAMP = re.compile(r'&lt;t:(\d+):([tTdDfFR])&gt;')
 CUSTOM_EMOJI = re.compile(r'&lt;(a?):(\w+):(\d+)&gt;')
 
@@ -83,7 +84,9 @@ def _item(item, files: dict) -> str:
         acc = item.accessory
         side = ''
         if isinstance(acc, ui.Thumbnail):
-            side = f'<img class="dc-thumb" src="{html.escape(_media(acc.media.url, files))}" alt="" width="80" height="80" loading="lazy" decoding="async">'
+            # 티어 엠블럼 원본은 800px라 웹에는 160px 사본을 씀
+            src = TIER_ICON.sub(r'/static/tier/\1.png', _media(acc.media.url, files))
+            side = f'<img class="dc-thumb" src="{html.escape(src)}" alt="" width="80" height="80" loading="lazy" decoding="async">'
         elif isinstance(acc, ui.Button):
             side = _button(acc)
         return f'<div class="dc-section"><div class="dc-section-body">{body}</div>{side}</div>'
