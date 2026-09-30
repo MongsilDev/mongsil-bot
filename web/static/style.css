@@ -70,6 +70,11 @@ img {
   display: block;
 }
 
+/* 디스코드 미리보기 본문의 커스텀 이모지는 글자와 한 줄에 */
+.dc-text img {
+  display: inline;
+}
+
 [hidden] {
   display: none !important;
 }
