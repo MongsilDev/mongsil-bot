@@ -1,6 +1,8 @@
 import os
+import platform
 import sqlite3
 import subprocess
+import time
 from datetime import datetime
 from typing import Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -63,8 +65,44 @@ def today_usage() -> Tuple[int, Optional[str]]:
     return sum(r['n'] for r in rows), rows[0]['command'] if rows else None
 
 
-def create_bot_info_layout(client: ERClient) -> ui.LayoutView:
-    """봇 정보 LayoutView를 생성합니다."""
+def guild_changes(days: int = 30) -> Tuple[int, int]:
+    since = int(time.time()) - days * 86400
+    try:
+        rows = dict(usage_db.db.execute(
+            "SELECT kind, COUNT(*) FROM guild_events WHERE ts >= ? GROUP BY kind", (since,)).fetchall())
+    except sqlite3.Error:
+        return 0, 0
+    return rows.get('join', 0), rows.get('leave', 0)
+
+
+def registered_count() -> int:
+    try:
+        return usage_db.db.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+    except sqlite3.Error:
+        return 0
+
+
+def guild_block(guild: discord.Guild) -> Optional[ui.Item]:
+    from commands.settings import guild_usage
+    from utils.emoji_zoom import load_disabled_servers
+
+    lines = [f"### {guild.name}", f"멤버 **{guild.member_count or 0:,}**명"]
+    joined = guild.me.joined_at if guild.me else None
+    if joined:
+        joined = joined.astimezone(KST)
+        lines[-1] += f" | 봇 추가 {joined.year}. {joined.month}. {joined.day}."
+    usage = guild_usage(guild.id)
+    if usage:
+        top = ", ".join(f"/{name}" for name, _ in usage[:3])
+        lines.append(f"최근 30일 명령어 **{sum(n for _, n in usage):,}**회 | 많이 쓴 명령어 {top}")
+    zoom = "꺼짐" if guild.id in load_disabled_servers() else "켜짐"
+    lines.append(f"-# 이모지 확대 {zoom}")
+    text = ui.TextDisplay("\n".join(lines))
+    return ui.Section(text, accessory=ui.Thumbnail(media=guild.icon.url)) if guild.icon else text
+
+
+def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = None) -> ui.LayoutView:
+    """봇 정보 LayoutView를 생성합니다. guild가 있으면 그 서버 정보도 함께"""
     days_since_start = (datetime.now() - SERVICE_START).days
 
     latency = client.latency
@@ -83,18 +121,31 @@ def create_bot_info_layout(client: ERClient) -> ui.LayoutView:
     user = client.user
     top = ui.Section(header, accessory=ui.Thumbnail(media=user.display_avatar.url)) if user else header
 
+    joins, leaves = guild_changes()
+    servers = f"서버 **{len(client.guilds):,}**개"
+    if joins or leaves:
+        servers += f" `30일 +{joins} -{leaves}`"
     lines = [
-        f"서버 **{len(client.guilds):,}**개 | 업타임 **{format_uptime(client)}** | {ping_emoji} 핑 **{ping_ms:.0f}**ms",
+        servers,
+        f"업타임 **{format_uptime(client)}** | {ping_emoji} 핑 **{ping_ms:.0f}**ms",
     ]
     runs, favourite = today_usage()
     if runs:
         lines.append(f"오늘 명령어 **{runs:,}**회" + (f" | 가장 많이 쓴 명령어 **/{favourite}**" if favourite else ""))
+    accounts_total = registered_count()
+    if accounts_total:
+        lines.append(f"닉네임 등록 **{accounts_total:,}**명")
+
+    children = [top, ui.Separator(), ui.TextDisplay("\n".join(lines))]
+    if guild:
+        children += [ui.Separator(), guild_block(guild)]
+    footer = [f"discord.py {discord.__version__}", f"Python {platform.python_version()}"]
     if LAST_UPDATE:
-        lines.append(f"-# 마지막 업데이트 {LAST_UPDATE.month}/{LAST_UPDATE.day}")
+        footer.insert(0, f"마지막 업데이트 {LAST_UPDATE.month}/{LAST_UPDATE.day}")
+    children.append(ui.TextDisplay("-# " + " | ".join(footer)))
 
     view = ui.LayoutView(timeout=None)
-    view.add_item(ui.Container(top, ui.Separator(), ui.TextDisplay("\n".join(lines)),
-                               accent_colour=visual.colour('info')))
+    view.add_item(ui.Container(*children, accent_colour=visual.colour('info')))
     view.add_item(ui.ActionRow(
         ui.Button(
             style=discord.ButtonStyle.link,
@@ -135,7 +186,7 @@ class Info(commands.Cog):
     @handle_errors(user_message="봇 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def info_command(self, interaction: discord.Interaction):
         """봇의 정보를 표시합니다."""
-        await interaction.response.send_message(view=create_bot_info_layout(self.client))
+        await interaction.response.send_message(view=create_bot_info_layout(self.client, interaction.guild))
 
 
 async def setup(client: ERClient):
