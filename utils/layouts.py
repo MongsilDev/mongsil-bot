@@ -66,7 +66,8 @@ class CooldownLayoutView(ui.LayoutView):
 
         changed = False
         for child in self.walk_children():
-            if isinstance(child, ui.Button) and child.style != discord.ButtonStyle.link and not child.disabled:
+            if (isinstance(child, ui.Select) or isinstance(child, ui.Button) and child.style != discord.ButtonStyle.link) \
+                    and not child.disabled:
                 child.disabled = True
                 changed = True
 
