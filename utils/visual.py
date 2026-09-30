@@ -180,30 +180,35 @@ def line_chart(points: Sequence[Tuple[datetime, float]], accent: int, *, hours: 
 
 
 def heatmap(grid: Sequence[Sequence[float]], row_labels: Sequence[str], accent: int,
-            width: int = 720) -> bytes:
-    """요일 x 시간 히트맵. 칸 색이 진할수록 오래 플레이"""
+            right_labels: Optional[Sequence[str]] = None, width: int = 720) -> bytes:
+    """행 x 24시간 히트맵. 칸 색이 진할수록 큰 값"""
     rows, cols = len(grid), len(grid[0])
-    cell, gap = 24, 3
-    left, top = 40, 8
-    height = top + rows * (cell + gap) + 30
+    cell, gap = 22, 4
+    left, top, right = 64, 6, 96 if right_labels else 12
+    height = top + rows * (cell + gap) + 24
     img, d = _canvas(width, height)
     s = SCALE
-    cell_w = (width - left - 12) / cols
+    cell_w = (width - left - right) / cols
     peak = max((max(r) for r in grid), default=0) or 1
     rgb = _hex(accent)
-    empty = _mix(BG, (255, 255, 255), 0.06)
-    small = font(11)
+    empty = _mix(BG, (255, 255, 255), 0.05)
+    small, bold = font(12), font(12, bold=True)
     for r in range(rows):
         y = (top + r * (cell + gap)) * s
-        d.text(((left - 10) * s, y + cell * s / 2), row_labels[r], font=small, fill=SUBTEXT, anchor='rm')
+        mid = y + cell * s / 2
+        d.text((8 * s, mid), row_labels[r], font=small, fill=SUBTEXT, anchor='lm')
         for c in range(cols):
             x = (left + c * cell_w) * s
             v = grid[r][c]
-            col = _mix(_mix(BG, rgb, 0.25), rgb, (v / peak) ** 0.7) if v > 0 else empty
+            col = _mix(_mix(BG, rgb, 0.3), rgb, (v / peak) ** 0.6) if v > 0 else empty
             d.rounded_rectangle([x, y, x + (cell_w - gap) * s, y + cell * s], radius=4 * s, fill=col)
-    for c in range(0, cols, 3):
-        x = (left + c * cell_w) * s
-        d.text((x, (top + rows * (cell + gap) + 6) * s), f'{c}시', font=small, fill=SUBTEXT)
+        if right_labels:
+            d.text(((width - 8) * s, mid), right_labels[r], font=bold,
+                   fill=TEXT if right_labels[r] != '-' else SUBTEXT, anchor='rm')
+    for c in range(0, cols + 1, 6):
+        x = (left + c * cell_w - (gap / 2 if c else 0)) * s
+        d.text((x, (top + rows * (cell + gap) + 4) * s), f'{c}시', font=small, fill=SUBTEXT,
+               anchor='ma' if c else 'la')
     return _png(img)
 
 
