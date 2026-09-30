@@ -350,11 +350,21 @@ def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequen
         d.rounded_rectangle([left * s, (cy - bar) * s, today, (cy + bar) * s], radius=bar * s, fill=rgb)
 
     small, bold = font(11), font(12, bold=True)
+    running = start <= now < end
     passed, left_days = (now.date() - start.date()).days, (end.date() - now.date()).days
-    for text, x0, x1, col in ((f'{passed}일 지남', left * s, today - 14 * s, BG),
-                              (f'{left_days}일 남음', today + 14 * s, right * s, TEXT)):
-        if passed >= 0 and left_days >= 0 and x1 - x0 > d.textlength(text, font=bold) + 12 * s:
-            d.text(((x0 + x1) / 2, cy * s), text, font=bold, fill=col, anchor='mm')
+    if not running:
+        text = f'시작까지 {(start.date() - now.date()).days}일' if now < start else '시즌 종료'
+        d.text((((left + right) / 2) * s, cy * s), text, font=bold, fill=BG if now >= end else TEXT, anchor='mm')
+    else:
+        # 좁은 쪽에 안 들어가는 표기는 넓은 쪽에 합침
+        segments = [[f'{passed}일 지남' if passed else '오늘 시작', left * s, today - 16 * s, BG], [f'{left_days}일 남음' if left_days else '오늘 종료', today + 16 * s, right * s, TEXT]]
+        fits = [x1 - x0 > d.textlength(t, font=bold) + 12 * s for t, x0, x1, _ in segments]
+        if not all(fits) and any(fits):
+            wide = fits.index(True)
+            segments[wide][0] = ' | '.join(seg[0] for seg in segments)
+        for (text, x0, x1, col), ok in zip(segments, fits):
+            if ok:
+                d.text(((x0 + x1) / 2, cy * s), text, font=bold, fill=col, anchor='mm')
     for when, label in marks:
         x = x_of(when)
         past = when <= now
@@ -370,9 +380,16 @@ def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequen
             d.line([(x, y * s), (x, (y + 2) * s)], fill=SUBTEXT, width=2 * s)
         d.text((x, (cy - bar - 15) * s), label, font=small, fill=SUBTEXT, anchor='mb')
 
-    d.ellipse([today - 13 * s, (cy - 13) * s, today + 13 * s, (cy + 13) * s], fill=(255, 255, 255), outline=BG, width=3 * s)
-    d.text((left * s, (cy + bar + 10) * s), f'{start.month}/{start.day} {start.hour}시 시작', font=small, fill=SUBTEXT, anchor='lt')
-    d.text((right * s, (cy + bar + 10) * s), f'{end.month}/{end.day} {end.hour}시 종료', font=small, fill=SUBTEXT, anchor='rt')
-    label_x = min(max(today, (left + 40) * s), (right - 40) * s)
-    d.text((label_x, (cy + bar + 10) * s), f'오늘 {now.month}/{now.day}', font=bold, fill=TEXT, anchor='mt')
+    y = (cy + bar + 10) * s
+    start_text = f'{start.month}/{start.day} {start.hour}시 시작'
+    end_text = f'{end.month}/{end.day} {end.hour}시 종료'
+    d.text((left * s, y), start_text, font=small, fill=SUBTEXT, anchor='lt')
+    d.text((right * s, y), end_text, font=small, fill=SUBTEXT, anchor='rt')
+    if running:
+        d.ellipse([today - 13 * s, (cy - 13) * s, today + 13 * s, (cy + 13) * s], fill=(255, 255, 255), outline=BG, width=3 * s)
+        label = f'오늘 {now.month}/{now.day}'
+        half = d.textlength(label, font=bold) / 2
+        lo = left * s + d.textlength(start_text, font=small) + 10 * s + half
+        hi = right * s - d.textlength(end_text, font=small) - 10 * s - half
+        d.text((min(max(today, lo), hi), y), label, font=bold, fill=TEXT, anchor='mt')
     return _png(img)
