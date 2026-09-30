@@ -123,7 +123,7 @@ def line_chart(points: Sequence[Tuple[datetime, float]], accent: int, *, hours: 
                mark_extremes: bool = True, width: int = 720, height: int = 240) -> Optional[bytes]:
     """시간 축 선 그래프. 아래 채움, 최고와 최저 표시"""
     return lines_chart([(points, accent)], hours=hours, mark_extremes=mark_extremes, fill=True,
-                       label_low=mark_extremes, width=width, height=height)
+                       label_low=mark_extremes, end_labels=True, width=width, height=height)
 
 
 def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], *, hours: int = 24,
@@ -259,7 +259,7 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
     pad = max((max(values) - min(values)) * 0.18, 20)
     ticks = _ticks(min(values) - pad, max(values) + pad, 4)
     lo, hi = ticks[0], ticks[-1]
-    left, right, top, bottom = 56, width - 18, 14, height - 52
+    left, right, top, bottom = 56, width - 64, 14, height - 52
     n = len(values)
 
     def xy(i: int, v: float) -> Tuple[float, float]:
@@ -286,6 +286,8 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
         d.text((x, cy), str(place), font=chip, fill=BG, anchor='mm')
     x, y = line[0]
     d.ellipse([x - 4 * s, y - 4 * s, x + 4 * s, y + 4 * s], fill=SUBTEXT)
+    x, y = line[-1]
+    d.text((x + 10 * s, y), f'{values[-1]:,}', font=font(12, bold=True), fill=TEXT, anchor='lm')
     top_i = max(range(n), key=lambda i: values[i])
     low_i = min(range(n), key=lambda i: values[i])
     label = font(11, bold=True)
