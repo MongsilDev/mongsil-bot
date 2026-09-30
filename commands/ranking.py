@@ -19,7 +19,6 @@ logger = get_logger('랭킹')
 RANKS_PER_PAGE = 10
 TOTAL_RANKS = 100
 
-RANK_MEDALS = {1: '🥇', 2: '🥈', 3: '🥉'}
 # 24시간 전 목록에 없던 유저
 NEW_ENTRY = 1000
 
@@ -41,18 +40,20 @@ def format_change(change: Optional[int]) -> str:
     if change is None or change == 0:
         return ""
     if change == NEW_ENTRY:
-        return "  `신규`"
-    return f"  `▲{change}`" if change > 0 else f"  `▼{-change}`"
+        return "신규"
+    return f"▲{change}" if change > 0 else f"▼{-change}"
 
 
 def format_user_text(u: RankUser, highlight: bool = False) -> str:
     """개별 유저 텍스트를 포맷합니다."""
-    medal = RANK_MEDALS.get(u.rank, f'**#{u.rank}**')
     face = app_emojis.character(u.top_character) if u.top_character else ""
-    line = f"{medal} {face + ' ' if face else ''}**{u.nickname}** | **{u.mmr:,}** RP{format_change(u.change)}"
+    line = f"`{u.rank:>3}` {face + ' ' if face else ''}**{u.nickname}**  {u.mmr:,} RP"
+    detail = [part for part in (format_change(u.change),) if part]
     # games 0은 통계 조회 실패
     if u.games > 0:
-        line += f"\n-# {u.games}게임 | 승률 {u.wins / u.games * 100:.0f}% | 평균 {u.avg_rank:.1f}등 | 킬 {u.avg_kills:.1f}"
+        detail += [f"{u.games}게임", f"승률 {u.wins / u.games * 100:.0f}%", f"평균 {u.avg_rank:.1f}등"]
+    if detail:
+        line += "\n-# " + " | ".join(detail)
     if highlight:
         line = "\n".join(f"> {part}" for part in line.split("\n"))
     return line
@@ -84,26 +85,20 @@ class PaginationView(CooldownLayoutView):
 
         users = self.page_cache.get(self.current_page, [])
 
-        header = f"### {self.season_name} {SERVER_NAMES[RANKING_SERVER]} 랭킹"
+        start = (self.current_page - 1) * RANKS_PER_PAGE + 1
+        sub = [self.season_name, f"{start}~{start + RANKS_PER_PAGE - 1}위"]
         if any(u.change is not None for u in users):
-            header += "\n-# 순위 변동은 24시간 전 기준"
-        children = [ui.TextDisplay(header), ui.Separator(),
-                    ui.TextDisplay("\n".join(format_user_text(u, u.nickname == self.highlight) for u in users))]
+            sub.append("변동은 24시간 전 기준")
+        children = [ui.TextDisplay(f"### {SERVER_NAMES[RANKING_SERVER]} 랭킹\n-# " + " | ".join(sub)), ui.Separator()]
+        children += [ui.TextDisplay(format_user_text(u, u.nickname == self.highlight)) for u in users]
         self.add_item(ui.Container(*children, accent_colour=visual.colour('ranking')))
 
         self.add_item(ui.ActionRow(
-            ui.Button(label="◀️", style=discord.ButtonStyle.primary, custom_id="prev", disabled=(self.current_page == 1)),
+            ui.Button(label="◀", style=discord.ButtonStyle.secondary, custom_id="prev", disabled=(self.current_page == 1)),
             ui.Button(label=f"{self.current_page}/{self.total_pages}", style=discord.ButtonStyle.secondary, disabled=True, custom_id="indicator"),
-            ui.Button(label="▶️", style=discord.ButtonStyle.primary, custom_id="next", disabled=(self.current_page == self.total_pages)),
-            ui.Button(label="내 순위", style=discord.ButtonStyle.secondary, custom_id="find", emoji="🔍"),
+            ui.Button(label="▶", style=discord.ButtonStyle.secondary, custom_id="next", disabled=(self.current_page == self.total_pages)),
+            ui.Button(label="내 순위", style=discord.ButtonStyle.primary, custom_id="find", emoji="🔍"),
         ))
-        span = lambda p: f"{(p - 1) * RANKS_PER_PAGE + 1}~{p * RANKS_PER_PAGE}위"
-        self.add_item(ui.ActionRow(ui.Select(
-            custom_id="page",
-            placeholder=span(self.current_page),
-            options=[discord.SelectOption(label=span(p), value=str(p), default=p == self.current_page)
-                     for p in range(1, self.total_pages + 1)],
-        )))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """버튼 클릭을 핸들링합니다. (1초 쿨다운 적용)"""
@@ -118,8 +113,6 @@ class PaginationView(CooldownLayoutView):
             target_page = self.current_page - 1
         elif custom_id == "next" and self.current_page < self.total_pages:
             target_page = self.current_page + 1
-        elif custom_id == "page" and interaction.data.get("values"):
-            target_page = int(interaction.data["values"][0])
         else:
             await interaction.response.defer()
             return False
