@@ -41,7 +41,7 @@ def format_change(change: Optional[int]) -> str:
     if change is None or change == 0:
         return ""
     if change == NEW_ENTRY:
-        return "  `NEW`"
+        return "  `신규`"
     return f"  `▲{change}`" if change > 0 else f"  `▼{-change}`"
 
 
