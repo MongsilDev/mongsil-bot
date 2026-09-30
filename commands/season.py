@@ -270,9 +270,10 @@ def create_season_layout(season_info: Optional[SeasonInfo], patches: Sequence[Pa
     view = ui.LayoutView(timeout=None)
     in_season = [p for p in patches if start.date() <= p.applied.date() <= end.date()]
     guesses = expected_patches(in_season, end)
-    chart = visual.season_timeline(title, start, end, now, [(p.applied, p.version) for p in in_season],
+    chart = visual.season_timeline(start, end, now, [(p.applied, p.version) for p in in_season],
                                    visual.COLOURS['season'], [(p.applied, p.version) for p in guesses])
-    view.add_item(ui.Container(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'season.png', chart))),
+    view.add_item(ui.Container(ui.TextDisplay(f"### {title}"),
+                               ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'season.png', chart))),
                                accent_colour=visual.colour('season')))
 
     current = [p for p in patches if p.applied <= now]

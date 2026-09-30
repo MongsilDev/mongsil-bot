@@ -331,22 +331,19 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
     return _png(img)
 
 
-def season_timeline(title: str, start: datetime, end: datetime, now: datetime, marks: Sequence[Tuple[datetime, str]],
+def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequence[Tuple[datetime, str]],
                     accent: int, guesses: Sequence[Tuple[datetime, str]] = (),
-                    width: int = 720, height: int = 170) -> bytes:
+                    width: int = 720, height: int = 126) -> bytes:
     """시즌 기간 막대. 지난 구간 채움과 지난 일수, 남은 일수, 패치 적용일 눈금, 예상 패치일은 회색, 오늘 표시"""
     img, d = _canvas(width, height)
     s = SCALE
-    left, right, cy, bar = 28, width - 28, 108, 12
+    left, right, cy, bar = 28, width - 28, 66, 12
     span = max((end - start).total_seconds(), 1)
 
     def x_of(t: datetime) -> float:
         return (left + min(max((t - start).total_seconds() / span, 0), 1) * (right - left)) * s
 
     rgb = _hex(accent)
-    d.text((left * s, 16 * s), title, font=font(18, bold=True), fill=TEXT, anchor='lt')
-    if guesses:
-        d.text((right * s, 22 * s), '점선은 2주 주기 예상일', font=font(11), fill=SUBTEXT, anchor='rt')
     d.rounded_rectangle([left * s, (cy - bar) * s, right * s, (cy + bar) * s], radius=bar * s, fill=GRID)
     today = x_of(now)
     if today > left * s:
@@ -364,6 +361,9 @@ def season_timeline(title: str, start: datetime, end: datetime, now: datetime, m
         d.line([(x, (cy - bar - 12) * s), (x, (cy - bar - 2) * s)], fill=TEXT if past else rgb, width=2 * s)
         d.text((x, (cy - bar - 15) * s), label, font=bold if not past else small,
                fill=TEXT if past else rgb, anchor='mb')
+    x = right * s
+    d.line([(x, (cy - bar - 12) * s), (x, (cy - bar - 2) * s)], fill=TEXT, width=2 * s)
+    d.text((x, (cy - bar - 15) * s), '종료', font=small, fill=TEXT, anchor='mb')
     for when, label in guesses:
         x = x_of(when)
         for y in range(cy - bar - 12, cy - bar - 2, 4):
