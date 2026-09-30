@@ -12,6 +12,7 @@ from utils.layouts import create_error_layout, create_loading_layout, CooldownLa
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_stats_solo, fetch_ranking_data
+from utils import app_emojis, rank_history, visual
 
 logger = get_logger('랭킹')
 
@@ -19,6 +20,8 @@ RANKS_PER_PAGE = 10
 TOTAL_RANKS = 100
 
 RANK_MEDALS = {1: '🥇', 2: '🥈', 3: '🥉'}
+# 24시간 전 목록에 없던 유저
+NEW_ENTRY = 1000
 
 class RankUser(NamedTuple):
     """랭킹 유저 정보를 저장하는 네임드 튜플"""
@@ -30,15 +33,28 @@ class RankUser(NamedTuple):
     wins: int = 0
     avg_rank: float = 0.0
     avg_kills: float = 0.0
+    top_character: int = 0
+    change: Optional[int] = None
 
 
-def format_user_text(u: RankUser) -> str:
+def format_change(change: Optional[int]) -> str:
+    if change is None or change == 0:
+        return ""
+    if change == NEW_ENTRY:
+        return "  `NEW`"
+    return f"  `▲{change}`" if change > 0 else f"  `▼{-change}`"
+
+
+def format_user_text(u: RankUser, highlight: bool = False) -> str:
     """개별 유저 텍스트를 포맷합니다."""
     medal = RANK_MEDALS.get(u.rank, f'**#{u.rank}**')
-    line = f"{medal}  **{u.nickname}** | **{u.mmr:,}** RP"
+    face = app_emojis.character(u.top_character) if u.top_character else ""
+    line = f"{medal} {face + ' ' if face else ''}**{u.nickname}** | **{u.mmr:,}** RP{format_change(u.change)}"
     # games 0은 통계 조회 실패
     if u.games > 0:
         line += f"\n-# {u.games}게임 | 승률 {u.wins / u.games * 100:.0f}% | 평균 {u.avg_rank:.1f}등 | 킬 {u.avg_kills:.1f}"
+    if highlight:
+        line = "\n".join(f"> {part}" for part in line.split("\n"))
     return line
 
 
@@ -52,6 +68,7 @@ class PaginationView(CooldownLayoutView):
         self.page_cache: Dict[int, List[RankUser]] = {1: first_page_users}
         self._prefetching: Dict[int, asyncio.Task] = {}
         self.season_name = season_name
+        self.highlight: Optional[str] = None
 
         self.build_layout()
         self._prefetch(2)
@@ -67,20 +84,27 @@ class PaginationView(CooldownLayoutView):
 
         users = self.page_cache.get(self.current_page, [])
 
-        children = [ui.TextDisplay(f"### {self.season_name} {SERVER_NAMES[RANKING_SERVER]} 랭킹")]
-        children.append(ui.Separator())
-
+        header = f"### {self.season_name} {SERVER_NAMES[RANKING_SERVER]} 랭킹"
+        if any(u.change is not None for u in users):
+            header += "\n-# 순위 변동은 24시간 전 기준"
+        children = [ui.TextDisplay(header), ui.Separator()]
         for u in users:
-            children.append(ui.TextDisplay(format_user_text(u)))
+            children.append(ui.TextDisplay(format_user_text(u, u.nickname == self.highlight)))
+        self.add_item(ui.Container(*children, accent_colour=visual.colour('ranking')))
 
-        self.add_item(ui.Container(*children, accent_colour=discord.Colour.blurple()))
-
-        row = ui.ActionRow(
+        self.add_item(ui.ActionRow(
             ui.Button(label="◀️", style=discord.ButtonStyle.primary, custom_id="prev", disabled=(self.current_page == 1)),
             ui.Button(label=f"{self.current_page}/{self.total_pages}", style=discord.ButtonStyle.secondary, disabled=True, custom_id="indicator"),
             ui.Button(label="▶️", style=discord.ButtonStyle.primary, custom_id="next", disabled=(self.current_page == self.total_pages)),
-        )
-        self.add_item(row)
+            ui.Button(label="내 순위", style=discord.ButtonStyle.secondary, custom_id="find", emoji="🔍"),
+        ))
+        span = lambda p: f"{(p - 1) * RANKS_PER_PAGE + 1}~{p * RANKS_PER_PAGE}위"
+        self.add_item(ui.ActionRow(ui.Select(
+            custom_id="page",
+            placeholder=span(self.current_page),
+            options=[discord.SelectOption(label=span(p), value=str(p), default=p == self.current_page)
+                     for p in range(1, self.total_pages + 1)],
+        )))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """버튼 클릭을 핸들링합니다. (1초 쿨다운 적용)"""
@@ -88,10 +112,15 @@ class PaginationView(CooldownLayoutView):
             return False
 
         custom_id = interaction.data.get("custom_id")
+        if custom_id == "find":
+            await interaction.response.send_modal(FindRankModal(self))
+            return False
         if custom_id == "prev" and self.current_page > 1:
             target_page = self.current_page - 1
         elif custom_id == "next" and self.current_page < self.total_pages:
             target_page = self.current_page + 1
+        elif custom_id == "page" and interaction.data.get("values"):
+            target_page = int(interaction.data["values"][0])
         else:
             await interaction.response.defer()
             return False
@@ -134,6 +163,26 @@ class PaginationView(CooldownLayoutView):
             pass
 
 
+class FindRankModal(ui.Modal, title="내 순위 찾기"):
+    nickname = ui.TextInput(label="닉네임", max_length=20)
+
+    def __init__(self, view: PaginationView):
+        super().__init__()
+        self.view = view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        name = self.nickname.value.strip()
+        ranking_data = await fetch_ranking_data(self.view.client, self.view.season_id) or []
+        found = next((r for r in ranking_data[:TOTAL_RANKS] if r.get('nickname', '').lower() == name.lower()), None)
+        if not found:
+            layout = create_error_layout(
+                f"'{name}' 유저는 {SERVER_NAMES[RANKING_SERVER]} 상위 {TOTAL_RANKS}명 안에 없습니다.\n/랭크로 전적을 확인해주세요.")
+            await interaction.response.send_message(view=layout, ephemeral=True)
+            return
+        self.view.highlight = found['nickname']
+        await self.view.update_page(interaction, (found['rank'] - 1) // RANKS_PER_PAGE + 1)
+
+
 async def get_ranking_info(client: ERClient, season_id: int, page: int = 1) -> Optional[List[RankUser]]:
     """랭킹 정보를 가져옵니다. 유저별 통계는 병렬로 조회합니다."""
     try:
@@ -144,6 +193,7 @@ async def get_ranking_info(client: ERClient, season_id: int, page: int = 1) -> O
         start_idx = (page - 1) * RANKS_PER_PAGE
         end_idx = min(start_idx + RANKS_PER_PAGE, len(ranking_data))
         page_data = ranking_data[start_idx:end_idx]
+        before = rank_history.ranks_day_ago(season_id)
 
         # 10명 동시 요청이면 api_client 세마포어(10)를 독점해 다른 명령이 굶는다
         fetch_limit = asyncio.Semaphore(5)
@@ -167,10 +217,13 @@ async def get_ranking_info(client: ERClient, season_id: int, page: int = 1) -> O
                     except Exception:
                         stats = None
 
-            games = wins = 0
+            games = wins = top_character = 0
             avg_rank = avg_kills = 0.0
 
             if stats:
+                chars = stats.get('characterStats') or []
+                if chars:
+                    top_character = max(chars, key=lambda c: c.get('totalGames', 0)).get('characterCode', 0)
                 games = int(stats.get('totalGames', 0))
                 wins = int(stats.get('totalWins', 0))
                 avg_rank = float(stats.get('averageRank', 0.0))
@@ -185,6 +238,9 @@ async def get_ranking_info(client: ERClient, season_id: int, page: int = 1) -> O
                 wins=wins,
                 avg_rank=avg_rank,
                 avg_kills=avg_kills,
+                top_character=top_character,
+                change=None if before is None else (
+                    before[nickname] - user_data.get('rank', 0) if nickname in before else NEW_ENTRY),
             )
 
         users = await asyncio.gather(*[fetch_single_user(ud) for ud in page_data])
