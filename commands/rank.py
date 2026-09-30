@@ -136,18 +136,15 @@ def create_rank_layout(
 
     top_characters = sorted(stats.get('characterStats') or [], key=lambda x: x.get('totalGames', 0), reverse=True)[:3]
     if top_characters:
-        char_lines = ["-# 모스트 실험체"]
+        parts = []
         for char in top_characters:
             code = char.get('characterCode', 0)
             char_games = char.get('totalGames', 0)
             char_win = (char.get('wins', 0) / char_games * 100) if char_games else 0.0
-            face = app_emojis.character(code)
-            char_lines.append(
-                (f"{face} " if face else "") +
-                f"**{get_character_name(code)}** {char_games}게임 | 승률 {char_win:.0f}%"
-            )
+            face = app_emojis.character(code) or f"**{get_character_name(code)}**"
+            parts.append(f"{face} {char_games}게임 승률 {char_win:.0f}%")
         container_items.append(ui.Separator())
-        container_items.append(ui.TextDisplay("\n".join(char_lines)))
+        container_items.append(ui.TextDisplay(" | ".join(parts)))
 
     view.add_item(ui.Container(*container_items, accent_colour=visual.tier_colour(icon)))
     row = ui.ActionRow(

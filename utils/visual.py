@@ -178,17 +178,17 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
             lo_pt = min(range(len(pts)), key=lambda i: pts[i][1] if pts[i][1] > 0 else float('inf'))
             for i, col in ((hi_pt, rgb), (lo_pt, SUBTEXT)):
                 x, y = line[i]
-                d.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=col, outline=BG, width=2 * s)
+                d.rounded_rectangle([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], radius=2 * s, fill=col, outline=BG, width=2 * s)
             x, y = line[hi_pt]
             x = min(max(x, left + 30 * s), right - 30 * s)
             d.text((x, y - 10 * s), f'{pts[hi_pt][1]:,.0f}', font=font(12, bold=True), fill=TEXT, anchor='mb')
         x, y = line[-1]
-        d.ellipse([x - 6 * s, y - 6 * s, x + 6 * s, y + 6 * s], fill=(255, 255, 255), outline=rgb, width=3 * s)
+        d.rounded_rectangle([x - 6 * s, y - 6 * s, x + 6 * s, y + 6 * s], radius=3 * s, fill=(255, 255, 255), outline=rgb, width=3 * s)
         if end_labels:
             d.text((x + 10 * s, y), f'{pts[-1][1]:,.0f}', font=font(12, bold=True), fill=rgb, anchor='lm')
     x = left + 10 * s
     for label, accent in zip(legend, colours):
-        d.ellipse([x, 8 * s, x + 10 * s, 18 * s], fill=_hex(accent))
+        d.rounded_rectangle([x, 8 * s, x + 10 * s, 18 * s], radius=2 * s, fill=_hex(accent))
         d.text((x + 16 * s, 13 * s), label, font=font(12, bold=True), fill=TEXT, anchor='lm')
         x += (30 + len(label) * 13) * s
     return _png(img)
@@ -265,12 +265,12 @@ def rp_chart(start_rp: int, games: Sequence[Tuple[int, int]], accent: int,
     for i, (_, place) in enumerate(games, start=1):
         x, y = line[i]
         col = place_colour(place)
-        d.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=col, outline=BG, width=2 * s)
+        d.rounded_rectangle([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], radius=2 * s, fill=col, outline=BG, width=2 * s)
         cy = (height - 22) * s
-        d.ellipse([x - radius * s, cy - radius * s, x + radius * s, cy + radius * s], fill=col)
+        d.rounded_rectangle([x - radius * s, cy - radius * s, x + radius * s, cy + radius * s], radius=4 * s, fill=col)
         d.text((x, cy), str(place), font=chip, fill=BG, anchor='mm')
     x, y = line[0]
-    d.ellipse([x - 4 * s, y - 4 * s, x + 4 * s, y + 4 * s], fill=SUBTEXT)
+    d.rounded_rectangle([x - 4 * s, y - 4 * s, x + 4 * s, y + 4 * s], radius=2 * s, fill=SUBTEXT)
     x, y = line[-1]
     d.text((x + 10 * s, y), f'{values[-1]:,}', font=font(12, bold=True), fill=TEXT, anchor='lm')
     return _png(img)
