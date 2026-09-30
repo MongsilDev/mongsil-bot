@@ -6,7 +6,7 @@
 
 {% if joined %}
 <section class="block">
-  <h2>봇이 있는 서버</h2>
+  <div class="block-head"><h2>봇이 있는 서버</h2><p class="block-sub"><span>{{ joined|length }}개</span></p></div>
   <ul class="guilds">
     {% for g in joined %}
     <li>
@@ -26,14 +26,14 @@
 
 {% if others %}
 <section class="block">
-  <h2>봇이 없는 서버</h2>
+  <div class="block-head"><h2>봇이 없는 서버</h2><p class="block-sub"><span>{{ others|length }}개</span></p></div>
   <ul class="guilds">
     {% for g in others %}
     <li>
-      <div class="guild">
+      <div class="guild guild-off">
         {{ guild_icon(g) }}
         <span class="guild-text"><span class="guild-name">{{ g.name }}</span></span>
-        <a class="btn btn-small" href="{{ g.invite }}">봇 추가</a>
+        <a class="btn btn-small btn-discord" href="{{ g.invite }}">봇 추가</a>
       </div>
     </li>
     {% endfor %}

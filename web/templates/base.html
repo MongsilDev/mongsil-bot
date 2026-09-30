@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c0d1a">
 <title>{% block title %}몽실봇{% endblock %}</title>
+<link rel="icon" href="/favicon.ico">
 <link rel="stylesheet" href="/static/style.css?v={{ static_version }}">
 <link rel="stylesheet" href="/static/discord.css?v={{ static_version }}">
 {% if session %}
@@ -15,7 +17,7 @@
 <body>
 <header class="bar">
   <div class="bar-inner">
-    <a class="wordmark" href="/">몽실봇</a>
+    <a class="wordmark" href="/"><img src="{{ bot_avatar(64) }}" alt="" width="28" height="28">몽실봇</a>
     <nav class="nav">
       {% if session %}
       <a href="/servers"{% if path.startswith('/servers') %} aria-current="page"{% endif %}>내 서버</a>
@@ -23,7 +25,7 @@
       <a href="/admin"{% if path == '/admin' %} aria-current="page"{% endif %}>운영 현황</a>
       {% endif %}
       <details class="account">
-        <summary aria-label="계정"><img src="{{ session_avatar(session) }}" alt="" width="28" height="28"></summary>
+        <summary aria-label="계정"><img src="{{ session_avatar(session) }}" alt="" width="30" height="30"></summary>
         <div class="account-menu">
           <span class="account-name">{{ session.username }}</span>
           <form method="post" action="/logout">
@@ -33,7 +35,7 @@
         </div>
       </details>
       {% else %}
-      <a class="nav-login" href="/login">로그인</a>
+      <a class="btn btn-small" href="/login">로그인</a>
       {% endif %}
     </nav>
   </div>
@@ -42,8 +44,13 @@
 {% block main %}{% endblock %}
 </main>
 <footer class="foot">
-  <a href="{{ support_server }}">지원 서버</a>
-  <a href="https://mongsil.dev">mongsil.dev</a>
+  <div class="foot-inner">
+    <span class="foot-name"><img src="{{ bot_avatar(64) }}" alt="" width="20" height="20">몽실봇</span>
+    <nav class="foot-links">
+      <a href="{{ support_server }}">지원 서버</a>
+      <a href="https://mongsil.dev">mongsil.dev</a>
+    </nav>
+  </div>
 </footer>
 </body>
 </html>

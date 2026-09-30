@@ -20,17 +20,6 @@
     <span>{{ chart.series[chart.series|length // 2].short }}</span>
     <span>오늘</span>
   </div>
-  <details class="table-view">
-    <summary>표로 보기</summary>
-    <table>
-      <thead><tr><th scope="col">날짜</th><th scope="col" class="num">{{ name }}</th></tr></thead>
-      <tbody>
-      {% for s in chart.series|reverse %}
-      <tr><td>{{ s.label }}</td><td class="num">{{ s.value|number }}</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </details>
 </figure>
 {% endmacro %}
 

@@ -5,12 +5,15 @@
 <section class="hero">
   <div class="hero-copy">
     {% if avatar %}
-    <img class="bot-avatar" src="{{ avatar }}" alt="" width="88" height="88">
+    <img class="bot-avatar" src="{{ avatar }}" alt="" width="128" height="128">
     {% endif %}
     <h1>몽실봇</h1>
     <p class="lede">이터널 리턴 정보 봇</p>
     <div class="actions">
-      <a class="btn btn-primary" href="{{ invite }}">서버에 추가</a>
+      <a class="btn btn-discord" href="{{ invite }}">
+        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.3 5.3A17 17 0 0 0 15 4l-.5 1a15.7 15.7 0 0 0-5 0L9 4a17 17 0 0 0-4.3 1.3C2 9.4 1.2 13.4 1.6 17.3A17.2 17.2 0 0 0 6.9 20l1.1-1.7a11 11 0 0 1-1.7-.8l.4-.3a12.3 12.3 0 0 0 10.6 0l.4.3a11 11 0 0 1-1.7.8l1.1 1.7a17.1 17.1 0 0 0 5.3-2.7c.5-4.5-.8-8.4-3.1-12ZM8.7 14.9c-1 0-1.9-1-1.9-2.2s.8-2.2 1.9-2.2 1.9 1 1.9 2.2-.8 2.2-1.9 2.2Zm6.6 0c-1 0-1.9-1-1.9-2.2s.8-2.2 1.9-2.2 1.9 1 1.9 2.2-.8 2.2-1.9 2.2Z"/></svg>
+        서버에 추가
+      </a>
       <a class="btn" href="/servers">대시보드</a>
     </div>
     <dl class="facts">
@@ -27,24 +30,55 @@
 </section>
 
 {% if live %}
-<section class="block live">
-  <h2>이터널 리턴</h2>
-  <p class="block-sub">
-    {% if live.season_name %}<span>{{ live.season_name }}</span>{% endif %}
-    <span>아시아1 기준</span>
-    {% if stamp %}<span>{{ stamp }} 갱신</span>{% endif %}
-  </p>
-  <div class="figures figures-wide figures-live">
-    {% if live.players is defined %}<div class="figure"><strong>{{ live.players|number }}</strong><span>동시 접속자</span></div>{% endif %}
-    {% if live.eternity is defined and live.eternity %}<div class="figure"><strong>{{ live.eternity|number }}</strong><span>이터니티 컷 RP</span></div>{% endif %}
-    {% if live.demigod is defined and live.demigod %}<div class="figure"><strong>{{ live.demigod|number }}</strong><span>데미갓 컷 RP</span></div>{% endif %}
-    {% if live.season_days is defined %}<div class="figure"><strong>{{ 'D-' ~ live.season_days if live.season_days > 0 else 'D-day' }}</strong><span>시즌 종료</span></div>{% endif %}
+<section class="block">
+  <div class="block-head">
+    <h2>이터널 리턴</h2>
+    <p class="block-sub">
+      {% if live.season_name %}<span>{{ live.season_name }}</span>{% endif %}
+      <span>아시아1</span>
+      {% if stamp %}<span>{{ stamp }} 갱신</span>{% endif %}
+    </p>
+  </div>
+  <div class="live">
+    {% if live.players is defined %}
+    <div class="live-card">
+      <span class="live-label"><i class="dot" aria-hidden="true"></i>동시 접속자</span>
+      <strong>{{ live.players|number }}</strong>
+      {% if live.spark is defined %}
+      <svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none" role="img" aria-label="최근 24시간 동시 접속자 추이">
+        <polyline points="{{ live.spark }}" fill="none" vector-effect="non-scaling-stroke"/>
+      </svg>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if live.eternity is defined and live.eternity %}
+    <div class="live-card live-tier">
+      <img src="https://cdn.mongsil.dev/mongsilbot/tier2/10.png" alt="" width="64" height="64">
+      <span class="live-label">이터니티 컷</span>
+      <strong>{{ live.eternity|number }}<small>RP</small></strong>
+    </div>
+    {% endif %}
+    {% if live.demigod is defined and live.demigod %}
+    <div class="live-card live-tier">
+      <img src="https://cdn.mongsil.dev/mongsilbot/tier2/9.png" alt="" width="64" height="64">
+      <span class="live-label">데미갓 컷</span>
+      <strong>{{ live.demigod|number }}<small>RP</small></strong>
+    </div>
+    {% endif %}
+    {% if live.season_days is defined %}
+    <div class="live-card">
+      <span class="live-label">시즌 종료</span>
+      <strong>{{ 'D-' ~ live.season_days if live.season_days > 0 else 'D-day' }}</strong>
+      <div class="progress" role="img" aria-label="시즌 진행 {{ '%.0f'|format(live.season_pct) }}%"><i style="width:{{ '%.1f'|format(live.season_pct) }}%"></i></div>
+      <span class="live-foot">{{ live.season_start.month }}/{{ live.season_start.day }} ~ {{ live.season_end.month }}/{{ live.season_end.day }}</span>
+    </div>
+    {% endif %}
   </div>
 </section>
 {% endif %}
 
 <section class="block" id="commands">
-  <h2>명령어</h2>
+  <div class="block-head"><h2>명령어</h2></div>
   <div class="cmd-browser">
     <div class="cmd-list" role="tablist" aria-label="명령어" aria-orientation="vertical">
       {% for c in commands %}

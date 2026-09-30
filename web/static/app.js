@@ -70,23 +70,6 @@ for (const plot of document.querySelectorAll('.plot')) {
   });
 }
 
-for (const input of document.querySelectorAll('input[data-filter]')) {
-  const table = document.querySelector(input.dataset.filter);
-  const rows = [...table.querySelectorAll('tbody tr')];
-  const empty = document.querySelector(`[data-empty-for="${input.dataset.filter}"]`);
-  input.addEventListener('input', () => {
-    const q = input.value.trim().toLowerCase();
-    let shown = 0;
-    for (const row of rows) {
-      const hit = !q || row.dataset.search.includes(q);
-      row.hidden = !hit;
-      shown += hit;
-    }
-    table.hidden = shown === 0;
-    empty.hidden = shown !== 0;
-  });
-}
-
 const account = document.querySelector('.account');
 if (account) {
   document.addEventListener('click', (e) => {

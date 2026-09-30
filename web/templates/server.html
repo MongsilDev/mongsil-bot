@@ -16,7 +16,7 @@
 </header>
 
 <section class="block">
-  <h2>설정</h2>
+  <div class="block-head"><h2>설정</h2></div>
   <div class="panel">
     <div class="setting">
       <span id="zoom-label" class="setting-label">이모지 확대</span>
@@ -30,18 +30,20 @@
 </section>
 
 <section class="block">
-  <h2>최근 30일 사용량</h2>
+  <div class="block-head"><h2>최근 30일 사용량</h2></div>
   {% if total %}
-  <div class="figures figures-small">
-    <div class="figure"><strong>{{ total|number }}회</strong><span>명령어 실행</span></div>
-    <div class="figure"><strong>{{ users|number }}명</strong><span>사용한 유저</span></div>
+  <div class="stats stats-2">
+    <div class="stat"><strong>{{ total|number }}</strong><span>명령어 실행</span></div>
+    <div class="stat"><strong>{{ users|number }}</strong><span>사용한 유저</span></div>
   </div>
-  {{ columns(chart, '명령어 실행') }}
-  <ul class="rows tally">
-    {% for name, count in by_command %}
-    <li><code class="cmd">/{{ name }}</code><span class="num">{{ count|number }}회</span></li>
-    {% endfor %}
-  </ul>
+  <div class="panel panel-pad">
+    {{ columns(chart, '명령어 실행') }}
+    <ul class="rows tally">
+      {% for name, count in by_command %}
+      <li><span class="cmd">/{{ name }}</span><span class="num">{{ count|number }}회</span></li>
+      {% endfor %}
+    </ul>
+  </div>
   {% else %}
   <p class="empty">사용 기록이 없습니다.</p>
   {% endif %}

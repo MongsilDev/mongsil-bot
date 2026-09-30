@@ -91,6 +91,7 @@ env.filters['numdate'] = lambda d: d.strftime('%Y.%m.%d')
 env.filters['shortdate'] = lambda d: f"{d.month}월 {d.day}일 {d:%H:%M}"
 env.globals['session_avatar'] = lambda s: avatar_url(s['user_id'], s['avatar'])
 env.globals['support_server'] = config.support_server
+env.globals['bot_avatar'] = lambda size: client.user.display_avatar.with_size(size).url if client.user else '/favicon.ico'
 env.globals['static_version'] = str(int(max(f.stat().st_mtime for f in (ROOT / 'static').iterdir())))
 
 
@@ -327,8 +328,16 @@ async def index(request: web.Request):
     commands.sort(key=lambda c: COMMAND_ORDER.index(c['name']) if c['name'] in COMMAND_ORDER else 99)
 
     live = dict(previews.live)
+    now = datetime.now(KST)
     if live.get('season_end'):
-        live['season_days'] = (live['season_end'].date() - datetime.now(KST).date()).days
+        live['season_days'] = (live['season_end'].date() - now.date()).days
+        span = (live['season_end'] - live['season_start']).total_seconds()
+        live['season_pct'] = max(0, min(100, (now - live['season_start']).total_seconds() / span * 100)) if span else 0
+    series = live.get('players_series') or []
+    if len(series) > 1:
+        hi, lo = max(series), min(series)
+        live['spark'] = ' '.join(
+            f"{i / (len(series) - 1) * 100:.1f},{30 - (v - lo) / ((hi - lo) or 1) * 28:.1f}" for i, v in enumerate(series))
     stamp = None
     if previews.updated_at:
         t = datetime.fromtimestamp(previews.updated_at, KST)
@@ -429,23 +438,6 @@ async def toggle_zoom(request: web.Request):
     return web.json_response({'enabled': enable})
 
 
-def recent_log_lines(limit: int = 20) -> list[dict]:
-    path = Path('bot.log')
-    if not path.exists():
-        return []
-    with path.open('rb') as f:
-        f.seek(max(0, path.stat().st_size - 2 * 1024 * 1024))
-        lines = f.read().decode('utf-8', errors='replace').splitlines()
-    picked = []
-    for line in reversed(lines):
-        parts = line.split(' | ', 3)
-        if len(parts) == 4 and parts[1].strip() in ('ERROR', 'CRITICAL'):
-            picked.append({'time': parts[0][5:], 'level': parts[1].strip(), 'source': parts[2].strip(), 'message': parts[3]})
-            if len(picked) >= limit:
-                break
-    return picked
-
-
 async def admin(request: web.Request):
     session = require_login(request)
     if session['user_id'] not in owner_ids():
@@ -481,30 +473,21 @@ async def admin(request: web.Request):
     leaves = db.execute("SELECT COUNT(*) FROM guild_events WHERE kind = 'leave' AND ts >= ?", (since,)).fetchone()[0]
 
     today = kst_day(now)
-    uptime = client.uptime
-    guilds = sorted(client.guilds, key=lambda g: -(g.member_count or 0))
-    first = db.execute("SELECT MIN(ts) FROM command_log").fetchone()[0]
 
     return render(
         request, 'admin.html',
         guild_count=len(client.guilds),
-        user_count=sum(g.member_count or 0 for g in client.guilds),
         today_count=sum(1 for r in rows if kst_day(r['ts']) == today),
         users_30=len({r['user_id'] for r in rows}),
         error_count=sum(1 for r in rows if r['status'] == 'error'),
         total=len(rows),
-        uptime=uptime,
-        latency=round((client.latency or 0) * 1000),
+        uptime=client.uptime,
         chart=daily_series(rows),
         commands=commands,
         top_guilds=top_guilds,
         events=events,
         joins=joins,
         leaves=leaves,
-        guilds=[{'id': g.id, 'name': g.name, 'members': g.member_count or 0, 'icon': guild_icon(g.id, g.icon and g.icon.key),
-                 'joined_at': g.me.joined_at.astimezone(KST) if g.me and g.me.joined_at else None} for g in guilds],
-        logs=recent_log_lines(),
-        recording_since=datetime.fromtimestamp(first, KST) if first and first > since else None,
     )
 
 
