@@ -107,9 +107,10 @@ def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = No
     latency = client.latency
     # 첫 하트비트 전에는 nan
     ping_ms = 0.0 if latency != latency else (latency or 0.0) * 1000
-    if ping_ms < 100:
+    # 게이트웨이가 미국에 있어 한국에서는 정상이어도 180~220ms
+    if ping_ms < 250:
         ping_emoji = PING_EMOJIS['good']
-    elif ping_ms < 200:
+    elif ping_ms < 400:
         ping_emoji = PING_EMOJIS['normal']
     else:
         ping_emoji = PING_EMOJIS['bad']

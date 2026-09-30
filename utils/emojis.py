@@ -22,7 +22,7 @@ EMOJIS = {
 
 # 핑 상태 이모지 (동적)
 PING_EMOJIS = {
-    'good': '🟢',      # < 100ms
-    'normal': '🟡',    # 100-200ms
-    'bad': '🔴',       # > 200ms
+    'good': '🟢',      # < 250ms
+    'normal': '🟡',    # 250-400ms
+    'bad': '🔴',       # > 400ms
 }
