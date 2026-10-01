@@ -17,7 +17,7 @@ from utils import accounts, app_emojis, visual
 from utils.errors import handle_errors, NotFoundError, APIError
 from utils.logging_config import get_logger
 from utils.character_names import get_character_name
-from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo
+from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo, overall_place
 from utils.tier_system import TierSystem
 from utils.emojis import EMOJIS
 
@@ -93,9 +93,7 @@ def create_rank_layout(
         server = SERVER_NAMES.get(user_rank.get('serverCode'), "서버")
         place = f"{server} {server_rank:,}등"
     else:
-        rank = int(stats.get('rank', 0))
-        rank_size = int(stats.get('rankSize', 0))
-        place = f"상위 {rank / rank_size * 100:.2f}%" if rank and rank_size else ""
+        place = overall_place(stats)
 
     view = RankView(client, actual_nickname) if client else ui.LayoutView()
     icon_url = f"https://cdn.mongsil.dev/mongsilbot/tier2/{icon}.png"

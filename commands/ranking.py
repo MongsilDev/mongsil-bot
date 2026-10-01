@@ -89,7 +89,10 @@ class PaginationView(CooldownLayoutView):
         sub = [self.season_name, f"{start}~{start + RANKS_PER_PAGE - 1}위"]
         if any(u.change is not None for u in users):
             sub.append("변동은 24시간 전 기준")
-        children = [ui.TextDisplay(f"### {SERVER_NAMES[RANKING_SERVER]} 랭킹\n-# " + " | ".join(sub)), ui.Separator()]
+        header = f"### {SERVER_NAMES[RANKING_SERVER]} 랭킹\n-# " + " | ".join(sub)
+        if users and not any(u.games for u in users):
+            header += "\n-# 지금은 게임 점검이나 장애로 유저별 전적을 불러오지 못했습니다."
+        children = [ui.TextDisplay(header), ui.Separator()]
         children += [ui.TextDisplay(format_user_text(u, u.nickname == self.highlight)) for u in users]
         self.add_item(ui.Container(*children, accent_colour=visual.colour('ranking')))
 

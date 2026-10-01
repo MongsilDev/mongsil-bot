@@ -15,6 +15,16 @@ RANKING_SERVER = 10
 SERVER_NAMES = {10: "아시아1", 12: "북미", 13: "유럽", 14: "남미", 17: "아시아2", 18: "아시아3"}
 
 
+def overall_place(stats: Dict) -> str:
+    """서버 순위가 없을 때 쓰는 통합 순위 표기. 1000등 안은 등수, 그 밖은 상위 비율"""
+    rank, size = int(stats.get('rank', 0)), int(stats.get('rankSize', 0))
+    if not rank:
+        return ""
+    if rank <= 1000 or not size:
+        return f"통합 {rank:,}등"
+    return f"상위 {max(rank / size * 100, 0.01):.2f}%"
+
+
 async def fetch_user_stats_solo(
     client: ERClient,
     user_id: str,
