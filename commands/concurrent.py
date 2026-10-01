@@ -12,7 +12,7 @@ from discord.ext import commands, tasks
 from client import ERClient
 from utils.api_client import api_client
 from utils.config import config
-from utils.layouts import create_error_layout
+from utils.layouts import create_error_layout, mark_shown
 from utils.errors import APIError, handle_errors
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
@@ -235,6 +235,7 @@ class Concurrent(commands.Cog):
         if current_count is not None:
             layout = create_concurrent_layout(current_count)
             await interaction.response.send_message(view=layout, files=visual.files_of(layout))
+            mark_shown(interaction)
             return
 
         await interaction.response.defer()
@@ -259,6 +260,7 @@ class Concurrent(commands.Cog):
         layout = create_concurrent_layout(current_count)
 
         await interaction.followup.send(view=layout, files=visual.files_of(layout))
+        mark_shown(interaction)
 
     @tasks.loop(minutes=1)
     async def save_concurrent_data(self):

@@ -48,13 +48,16 @@ DB_PATH.parent.mkdir(exist_ok=True)
 db = sqlite3.connect(DB_PATH, isolation_level=None)
 db.row_factory = sqlite3.Row
 db.executescript(SCHEMA)
+# 결과가 화면에 뜬 시점. ms는 명령 처리가 모두 끝난 시점이라 체감 속도와 다름
+if 'shown_ms' not in {r[1] for r in db.execute("PRAGMA table_info(command_log)")}:
+    db.execute("ALTER TABLE command_log ADD COLUMN shown_ms INTEGER")
 
 
-def record_command(guild_id, user_id: int, command: str, status: str, ms: int) -> None:
+def record_command(guild_id, user_id: int, command: str, status: str, ms: int, shown_ms=None) -> None:
     try:
         db.execute(
-            "INSERT INTO command_log VALUES (?, ?, ?, ?, ?, ?)",
-            (int(time.time()), guild_id, user_id, command, status, ms),
+            "INSERT INTO command_log (ts, guild_id, user_id, command, status, ms, shown_ms) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (int(time.time()), guild_id, user_id, command, status, ms, shown_ms),
         )
     except sqlite3.Error as e:
         logger.warning(f"명령어 기록 실패: {e}")

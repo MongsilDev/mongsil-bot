@@ -142,7 +142,7 @@ class ERClient(commands.Bot):
         # handle_errors가 잡은 실패도 여기로 온다. 상태는 extras에 표시됨
         ms = (discord.utils.utcnow() - interaction.created_at).total_seconds() * 1000
         record_command(interaction.guild_id, interaction.user.id, command.qualified_name,
-                       interaction.extras.get('status', 'ok'), int(ms))
+                       interaction.extras.get('status', 'ok'), int(ms), interaction.extras.get('shown_ms'))
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         error_message = "명령어 실행 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."

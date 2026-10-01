@@ -80,6 +80,11 @@ class CooldownLayoutView(ui.LayoutView):
                 pass
 
 
+def mark_shown(interaction: discord.Interaction) -> None:
+    """결과 카드가 화면에 뜬 시점을 명령어 기록에 남김"""
+    interaction.extras['shown_ms'] = int((discord.utils.utcnow() - interaction.created_at).total_seconds() * 1000)
+
+
 # 이 안에 결과가 준비되면 로딩 카드 없이 바로 보냄. 디스코드 왕복 한 번이 약 0.3초
 FAST_REPLY_SECONDS = 1.0
 
@@ -97,6 +102,7 @@ async def send_card(interaction: discord.Interaction, loading: str, build):
             await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
         else:
             await interaction.response.send_message(view=view, files=visual.files_of(view))
+        mark_shown(interaction)
         return view, await interaction.original_response()
     from .errors import BotError
     message = await interaction.followup.send(view=create_loading_layout(loading), wait=True)
@@ -111,4 +117,5 @@ async def send_card(interaction: discord.Interaction, loading: str, build):
         await message.edit(view=create_error_layout("조회 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."))
         return None, message
     await message.edit(view=view, attachments=visual.files_of(view))
+    mark_shown(interaction)
     return view, message
