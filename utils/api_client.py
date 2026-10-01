@@ -3,6 +3,7 @@
 """
 import aiohttp
 import asyncio
+import time
 from typing import Any, Optional, Dict
 from datetime import datetime, timedelta
 from collections import OrderedDict
@@ -11,6 +12,9 @@ from .errors import APIError, BotError, redact_secrets
 from .logging_config import get_logger
 
 logger = get_logger('api_client')
+
+# 도쿄 bser는 보통 0.1초 안팎. 이보다 느린 응답만 남겨 느린 엔드포인트를 찾음
+SLOW_REQUEST_MS = 500
 
 class OptimizedAPIClient:
     """최적화된 API 클라이언트"""
@@ -113,9 +117,13 @@ class OptimizedAPIClient:
                 headers = {'x-api-key': config.api_key} if url.startswith('https://open-api.bser.io') else None
 
                 try:
+                    started = time.perf_counter()
                     async with session.get(url, params=params, headers=headers) as response:
                         if response.status == 200:
                             data = await response.json()
+                            elapsed = (time.perf_counter() - started) * 1000
+                            if elapsed >= SLOW_REQUEST_MS:
+                                logger.info(f"느린 요청 {elapsed:.0f}ms {url.split('?')[0]}")
                             if use_cache:
                                 self._set_cache(cache_key, data)
                             return data
