@@ -8,8 +8,10 @@ from typing import Optional
 from datetime import datetime, timedelta
 import math
 import os
+import time
 
 from utils.config import config
+from utils.errors import ServiceDownError
 from utils.layouts import create_error_layout
 from utils.logging_config import get_logger
 from utils.api_client import api_client
@@ -34,6 +36,7 @@ class ERClient(commands.Bot):
 
         self.api_client = api_client
         self.start_time = None  # main.py에서 설정됨
+        self._search_state = (0.0, True)
         self.dashboard = None
 
         # 이름만 on_tree_error인 메서드는 아무 데도 연결되지 않는다. 명시적으로 바인딩해야 동작.
@@ -68,7 +71,32 @@ class ERClient(commands.Bot):
         # '없음' 응답(HTTP 200 + code 404)까지 24시간 캐시하면
         # 신규 생성이나 개명 직후 유저가 하루 동안 조회 불가가 된다
         self.api_client.uncache(url, params=params)
+        if not await self._nickname_search_alive():
+            raise ServiceDownError("닉네임 검색 중단",
+                           "지금은 게임 점검이나 장애로 닉네임 검색이 되지 않습니다. 잠시 후 다시 시도해주세요.")
         return None
+
+    async def _nickname_search_alive(self) -> bool:
+        """랭킹 1위 닉네임도 검색되지 않으면 점검 등으로 검색 자체가 멈춘 상태. 1분 캐시"""
+        checked_at, alive = self._search_state
+        if time.monotonic() - checked_at < 60:
+            return alive
+        alive = True
+        try:
+            from commands.season import get_ranked_season
+            from utils.rank_helpers import fetch_ranking_data
+            season = await get_ranked_season()
+            top = await fetch_ranking_data(self, season[0]) if season else None
+            if top:
+                probe = await self.api_client.get(f"{config.api_url}/user/nickname",
+                                                  params={'query': top[0]['nickname']}, use_cache=False)
+                alive = bool(probe and probe.get('code') == 200)
+        except Exception as e:
+            logger.warning(f"닉네임 검색 상태 확인 실패: {type(e).__name__}: {e}")
+        self._search_state = (time.monotonic(), alive)
+        if not alive:
+            logger.warning("닉네임 검색이 랭킹 1위도 찾지 못함. 점검이나 장애로 판단")
+        return alive
 
     async def setup_hook(self) -> None:
         try:

@@ -24,7 +24,7 @@ TRANSIENT_EXC_NAMES = frozenset((
     "TimeoutError", "ConnectTimeoutError", "ReadTimeout", "ConnectionError",
     "ServerTimeoutError", "ConnectionTimeoutError", "SocketTimeoutError",
     "ClientConnectorError", "ClientConnectorDNSError", "ClientConnectionResetError",
-    "ClientOSError", "ServerDisconnectedError",
+    "ClientOSError", "ServerDisconnectedError", "ServiceDownError",
     "WSServerHandshakeError", "ConnectionClosed", "ConnectionResetError",
 ))
 
@@ -56,6 +56,11 @@ class APIError(BotError):
 class ValidationError(BotError):
     """입력 검증 예외"""
     pass
+
+class ServiceDownError(BotError):
+    """게임 점검이나 장애로 조회가 멈춘 상태. 일시 장애로 분류해 WARNING으로 남김"""
+    pass
+
 
 class NotFoundError(BotError):
     """데이터를 찾을 수 없는 예외"""
