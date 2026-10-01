@@ -11,7 +11,7 @@ from client import ERClient
 from commands.rating import cut_rp, fetch_rating_info
 from commands.season import get_ranked_season
 from utils.config import config
-from utils.layouts import create_loading_layout, send_card, CooldownLayoutView
+from utils.layouts import send_card, CooldownLayoutView
 from commands import account
 from utils import accounts, app_emojis, visual
 from utils.errors import handle_errors, NotFoundError, APIError
@@ -159,15 +159,14 @@ class RankView(CooldownLayoutView):
         super().__init__(timeout=config.view_timeout_interactive)
         self.client = client
         self.nickname = nickname
+        self.uid: Optional[str] = None
         self.playtime_button = ui.Button(style=discord.ButtonStyle.secondary, label="플탐", emoji=EMOJIS['clock'])
         self.playtime_button.callback = self.show_playtime
 
     @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def show_playtime(self, interaction: discord.Interaction):
         from commands.playtime import build_playtime_view
-        await interaction.response.send_message(view=create_loading_layout("플레이 타임 조회 중"))
-        view = await build_playtime_view(self.client, self.nickname)
-        await interaction.edit_original_response(view=view, attachments=visual.files_of(view))
+        await send_card(interaction, "플레이 타임 조회 중", lambda: build_playtime_view(self.client, self.nickname, self.uid))
 
 
 async def build_rank_view(client: ERClient, nickname: str, buttons: bool = True,
@@ -198,7 +197,10 @@ async def build_rank_view(client: ERClient, nickname: str, buttons: bool = True,
         rank_300, rank_1000 = await fetch_rating_info(client, season_id)
         cuts = (cut_rp(rank_300), cut_rp(rank_1000))
 
-    return create_rank_layout(nickname, stats, user_rank, season_name, cuts, recent, client if buttons else None)
+    view = create_rank_layout(nickname, stats, user_rank, season_name, cuts, recent, client if buttons else None)
+    if isinstance(view, RankView):
+        view.uid = user_id
+    return view
 
 
 class Rank(commands.Cog):
