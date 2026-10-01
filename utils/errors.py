@@ -119,8 +119,11 @@ def handle_errors(
 
                 interaction = _find_interaction(args)
                 if interaction:
-                    user_fault = isinstance(e, (NotFoundError, ValidationError))
-                    interaction.extras['status'] = 'user' if user_fault else 'error'
+                    if isinstance(e, (NotFoundError, ValidationError)):
+                        interaction.extras['status'] = 'user'
+                    else:
+                        # 게임 점검은 봇 오류로 세지 않음
+                        interaction.extras['status'] = 'down' if isinstance(e, ServiceDownError) else 'error'
                     await _send_error(interaction, e.user_message)
 
                 return None
