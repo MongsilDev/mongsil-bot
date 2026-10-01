@@ -124,7 +124,8 @@ class OptimizedAPIClient:
                             elapsed = (time.perf_counter() - started) * 1000
                             if elapsed >= SLOW_REQUEST_MS:
                                 logger.info(f"느린 요청 {elapsed:.0f}ms {url.split('?')[0]}")
-                            if use_cache:
+                            # bser는 실패도 HTTP 200에 본문 code로 알림. 점검 중 실패가 점검 뒤까지 남지 않게 캐시하지 않음
+                            if use_cache and not (isinstance(data, dict) and data.get('code', 200) != 200):
                                 self._set_cache(cache_key, data)
                             return data
                         elif response.status == 429:
