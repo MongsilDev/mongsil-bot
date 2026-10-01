@@ -15,6 +15,7 @@ from discord.ext import commands
 from client import ERClient
 from utils.config import config
 from utils.errors import handle_errors
+from utils.layouts import mark_shown
 from utils.emojis import EMOJIS, PING_EMOJIS
 from utils import usage_db, visual
 
@@ -184,6 +185,7 @@ class Info(commands.Cog):
     async def info_command(self, interaction: discord.Interaction):
         """봇의 정보를 표시합니다."""
         await interaction.response.send_message(view=create_bot_info_layout(self.client, interaction.guild))
+        mark_shown(interaction)
 
 
 async def setup(client: ERClient):
