@@ -121,7 +121,8 @@ class ERClient(commands.Bot):
 
     async def on_disconnect(self):
         """봇이 연결이 끊어졌을 때 호출됩니다."""
-        logger.warning("봇 연결이 끊어졌습니다.")
+        # 대부분 곧바로 RESUME되는 일시 끊김
+        logger.info("봇 연결이 끊어졌습니다.")
 
     async def on_resumed(self):
         """봇이 재연결되었을 때 호출됩니다."""

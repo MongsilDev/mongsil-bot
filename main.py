@@ -56,7 +56,8 @@ sentry_sdk.init(
 )
 
 # 로깅 설정
-setup_logging(level="INFO", log_file="bot.log")
+# 컨테이너에서는 supervisor가 stdout을 저장하므로 파일 로그는 LOG_FILE을 줄 때만
+setup_logging(level="INFO", log_file=os.getenv("LOG_FILE"))
 logger = get_logger()
 
 # Initialize bot

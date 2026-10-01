@@ -101,7 +101,19 @@ async def account_view(client: ERClient, user_id: int) -> ui.LayoutView:
         accounts.delete(interaction.user.id)
         await interaction.response.edit_message(view=await account_view(client, interaction.user.id))
 
-    remove.callback = unregister
+    async def keep(interaction: discord.Interaction):
+        await interaction.response.edit_message(view=await account_view(client, interaction.user.id))
+
+    async def confirm(interaction: discord.Interaction):
+        ask = CooldownLayoutView(timeout=config.view_timeout_interactive)
+        yes = ui.Button(style=discord.ButtonStyle.danger, label="해제")
+        no = ui.Button(style=discord.ButtonStyle.secondary, label="취소")
+        yes.callback, no.callback = unregister, keep
+        ask.add_item(ui.Container(ui.TextDisplay(f"**{nickname}** 등록을 해제하시겠습니까?"), ui.ActionRow(yes, no),
+                                  accent_colour=visual.colour('info')))
+        await interaction.response.edit_message(view=ask)
+
+    remove.callback = confirm
     dakgg = ui.Button(style=discord.ButtonStyle.link, label="DAK.GG", emoji=EMOJIS['chart'],
                       url=f"https://dak.gg/er/players/{quote(nickname)}")
     view.add_item(ui.Container(

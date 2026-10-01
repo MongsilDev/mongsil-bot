@@ -230,6 +230,7 @@ async def cleanup_emoji_zoom_cache():
     """이모지 확대 관련 캐시를 정리합니다."""
     global _webhook_cache, _disabled_servers_cache, _webhook_permission_notified
     _webhook_cache.clear()
+    _webhook_cache_times.clear()
     _disabled_servers_cache = None
     _webhook_permission_notified.clear()
     logger.info("이모지 확대 관련 캐시가 정리되었습니다.")
