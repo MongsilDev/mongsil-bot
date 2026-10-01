@@ -10,7 +10,7 @@ from .logging_config import get_logger
 
 logger = get_logger('앱이모지')
 
-CHARACTERS_URL = 'https://er.dakgg.io/api/v1/data/characters?hl=ko-KR'
+FACE_CDN = 'https://cdn.dak.gg/assets/er/game-assets'
 
 EMOJI: Dict[str, str] = {}
 
@@ -53,28 +53,40 @@ async def load(client: discord.Client) -> None:
 
 
 async def sync_characters(client: discord.Client) -> None:
-    """새 실험체 얼굴 등록. 실험체 목록은 게임 데이터, 이미지는 dak.gg CDN. 실패하면 이름만 표시"""
+    """게임 데이터에 있는데 얼굴 이모지가 없는 실험체를 등록. 실패하면 이름만 표시
+
+    한 번 올린 얼굴은 디스코드 앱 이모지로 남아 외부 서비스가 없어도 그대로 쓰임.
+    외부 이미지는 새 실험체가 나왔을 때 한 번만 받음
+    """
     try:
+        from commands.season import fetch_patch_notes
         from .config import config
         game = await api_client.get(f"{config.api_url.replace('/v1', '/v2')}/data/Character", use_cache=False)
-        dakgg = await api_client.get(CHARACTERS_URL, use_cache=False)
-        # dak.gg 실험체 목록은 늦게 갱신되지만 CDN 이미지는 먼저 올라옴. 경로의 게임 버전만 빌림
-        sample = next(c['communityImageUrl'] for c in dakgg.get('characters', []) if c.get('communityImageUrl'))
-        base = 'https:' + sample.rsplit('/', 1)[0]
-        session = await api_client.get_session()
+        missing = []
         for row in game.get('data', []):
             code, name = row.get('code'), row.get('name')
             if not code or not name or not name.isascii() or not name.isalnum():
                 continue
             CHARACTER_KEYS.setdefault(code, name)
-            if name in EMOJI:
-                continue
-            async with session.get(f"{base}/CharCommunity_{name}_S000.png") as response:
-                if response.status != 200:
-                    continue
-                image = await response.read()
-            emoji = await client.create_application_emoji(name=name, image=image)
-            EMOJI[name] = str(emoji)
-            logger.info(f"앱 이모지 추가 {name}")
+            if name not in EMOJI:
+                missing.append(name)
+        if not missing:
+            return
+        # dak.gg CDN 경로의 게임 버전을 공식 패치 노트에서 구함. 새 버전 경로에는 이미지가 늦게 올라오기도 함
+        versions = [f"{p.version}.0" for p in reversed(await fetch_patch_notes())][:4]
+        session = await api_client.get_session()
+        for name in missing:
+            for version in versions:
+                url = f"{FACE_CDN}/{version}/CharCommunity_{name}_S000.png"
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        continue
+                    image = await response.read()
+                emoji = await client.create_application_emoji(name=name, image=image)
+                EMOJI[name] = str(emoji)
+                logger.info(f"앱 이모지 추가 {name}")
+                break
+            else:
+                logger.warning(f"실험체 얼굴 이미지를 찾지 못함 {name}, 이름으로 표시")
     except Exception as e:
         logger.warning(f"실험체 이모지 동기화 실패: {type(e).__name__}: {e}")
