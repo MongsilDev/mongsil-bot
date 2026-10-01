@@ -28,7 +28,7 @@ CHARACTER_KEYS: Dict[int, str] = {
     69: 'Leni', 70: 'Tsubame', 71: 'Kenneth', 72: 'Katja', 73: 'Charlotte', 74: 'Darko', 75: 'Lenore',
     76: 'Garnet', 77: 'YuMin', 78: 'Hisui', 79: 'Justyna', 80: 'Istvan', 81: 'Niah', 82: 'Xuelin',
     83: 'Henry', 84: 'Blair', 85: 'Mirka', 86: 'Fenrir', 87: 'Coraline', 88: 'Bihyung', 89: 'Craver',
-    90: 'Lucia',
+    90: 'Lucia', 91: 'Seres',
 }
 
 TIER_KEYS = ['Unranked', 'Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Meteorite', 'Mithril', 'Demigod', 'Eternity']
@@ -53,20 +53,28 @@ async def load(client: discord.Client) -> None:
 
 
 async def sync_characters(client: discord.Client) -> None:
-    """새 실험체 얼굴 등록. 실패하면 이름만 표시"""
+    """새 실험체 얼굴 등록. 실험체 목록은 게임 데이터, 이미지는 dak.gg CDN. 실패하면 이름만 표시"""
     try:
-        data = await api_client.get(CHARACTERS_URL, use_cache=False)
+        from .config import config
+        game = await api_client.get(f"{config.api_url.replace('/v1', '/v2')}/data/Character", use_cache=False)
+        dakgg = await api_client.get(CHARACTERS_URL, use_cache=False)
+        # dak.gg 실험체 목록은 늦게 갱신되지만 CDN 이미지는 먼저 올라옴. 경로의 게임 버전만 빌림
+        sample = next(c['communityImageUrl'] for c in dakgg.get('characters', []) if c.get('communityImageUrl'))
+        base = 'https:' + sample.rsplit('/', 1)[0]
         session = await api_client.get_session()
-        for char in data.get('characters', []):
-            name = char['key']
-            CHARACTER_KEYS.setdefault(char['id'], name)
-            if name in EMOJI or not char.get('communityImageUrl'):
+        for row in game.get('data', []):
+            code, name = row.get('code'), row.get('name')
+            if not code or not name or not name.isascii() or not name.isalnum():
                 continue
-            async with session.get('https:' + char['communityImageUrl']) as response:
-                response.raise_for_status()
+            CHARACTER_KEYS.setdefault(code, name)
+            if name in EMOJI:
+                continue
+            async with session.get(f"{base}/CharCommunity_{name}_S000.png") as response:
+                if response.status != 200:
+                    continue
                 image = await response.read()
             emoji = await client.create_application_emoji(name=name, image=image)
             EMOJI[name] = str(emoji)
-            logger.info(f"앱 이모지 추가 {name} {char.get('name')}")
+            logger.info(f"앱 이모지 추가 {name}")
     except Exception as e:
         logger.warning(f"실험체 이모지 동기화 실패: {type(e).__name__}: {e}")
