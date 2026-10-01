@@ -85,6 +85,13 @@ def mark_shown(interaction: discord.Interaction) -> None:
     interaction.extras['shown_ms'] = int((discord.utils.utcnow() - interaction.created_at).total_seconds() * 1000)
 
 
+async def sent_message(interaction: discord.Interaction, sent) -> discord.InteractionMessage:
+    """send_message 응답에 담긴 메시지. original_response()는 매번 GET을 한 번 더 보냄"""
+    if isinstance(sent.resource, discord.InteractionMessage):
+        return sent.resource
+    return await interaction.original_response()
+
+
 # 이 안에 결과가 준비되면 로딩 카드 없이 바로 보냄. 디스코드 왕복 한 번이 약 0.3초
 FAST_REPLY_SECONDS = 1.0
 
@@ -99,11 +106,12 @@ async def send_card(interaction: discord.Interaction, loading: str, build):
         except asyncio.TimeoutError:
             await interaction.response.send_message(view=create_loading_layout(loading))
             view = await task
-            await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
+            message = await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
         else:
-            await interaction.response.send_message(view=view, files=visual.files_of(view))
+            message = await sent_message(interaction, await interaction.response.send_message(
+                view=view, files=visual.files_of(view)))
         mark_shown(interaction)
-        return view, await interaction.original_response()
+        return view, message
     from .errors import BotError
     message = await interaction.followup.send(view=create_loading_layout(loading), wait=True)
     try:

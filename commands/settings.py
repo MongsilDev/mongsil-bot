@@ -9,7 +9,7 @@ from discord import app_commands, ui
 from client import ERClient
 
 from utils.config import config
-from utils.layouts import create_error_layout, CooldownLayoutView
+from utils.layouts import create_error_layout, CooldownLayoutView, mark_shown, sent_message
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emoji_zoom import load_disabled_servers, save_disabled_servers
@@ -112,8 +112,8 @@ class Settings(commands.Cog):
     async def settings_command(self, interaction: discord.Interaction):
         """서버의 봇 설정을 관리합니다."""
         view = SettingsView(interaction.guild_id)
-        await interaction.response.send_message(view=view)
-        view.message = await interaction.original_response()
+        view.message = await sent_message(interaction, await interaction.response.send_message(view=view))
+        mark_shown(interaction)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

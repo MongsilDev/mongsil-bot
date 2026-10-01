@@ -13,7 +13,7 @@ from utils import accounts, app_emojis, visual
 from utils.emojis import EMOJIS
 from utils.config import config
 from utils.errors import APIError, InvalidUidError, NotFoundError, handle_errors, validate_nickname
-from utils.layouts import create_error_layout, CooldownLayoutView
+from utils.layouts import create_error_layout, CooldownLayoutView, sent_message
 
 KST = ZoneInfo('Asia/Seoul')
 
@@ -210,8 +210,7 @@ async def resolve(client: ERClient, interaction: discord.Interaction, nickname: 
     if account:
         return account[1], account[0], interaction.user.id
     prompt = prompt_view(client, after)
-    await interaction.response.send_message(view=prompt, ephemeral=True)
-    prompt.message = await interaction.original_response()
+    prompt.message = await sent_message(interaction, await interaction.response.send_message(view=prompt, ephemeral=True))
     return None
 
 
