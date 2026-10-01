@@ -17,7 +17,7 @@ from utils import accounts, app_emojis, visual
 from utils.errors import handle_errors, NotFoundError, APIError
 from utils.logging_config import get_logger
 from utils.character_names import get_character_name
-from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo, overall_place
+from utils.rank_helpers import RANKING_SERVER, fetch_user_rank, fetch_user_stats_solo, tier_and_place
 from utils.tier_system import TierSystem
 from utils.emojis import EMOJIS
 
@@ -84,16 +84,8 @@ def create_rank_layout(
     win_rate = (wins / games * 100) if games > 0 else 0.0
     actual_nickname = stats.get('nickname') or (user_rank or {}).get('nickname') or nickname
 
-    # 이터니티와 데미갓은 귀속 서버 순위 기준. 통계의 rank는 통합 순위라 서버 컷과 어긋남
-    server_rank = int(user_rank.get('serverRank', 0)) if user_rank else 0
-    tier = TierSystem.get_tier(mmr, server_rank or int(stats.get('rank', 0)))
+    tier, place = tier_and_place(stats, user_rank)
     icon = TierSystem.get_tier_icon(tier)
-
-    if server_rank and server_rank <= 1000:
-        server = SERVER_NAMES.get(user_rank.get('serverCode'), "서버")
-        place = f"{server} {server_rank:,}등"
-    else:
-        place = overall_place(stats)
 
     view = RankView(client, actual_nickname) if client else ui.LayoutView()
     icon_url = f"https://cdn.mongsil.dev/mongsilbot/tier2/{icon}.png"

@@ -28,7 +28,7 @@ async def account_summary(client: ERClient, user_id: int, uid: str, nickname: st
     """등록 계정의 이번 시즌 요약 텍스트와 티어 아이콘 번호"""
     from commands.season import get_ranked_season
     from utils.character_names import get_character_name
-    from utils.rank_helpers import SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo, overall_place
+    from utils.rank_helpers import fetch_user_rank, fetch_user_stats_solo, tier_and_place
     from utils.tier_system import TierSystem
 
     season = await get_ranked_season()
@@ -51,12 +51,7 @@ async def account_summary(client: ERClient, user_id: int, uid: str, nickname: st
     if user_rank and user_rank.get('nickname'):
         accounts.rename(user_id, user_rank['nickname'])
     mmr = int(stats.get('mmr', 0))
-    server_rank = int(user_rank.get('serverRank', 0)) if user_rank else 0
-    tier = TierSystem.get_tier(mmr, server_rank or int(stats.get('rank', 0)))
-    if server_rank and server_rank <= 1000:
-        place = f"{SERVER_NAMES.get(user_rank.get('serverCode'), '서버')} {server_rank:,}등"
-    else:
-        place = overall_place(stats)
+    tier, place = tier_and_place(stats, user_rank)
     games = int(stats.get('totalGames', 0))
     wins = int(stats.get('totalWins', 0))
     lines = [f"{tier} **{mmr:,}** RP" + (f" | {place}" if place else "")]

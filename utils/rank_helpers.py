@@ -1,12 +1,13 @@
 """
 랭크 관련 공통 헬퍼 함수 모듈
 """
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 from client import ERClient
 from utils.config import config
 from utils.errors import APIError, InvalidUidError, NotFoundError
 from utils.logging_config import get_logger
 from utils import rank_history
+from utils.tier_system import TierSystem
 
 logger = get_logger('rank_helpers')
 
@@ -23,6 +24,15 @@ def overall_place(stats: Dict) -> str:
     if rank <= 1000 or not size:
         return f"통합 {rank:,}등"
     return f"상위 {max(rank / size * 100, 0.01):.2f}%"
+
+
+def tier_and_place(stats: Dict, user_rank: Optional[Dict]) -> Tuple[str, str]:
+    """티어와 순위 문구. 이터니티와 데미갓은 귀속 서버 순위 기준. 통계의 rank는 통합 순위라 서버 컷과 어긋남"""
+    server_rank = int(user_rank.get('serverRank', 0)) if user_rank else 0
+    tier = TierSystem.get_tier(int(stats.get('mmr', 0)), server_rank or int(stats.get('rank', 0)))
+    if server_rank and server_rank <= 1000:
+        return tier, f"{SERVER_NAMES.get(user_rank.get('serverCode'), '서버')} {server_rank:,}등"
+    return tier, overall_place(stats)
 
 
 async def fetch_user_stats_solo(
