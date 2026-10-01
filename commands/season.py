@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from client import ERClient
 
 from utils.config import config
-from utils.layouts import create_error_layout
+from utils.layouts import create_error_layout, send_card
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emojis import EMOJIS
@@ -302,12 +302,11 @@ class Season(commands.Cog):
         시즌 이름, 시작일, 종료일, 진행도를 포함한 정보를 표시합니다.
         상호작용 버튼을 통해 공식 사이트와 패치 노트에 접근할 수 있습니다.
         """
-        await interaction.response.defer()
+        async def build():
+            season_info, patches = await asyncio.gather(get_season_info(), fetch_patch_notes())
+            return create_season_layout(season_info, patches)
 
-        season_info, patches = await asyncio.gather(get_season_info(), fetch_patch_notes())
-        layout = create_season_layout(season_info, patches)
-
-        await interaction.followup.send(view=layout, files=visual.files_of(layout))
+        await send_card(interaction, "시즌 조회 중", build)
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

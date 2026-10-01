@@ -8,8 +8,8 @@ from commands.season import get_ranked_season
 import math
 
 from utils.config import config
-from utils.layouts import create_error_layout, create_loading_layout, CooldownLayoutView
-from utils.errors import handle_errors
+from utils.layouts import create_error_layout, send_card, CooldownLayoutView
+from utils.errors import ServiceDownError, handle_errors
 from utils.logging_config import get_logger
 from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo, fetch_ranking_data
 from utils import accounts, app_emojis, rank_history, visual
@@ -266,31 +266,26 @@ class Ranking(commands.Cog):
     @handle_errors(user_message="랭킹 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def ranking_command(self, interaction: discord.Interaction):
         """랭킹을 보여줍니다."""
-        await interaction.response.send_message(view=create_loading_layout("랭킹 조회 중"))
+        async def build():
+            season = await get_ranked_season()
+            if not season:
+                raise ServiceDownError("현재 시즌 조회 실패", "현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
+            season_id, season_name = season
 
-        season = await get_ranked_season()
-        if not season:
-            error_layout = create_error_layout("현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
-            await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
-            return
-        season_id, season_name = season
+            unavailable = ServiceDownError("랭킹 조회 실패", "랭킹 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
+            ranking_data = await fetch_ranking_data(self.client, season_id, use_cache=True)
+            if not ranking_data:
+                raise unavailable
+            total_pages = math.ceil(min(len(ranking_data), TOTAL_RANKS) / RANKS_PER_PAGE)
 
-        ranking_data = await fetch_ranking_data(self.client, season_id, use_cache=True)
-        if not ranking_data:
-            error_layout = create_error_layout("랭킹 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
-            await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
-            return
+            first_page_users = await get_ranking_info(self.client, season_id, 1)
+            if not first_page_users:
+                raise unavailable
+            return PaginationView(self.client, season_id, total_pages, first_page_users, season_name)
 
-        total_pages = math.ceil(min(len(ranking_data), TOTAL_RANKS) / RANKS_PER_PAGE)
-
-        first_page_users = await get_ranking_info(self.client, season_id, 1)
-        if not first_page_users:
-            error_layout = create_error_layout("랭킹 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
-            await interaction.edit_original_response(view=error_layout, embeds=[], attachments=[])
-            return
-
-        view = PaginationView(self.client, season_id, total_pages, first_page_users, season_name)
-        view.message = await interaction.edit_original_response(view=view, embeds=[], attachments=[])
+        view, message = await send_card(interaction, "랭킹 조회 중", build)
+        if view:
+            view.message = message
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""

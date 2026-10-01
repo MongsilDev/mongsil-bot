@@ -11,8 +11,8 @@ from client import ERClient
 from commands.season import get_ranked_season, get_season_info
 
 from utils.config import config
-from utils.layouts import create_error_layout, CooldownLayoutView
-from utils.errors import handle_errors, validate_nickname, NotFoundError
+from utils.layouts import send_card, CooldownLayoutView
+from utils.errors import handle_errors, validate_nickname, NotFoundError, ServiceDownError
 from commands import account
 from utils import accounts, app_emojis, rank_history, visual
 from utils.logging_config import get_logger
@@ -223,27 +223,23 @@ class Rating(commands.Cog):
     @handle_errors(user_message="레이팅 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def rating_command(self, interaction: discord.Interaction):
         """현재 시즌의 이터니티/데미갓 컷을 확인합니다."""
-        await interaction.response.defer()
+        async def build():
+            season = await get_ranked_season()
+            if not season:
+                raise ServiceDownError("현재 시즌 조회 실패", "현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
+            season_id, season_name = season
 
-        season = await get_ranked_season()
-        if not season:
-            error_view = create_error_layout("현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
-            # 공개 defer 뒤 첫 followup이라 ephemeral은 적용되지 않는다
-            await interaction.followup.send(view=error_view)
-            return
-        season_id, season_name = season
+            (rank_300, rank_1000), season_info, top = await asyncio.gather(
+                fetch_rating_info(self.client, season_id), get_season_info(), fetch_ranking_data(self.client, season_id))
+            if not rank_300 and not rank_1000:
+                raise ServiceDownError(f"{season_name} 이터컷 조회 실패",
+                                       f"{season_name} 이터컷을 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
+            return create_rating_layout(rank_300, rank_1000, season_name, season_id,
+                                        season_end_for(season_info, season_id), self.client, top)
 
-        (rank_300, rank_1000), season_info, top = await asyncio.gather(
-            fetch_rating_info(self.client, season_id), get_season_info(), fetch_ranking_data(self.client, season_id))
-
-        if not rank_300 and not rank_1000:
-            error_view = create_error_layout(f"{season_name} 이터컷을 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
-            await interaction.followup.send(view=error_view)
-            return
-
-        view = create_rating_layout(rank_300, rank_1000, season_name, season_id,
-                                    season_end_for(season_info, season_id), self.client, top)
-        view.message = await interaction.followup.send(view=view, files=visual.files_of(view), wait=True)
+        view, message = await send_card(interaction, "이터컷 조회 중", build)
+        if view:
+            view.message = message
 
 async def setup(client: ERClient):
     """명령어를 등록합니다."""
