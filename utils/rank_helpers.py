@@ -84,13 +84,12 @@ async def fetch_user_stats_solo(
                     f"유저 통계 없음(uid 무효): {user_id}",
                     "유저 정보를 찾을 수 없습니다. 닉네임을 바꿨다면 새 닉네임으로 조회해주세요."
                 )
-            logger.error(f"유저 통계 API 오류: {error_msg} (uid={user_id})")
+            logger.warning("유저 통계 API 오류: %s", error_msg, extra={"uid": user_id})
             raise APIError(f"API 오류: {error_msg}", "API 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     except (APIError, NotFoundError):
         raise
     except Exception as e:
-        logger.error(f"유저 통계 조회 중 오류 발생: {e}", exc_info=True)
-        raise APIError(f"네트워크 오류: {e}", "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+        raise APIError(f"네트워크 오류: {e}", "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.") from e
 
 
 async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool = True,

@@ -51,8 +51,9 @@ def _sentry_before_send(event, hint):
 sentry_sdk.init(
     dsn=os.getenv("SENTRY_DSN", ""),
     traces_sample_rate=0.1,
-    environment="production",
     before_send=_sentry_before_send,
+    # 대시보드 OAuth 핸들러 지역변수에 액세스 토큰이 있음
+    include_local_variables=False,
 )
 
 # 로깅 설정
@@ -66,6 +67,10 @@ logger = get_logger()
 intents = discord.Intents.default()
 intents.message_content = True
 intents.presences = False
+
+# 음성 기능을 쓰지 않아 PyNaCl, davey 미설치 경고를 끔
+discord.VoiceClient.warn_nacl = False
+discord.VoiceClient.warn_dave = False
 
 client = ERClient(intents=intents)
 

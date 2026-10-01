@@ -115,7 +115,7 @@ def handle_errors(
                     if isinstance(e, (NotFoundError, ValidationError)) or is_transient(e):
                         logger.warning(f"BotError in {func.__name__}: {e.message}")
                     else:
-                        logger.error(f"BotError in {func.__name__}: {e.message}")
+                        logger.error("BotError in %s: %s", func.__name__, e.message, exc_info=e)
 
                 interaction = _find_interaction(args)
                 if interaction:
