@@ -428,7 +428,7 @@ async def index(request: web.Request):
         user_count=sum(g.member_count or 0 for g in client.guilds),
         days=(datetime.now(KST) - SERVICE_START).days,
         commands=commands,
-        selected='랭킹',
+        selected=commands[0]['name'] if commands else None,
         previews=previews.previews,
         live=live,
         stamp=stamp,
