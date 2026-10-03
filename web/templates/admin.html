@@ -1,84 +1,104 @@
 {% extends "base.html" %}
-{% from "_chart.html" import columns %}
+{% from "_chart.html" import guild_icon, kpi, trend %}
 {% block title %}운영 현황 - 몽실봇{% endblock %}
 {% block main %}
-<h1 class="page-title">운영 현황</h1>
+<header class="page-head">
+  <div>
+    <h1 class="page-title">운영 현황</h1>
+    <p class="page-sub"><span>{{ stamp }} 기준</span><span>업타임 {{ uptime|duration }}</span></p>
+  </div>
+</header>
 
-<section class="stats" aria-label="현재 상태">
-  <div class="stat"><strong>{{ guild_count|number }}</strong><span>서버</span></div>
-  <div class="stat"><strong>{{ today_count|number }}</strong><span>오늘 실행</span></div>
-  <div class="stat"><strong>{{ total|number }}</strong><span>30일 실행</span></div>
-  <div class="stat"><strong>{{ uptime|duration }}</strong><span>업타임</span></div>
+<section class="kpis kpis-6" aria-label="요약">
+  <div class="kpi">
+    <span class="kpi-label">서버</span>
+    <strong class="kpi-value">{{ guild_count|number }}</strong>
+    <span class="kpi-foot"><span class="delta delta-{{ 'up' if joins >= leaves else 'down' }}">{{ '%+d'|format(joins - leaves) }}</span><span>30일 참가 {{ joins }}, 퇴장 {{ leaves }}</span></span>
+  </div>
+  <div class="kpi">
+    <span class="kpi-label">오늘 명령어</span>
+    <strong class="kpi-value">{{ usage.today.value|number }}</strong>
+    <span class="kpi-foot"><span>어제 {{ usage.today.yesterday|number }}회</span></span>
+  </div>
+  {{ kpi('30일 명령어', usage.commands) }}
+  {{ kpi('30일 사용자', usage.users) }}
+  {{ kpi('30일 이모지 확대', usage.zooms, tone='lavender') }}
+  <div class="kpi{% if error_rate >= 3 %} kpi-alert{% endif %}">
+    <span class="kpi-label">오류율</span>
+    <strong class="kpi-value">{{ '%.1f'|format(error_rate) }}<small>%</small></strong>
+    <span class="kpi-foot"><span>오류 {{ errors|number }}회{% if down %}, 게임 점검 {{ down|number }}회 별도{% endif %}</span></span>
+  </div>
 </section>
 
-<section class="block">
-  <div class="block-head">
-    <h2>명령어 실행</h2>
-    <p class="block-sub">
-      <span>최근 30일</span>
-      <span>유저 {{ users_30|number }}명</span>
-      <span>오류 {{ error_count|number }}회{% if total %} ({{ '%.1f'|format(error_count / total * 100) }}%){% endif %}</span>
-    </p>
-  </div>
-  <div class="panel panel-pad">
-    {{ columns(chart, '명령어 실행') }}
-    {% if commands %}
+{{ trend(usage) }}
+
+<section class="card" aria-labelledby="cmd-title">
+  <div class="card-head"><h2 id="cmd-title">명령어</h2><span class="card-sub">최근 30일, 응답은 표시 또는 처리 완료 기준</span></div>
+  {% if commands %}
+  <div class="table-wrap">
     <table class="data">
-      <thead><tr><th scope="col">명령어</th><th scope="col" class="num">실행</th><th scope="col" class="num">오류</th><th scope="col" class="num">응답 중앙값</th></tr></thead>
+      <thead><tr>
+        <th scope="col">명령어</th>
+        <th scope="col" class="col-share">실행</th>
+        <th scope="col" class="num">오류율</th>
+        <th scope="col" class="num">응답 중앙값</th>
+        <th scope="col" class="num">느린 5%</th>
+      </tr></thead>
       <tbody>
       {% for c in commands %}
       <tr>
         <td><span class="cmd">/{{ c.name }}</span></td>
-        <td class="num">{{ c.count|number }}</td>
-        <td class="num">{% if c.errors %}<i class="warn-dot" aria-hidden="true"></i>{% endif %}{{ c.errors|number }}</td>
-        <td class="num muted">{% if c.median is not none %}{{ c.median|number }}ms{% else %}-{% endif %}</td>
+        <td class="col-share"><span class="share"><span class="bar-track"><i style="width:{{ c.bar }}%"></i></span><span class="num">{{ c.count|number }}</span></span></td>
+        <td class="num{% if c.error_rate >= 3 %} is-bad{% elif not c.errors %} muted{% endif %}">{{ '%.1f'|format(c.error_rate) }}%</td>
+        <td class="num">{% if c.median is not none %}{{ '%.2f'|format(c.median / 1000) }}초 <span class="basis">{{ c.basis }}</span>{% else %}-{% endif %}</td>
+        <td class="num muted">{% if c.p95 is not none %}{{ '%.2f'|format(c.p95 / 1000) }}초{% else %}-{% endif %}</td>
       </tr>
       {% endfor %}
       </tbody>
     </table>
-    {% endif %}
   </div>
+  {% else %}
+  <p class="empty">기록이 없습니다.</p>
+  {% endif %}
 </section>
 
 <div class="split">
-  <section class="block">
-    <div class="block-head">
-      <h2>서버 변동</h2>
-      <p class="block-sub"><span>30일 참가 {{ joins|number }}</span><span>퇴장 {{ leaves|number }}</span></p>
-    </div>
-    <div class="panel">
-      {% if events %}
-      <ul class="rows events">
-        {% for e in events %}
-        <li>
-          <span class="tag {{ e.kind }}">{{ '참가' if e.kind == 'join' else '퇴장' }}</span>
-          <span class="event-name">{{ e.name or e.guild_id }}</span>
-          <time class="muted" datetime="{{ e.when.isoformat() }}">{{ e.when|shortdate }}</time>
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <p class="empty">기록된 변동이 없습니다.</p>
-      {% endif %}
-    </div>
+  <section class="card" aria-labelledby="top-title">
+    <div class="card-head"><h2 id="top-title">많이 쓰는 서버</h2><span class="card-sub">30일 명령어 순</span></div>
+    {% if top_guilds %}
+    <ol class="rank-list">
+      {% for g in top_guilds %}
+      <li{% if g.gone %} class="gone"{% endif %}>
+        <span class="rank-no">{{ loop.index }}</span>
+        {{ guild_icon(g, 32) }}
+        <span class="rank-text">
+          <span class="rank-name">{{ g.name }}</span>
+          <span class="rank-meta">{% if g.gone %}나간 서버{% else %}멤버 {{ g.members|number }}명{% endif %}{% if g.zooms %}<span>확대 {{ g.zooms|number }}회</span>{% endif %}</span>
+        </span>
+        <span class="rank-value"><b>{{ g.count|number }}</b><span class="bar-track"><i style="width:{{ g.bar }}%"></i></span></span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="empty">기록이 없습니다.</p>
+    {% endif %}
   </section>
 
-  <section class="block">
-    <div class="block-head">
-      <h2>많이 쓰는 서버</h2>
-      <p class="block-sub"><span>30일 실행 횟수</span></p>
-    </div>
-    <div class="panel">
-      {% if top_guilds %}
-      <ol class="rows ranked">
-        {% for g in top_guilds %}
-        <li><span class="event-name{% if g.gone %} muted{% endif %}">{{ g.name }}</span><span class="num">{{ g.count|number }}</span></li>
-        {% endfor %}
-      </ol>
-      {% else %}
-      <p class="empty">기록이 없습니다.</p>
-      {% endif %}
-    </div>
+  <section class="card" aria-labelledby="ev-title">
+    <div class="card-head"><h2 id="ev-title">서버 변동</h2><span class="card-sub">최근 {{ events|length }}건</span></div>
+    {% if events %}
+    <ul class="timeline">
+      {% for e in events %}
+      <li class="{{ e.kind }}">
+        <span class="tl-kind">{{ '참가' if e.kind == 'join' else '퇴장' }}</span>
+        <span class="tl-name">{{ e.name or e.guild_id }}{% if e.members %}<span class="tl-members">{{ e.members|number }}명</span>{% endif %}</span>
+        <time datetime="{{ e.when.isoformat() }}">{{ e.when|shortdate }}</time>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">기록된 변동이 없습니다.</p>
+    {% endif %}
   </section>
 </div>
 {% endblock %}

@@ -1,102 +1,98 @@
 {% extends "base.html" %}
-{% from "_chart.html" import columns, guild_icon %}
+{% from "_chart.html" import guild_icon, kpi, trend %}
 {% block title %}{{ guild.name }} - 몽실봇{% endblock %}
 {% block main %}
 <a class="back" href="/servers"><svg width="7" height="12" viewBox="0 0 7 12" aria-hidden="true"><path d="M6 1L1 6l5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>내 서버</a>
 
 <header class="guild-hero{% if info.banner %} has-banner{% endif %}">
-  {% if info.banner %}
-  <img class="guild-banner" src="{{ info.banner }}" alt="" width="1024" height="410">
-  {% endif %}
+  {% if info.banner %}<img class="guild-banner" src="{{ info.banner }}" alt="" width="1024" height="410">{% endif %}
   <div class="guild-head">
-    {{ guild_icon(guild, 80) }}
+    {{ guild_icon(guild, 72) }}
     <div class="guild-head-text">
       <h1>{{ guild.name }}</h1>
+      <p class="guild-facts">
+        <span>멤버 <b>{{ guild.members|number }}</b></span>
+        {% if info.online is not none %}<span><i class="dot" aria-hidden="true"></i>온라인 <b>{{ info.online|number }}</b></span>{% endif %}
+        {% if info.boost_tier %}<span>부스트 <b>{{ info.boost_tier }}레벨</b></span>{% endif %}
+        {% for f in info.features %}<span class="tag">{{ f }}</span>{% endfor %}
+      </p>
       {% if info.description %}<p class="guild-desc">{{ info.description }}</p>{% endif %}
-      {% if info.features %}
-      <p class="guild-tags">{% for f in info.features %}<span class="tag">{{ f }}</span>{% endfor %}</p>
-      {% endif %}
     </div>
   </div>
 </header>
 
-<section class="stats stats-guild" aria-label="서버 현황">
-  <div class="stat"><strong>{{ guild.members|number }}</strong><span>멤버</span></div>
-  {% if info.online is not none %}
-  <div class="stat"><strong><i class="dot" aria-hidden="true"></i>{{ info.online|number }}</strong><span>온라인</span></div>
-  {% endif %}
-  <div class="stat"><strong>{{ info.boosts|number }}</strong><span>부스트{% if info.boost_tier %} {{ info.boost_tier }}레벨{% endif %}</span></div>
-  <div class="stat"><strong>{{ (info.text + info.voice)|number }}</strong><span>채널</span></div>
-</section>
-
-<section class="block">
-  <div class="block-head"><h2>설정</h2></div>
-  <div class="panel">
-    <div class="setting">
-      <span id="zoom-label" class="setting-label">이모지 확대</span>
-      <button type="button" class="switch" role="switch" aria-checked="{{ 'true' if zoom_enabled else 'false' }}" aria-labelledby="zoom-label" data-url="/servers/{{ guild.id }}/emoji-zoom"{% if not can_webhook and not zoom_enabled %} disabled{% endif %}></button>
-    </div>
-    {% if not can_webhook %}
-    <p class="notice">봇에 웹후크 관리 권한이 없어 이모지 확대가 동작하지 않습니다. 몽실봇 역할에 웹후크 관리 권한을 준 뒤 새로고침해주세요.</p>
-    {% endif %}
-    <p class="notice notice-error" id="zoom-error" role="alert" hidden></p>
-  </div>
-</section>
-
-<div class="split">
-  <section class="block">
-    <div class="block-head"><h2>서버 정보</h2></div>
-    <div class="panel">
-      <dl class="facts-list">
-        {% if info.owner %}<div><dt>소유자</dt><dd>{{ info.owner }}</dd></div>{% endif %}
-        <div><dt>만든 날</dt><dd>{{ info.created|date }}</dd></div>
-        {% if guild.joined_at %}<div><dt>몽실봇 추가</dt><dd>{{ guild.joined_at|date }}</dd></div>{% endif %}
-        <div><dt>채널</dt><dd>텍스트 {{ info.text }}, 음성 {{ info.voice }}</dd></div>
-        <div><dt>역할</dt><dd>{{ info.roles|number }}개</dd></div>
-        <div><dt>이모지</dt><dd>{{ info.emojis }} <span class="muted">/ {{ info.emoji_limit }}</span></dd></div>
-        <div><dt>스티커</dt><dd>{{ info.stickers }} <span class="muted">/ {{ info.sticker_limit }}</span></dd></div>
-        <div><dt>보안 수준</dt><dd>{{ info.verification }}</dd></div>
-        <div><dt>기본 언어</dt><dd>{{ info.locale }}</dd></div>
-      </dl>
+<div class="detail">
+  <section class="kpis kpis-4 detail-kpis" aria-label="최근 30일">
+    {{ kpi('명령어 실행', usage.commands) }}
+    {{ kpi('사용한 사람', usage.users) }}
+    {{ kpi('이모지 확대', usage.zooms, tone='lavender') }}
+    <div class="kpi">
+      <span class="kpi-label">오늘 명령어</span>
+      <strong class="kpi-value">{{ usage.today.value|number }}</strong>
+      <span class="kpi-foot"><span>어제 {{ usage.today.yesterday|number }}회</span></span>
     </div>
   </section>
 
-  <section class="block">
-    <div class="block-head"><h2>봇 권한</h2></div>
-    <div class="panel">
-      <ul class="rows perms">
-        {% for name, ok, use in permissions %}
-        <li>
-          <span class="perm-state {{ 'ok' if ok else ('no' if loop.first else 'miss') }}" aria-hidden="true"></span>
-          <span class="perm-name">{{ name }}<span class="perm-use">{{ use }}</span></span>
-          <span class="perm-value{% if not ok %} muted{% endif %}">{{ '있음' if ok else '없음' }}</span>
+  <section class="card detail-zoom" aria-labelledby="zoom-label">
+      <div class="setting">
+        <div>
+          <h2 id="zoom-label" class="setting-label">이모지 확대</h2>
+          <p class="setting-desc">커스텀 이모지 하나만 보낸 메시지를 큰 이미지로 바꿔 다시 올립니다.</p>
+        </div>
+        <button type="button" class="switch" role="switch" aria-checked="{{ 'true' if zoom_enabled else 'false' }}" aria-labelledby="zoom-label" data-url="/servers/{{ guild.id }}/emoji-zoom"{% if not can_webhook and not zoom_enabled %} disabled{% endif %}></button>
+      </div>
+      <ul class="checks" aria-label="필요한 봇 권한">
+        {% for name, ok, use, required in permissions %}
+        <li class="{{ 'ok' if ok else ('miss' if required else 'opt') }}">
+          <span class="check-mark" aria-hidden="true"></span>
+          <span class="check-name">{{ name }}</span>
+          <span class="check-use">{{ use }}{% if not required %}, 선택{% endif %}</span>
+          <span class="visually-hidden">{{ '있음' if ok else '없음' }}</span>
         </li>
         {% endfor %}
       </ul>
-    </div>
-  </section>
-</div>
+      {% if is_admin %}<p class="card-note">몽실봇에 관리자 권한이 있어 모든 권한을 쓸 수 있습니다.</p>{% endif %}
+      {% if not can_webhook %}
+      <p class="notice">웹후크 관리 권한이 없어 이모지 확대가 동작하지 않습니다. 몽실봇 역할에 권한을 준 뒤 새로고침해주세요.</p>
+      {% endif %}
+      <p class="notice notice-error" id="zoom-error" role="alert" hidden></p>
+    </section>
 
-<section class="block">
-  <div class="block-head">
-    <h2>최근 30일 사용량</h2>
-    {% if recording_since %}<p class="block-sub"><span>{{ recording_since|date }}부터 기록</span></p>{% endif %}
+    <section class="card detail-info" aria-labelledby="info-title">
+      <h2 id="info-title" class="card-title">서버 정보</h2>
+      <dl class="facts-grid">
+        {% if info.owner %}<div><dt>소유자</dt><dd>{{ info.owner }}</dd></div>{% endif %}
+        {% if guild.joined_at %}<div><dt>몽실봇 추가</dt><dd>{{ guild.joined_at|numdate }}</dd></div>{% endif %}
+        <div><dt>만든 날</dt><dd>{{ info.created|numdate }}</dd></div>
+        <div><dt>채널</dt><dd>텍스트 {{ info.text }}, 음성 {{ info.voice }}</dd></div>
+        <div><dt>역할</dt><dd>{{ info.roles|number }}개</dd></div>
+        <div><dt>이모지</dt><dd>{{ info.emojis }}<span class="muted"> / {{ info.emoji_limit }}</span></dd></div>
+        <div><dt>스티커</dt><dd>{{ info.stickers }}<span class="muted"> / {{ info.sticker_limit }}</span></dd></div>
+        <div><dt>보안 수준</dt><dd>{{ info.verification }}</dd></div>
+        <div><dt>기본 언어</dt><dd>{{ info.locale }}</dd></div>
+      </dl>
+    </section>
+
+  <div class="detail-main">
+    {{ trend(usage) }}
+
+    <section class="card" aria-labelledby="cmd-title">
+      <div class="card-head"><h2 id="cmd-title">명령어별 실행</h2><span class="card-sub">최근 30일</span></div>
+      {% if by_command %}
+      <ul class="bars">
+        {% for c in by_command %}
+        <li>
+          <span class="bar-label cmd">/{{ c.name }}</span>
+          <span class="bar-track"><i style="width:{{ c.bar }}%"></i></span>
+          <span class="bar-value">{{ c.count|number }}</span>
+          <span class="bar-share">{{ '%.0f'|format(c.share) }}%</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">최근 30일 동안 실행한 명령어가 없습니다.</p>
+      {% endif %}
+    </section>
   </div>
-  {% if total %}
-  <div class="stats stats-2">
-    <div class="stat"><strong>{{ total|number }}</strong><span>명령어 실행</span></div>
-    <div class="stat"><strong>{{ users|number }}</strong><span>사용한 유저</span></div>
-  </div>
-  <div class="panel panel-pad">
-    {{ columns(chart, '명령어 실행') }}
-    <ul class="rows tally">
-      {% for name, count in by_command %}
-      <li><span class="cmd">/{{ name }}</span><span class="num">{{ count|number }}회</span></li>
-      {% endfor %}
-    </ul>
-  </div>
-  {% else %}
-  <p class="empty">사용 기록이 없습니다.</p>
-  {% endif %}
-</section>
+</div>
 {% endblock %}

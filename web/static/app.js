@@ -109,3 +109,46 @@ if (tablist) {
     select(tabs[(next + tabs.length) % tabs.length], true);
   });
 }
+
+for (const seg of document.querySelectorAll('.seg[role="tablist"]')) {
+  const tabs = [...seg.querySelectorAll('[role="tab"]')];
+  const select = (tab, focus) => {
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    }
+    if (focus) tab.focus();
+  };
+  seg.addEventListener('click', (e) => {
+    const tab = e.target.closest('[role="tab"]');
+    if (tab) select(tab, false);
+  });
+  seg.addEventListener('keydown', (e) => {
+    const i = tabs.indexOf(document.activeElement);
+    const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (i < 0 || next === undefined) return;
+    e.preventDefault();
+    select(tabs[(next + tabs.length) % tabs.length], true);
+  });
+}
+
+const filter = document.querySelector('input[data-filter]');
+if (filter) {
+  const items = [...document.querySelectorAll(filter.dataset.filter)];
+  const empty = document.getElementById('filter-empty');
+  filter.addEventListener('input', () => {
+    const q = filter.value.trim().toLowerCase();
+    let shown = 0;
+    for (const item of items) {
+      const match = !q || item.dataset.name.includes(q);
+      item.hidden = !match;
+      shown += match;
+    }
+    for (const block of document.querySelectorAll('.block')) {
+      block.hidden = q && !block.querySelector('.guild-item:not([hidden])');
+    }
+    empty.hidden = shown > 0;
+  });
+}

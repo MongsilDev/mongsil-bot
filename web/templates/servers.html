@@ -2,21 +2,39 @@
 {% from "_chart.html" import guild_icon %}
 {% block title %}내 서버 - 몽실봇{% endblock %}
 {% block main %}
-<h1 class="page-title">내 서버</h1>
+<header class="page-head">
+  <div>
+    <h1 class="page-title">내 서버</h1>
+    <p class="page-sub">서버 관리 권한이 있는 서버 {{ (joined|length + others|length)|number }}개</p>
+  </div>
+  {% if joined|length + others|length > 6 %}
+  <label class="search">
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <input type="search" placeholder="서버 이름 검색" aria-label="서버 이름 검색" data-filter=".guild-item" autocomplete="off">
+  </label>
+  {% endif %}
+</header>
 
 {% if joined %}
 <section class="block">
-  <div class="block-head"><h2>봇이 있는 서버</h2><p class="block-sub"><span>{{ joined|length }}개</span></p></div>
-  <ul class="guilds">
+  <div class="block-head"><h2>몽실봇이 있는 서버</h2><p class="block-sub"><span>{{ joined|length }}개</span><span>최근 30일 많이 쓴 순</span></p></div>
+  <ul class="guild-grid">
     {% for g in joined %}
-    <li>
-      <a class="guild" href="/servers/{{ g.id }}">
-        {{ guild_icon(g) }}
-        <span class="guild-text">
-          <span class="guild-name">{{ g.name }}</span>
-          <span class="guild-meta"><span>멤버 {{ g.members|number }}명</span>{% if g.usage %}<span>30일 {{ g.usage|number }}회 실행</span>{% endif %}</span>
+    <li class="guild-item" data-name="{{ g.name|lower }}">
+      <a class="guild-card" href="/servers/{{ g.id }}">
+        <span class="guild-top">
+          {{ guild_icon(g, 44) }}
+          <span class="guild-text">
+            <span class="guild-name">{{ g.name }}</span>
+            <span class="guild-meta">멤버 {{ g.members|number }}명</span>
+          </span>
+          <svg class="chev" width="8" height="14" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </span>
-        <svg class="chev" width="8" height="14" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="guild-stats">
+          <span><b>{{ g.usage|number }}</b>명령어</span>
+          <span>{% if g.zoom_on %}<b>{{ g.zooms|number }}</b>이모지 확대{% else %}<span class="pill">이모지 확대 꺼짐</span>{% endif %}</span>
+          <span class="guild-stats-note">30일</span>
+        </span>
       </a>
     </li>
     {% endfor %}
@@ -26,21 +44,20 @@
 
 {% if others %}
 <section class="block">
-  <div class="block-head"><h2>봇이 없는 서버</h2><p class="block-sub"><span>{{ others|length }}개</span></p></div>
-  <ul class="guilds">
+  <div class="block-head"><h2>몽실봇이 없는 서버</h2><p class="block-sub"><span>{{ others|length }}개</span></p></div>
+  <ul class="guild-rows">
     {% for g in others %}
-    <li>
-      <div class="guild guild-off">
-        {{ guild_icon(g) }}
-        <span class="guild-text"><span class="guild-name">{{ g.name }}</span></span>
-        <a class="btn btn-small btn-discord" href="{{ g.invite }}">봇 추가</a>
-      </div>
+    <li class="guild-item" data-name="{{ g.name|lower }}">
+      {{ guild_icon(g, 36) }}
+      <span class="guild-name">{{ g.name }}</span>
+      <a class="btn btn-small btn-discord" href="{{ g.invite }}">봇 추가</a>
     </li>
     {% endfor %}
   </ul>
 </section>
 {% endif %}
 
+<p class="empty" id="filter-empty" hidden>검색 결과가 없습니다.</p>
 {% if not joined and not others %}
 <p class="empty">서버 관리 권한이 있는 서버가 없습니다.</p>
 {% endif %}

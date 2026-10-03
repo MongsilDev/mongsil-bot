@@ -95,6 +95,7 @@ env.filters['initials'] = initials
 env.filters['duration'] = duration
 env.filters['date'] = lambda d: f"{d.year}년 {d.month}월 {d.day}일"
 env.filters['numdate'] = lambda d: d.strftime('%Y.%m.%d')
+env.filters['mdate'] = lambda d: f"{d.month}월 {d.day}일" if d.year == datetime.now(KST).year else f"{d.year}년 {d.month}월 {d.day}일"
 env.filters['shortdate'] = lambda d: f"{d.month}월 {d.day}일 {d:%H:%M}"
 env.globals['session_avatar'] = lambda s: avatar_url(s['user_id'], s['avatar'])
 env.globals['support_server'] = config.support_server
@@ -163,13 +164,83 @@ def daily_series(rows, days: int = 30) -> dict:
         series.append({'key': d.isoformat(), 'label': f"{d.month}월 {d.day}일", 'short': f"{d.month}.{d.day}",
                        'value': counts.get(d.isoformat(), 0)})
     peak = max(s['value'] for s in series)
-    # 눈금은 1, 2, 5, 10, 20, 50 순으로 올림
-    top = 1
+    # 눈금은 1, 2, 4, 5, 6, 8에 10의 거듭제곱을 곱한 값 중 최댓값 이상인 가장 작은 수
+    top, scale = 1, 1
     while top < peak:
-        top = top * 5 // 2 if str(top)[0] == '2' else top * 2
+        for step in (1, 2, 4, 5, 6, 8, 10):
+            top = step * scale
+            if top >= peak:
+                break
+        else:
+            scale *= 10
+            continue
+        break
     for s in series:
         s['pct'] = round(s['value'] / top * 100, 2) if top else 0
     return {'series': series, 'top': top, 'mid': top // 2 if top % 2 == 0 else None, 'total': sum(counts.values())}
+
+
+def day_start(days_ago: int = 0) -> int:
+    d = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_ago)
+    return int(d.timestamp())
+
+
+def delta(cur: int, prev: int, comparable: bool = True) -> dict | None:
+    """지난 기간 대비 증감. 지난 기간 기록이 없으면 비교하지 않음"""
+    if not comparable or not prev:
+        return None
+    change = (cur - prev) / prev * 100
+    if abs(change) < 0.5:
+        return {'text': '변화 없음', 'dir': 'flat'}
+    return {'text': f"{change:+.0f}%", 'dir': 'up' if change > 0 else 'down'}
+
+
+def first_ts(table: str) -> int | None:
+    return db.execute(f"SELECT MIN(ts) FROM {table}").fetchone()[0]
+
+
+def tally(names, limit: int | None = None) -> list[dict]:
+    counter = Counter(names)
+    counts = counter.most_common(limit)
+    total = sum(counter.values()) or 1
+    top = counts[0][1] if counts else 1
+    return [{'name': n, 'count': c, 'bar': round(c / top * 100, 1), 'share': c / total * 100} for n, c in counts]
+
+
+def percentile(values: list[int], q: float) -> int | None:
+    if not values:
+        return None
+    values = sorted(values)
+    return values[min(len(values) - 1, int(len(values) * q))]
+
+
+def usage_summary(cmd_rows, zoom_rows, now: int) -> dict:
+    """30일 사용량 타일과 차트. 행은 60일치를 받아 앞 30일과 비교"""
+    since, prev = now - 30 * 86400, now - 60 * 86400
+    cur = [r for r in cmd_rows if r['ts'] >= since]
+    old = [r for r in cmd_rows if prev <= r['ts'] < since]
+    zcur = [r for r in zoom_rows if r['ts'] >= since]
+    zold = [r for r in zoom_rows if prev <= r['ts'] < since]
+    cmd_first, zoom_first = first_ts('command_log'), first_ts('zoom_log')
+    cmd_full = bool(cmd_first) and cmd_first <= prev
+    zoom_full = bool(zoom_first) and zoom_first <= prev
+    today, yesterday = day_start(), day_start(1)
+    users, old_users = {r['user_id'] for r in cur}, {r['user_id'] for r in old}
+    cmd_since = datetime.fromtimestamp(cmd_first or now, KST) if not cmd_full else None
+    zoom_since = datetime.fromtimestamp(zoom_first or now, KST) if not zoom_full else None
+    return {
+        'commands': {'value': len(cur), 'delta': delta(len(cur), len(old), cmd_full), 'since': cmd_since},
+        'users': {'value': len(users), 'delta': delta(len(users), len(old_users), cmd_full), 'since': cmd_since},
+        'zooms': {'value': len(zcur), 'delta': delta(len(zcur), len(zold), zoom_full), 'since': zoom_since},
+        'today': {'value': sum(1 for r in cur if r['ts'] >= today),
+                  'yesterday': sum(1 for r in cur if yesterday <= r['ts'] < today)},
+        'cmd_chart': daily_series(cur),
+        'zoom_chart': daily_series(zcur),
+        'cmd_since': datetime.fromtimestamp(cmd_first, KST) if cmd_first and cmd_first > since else None,
+        'zoom_since': datetime.fromtimestamp(zoom_first or now, KST) if not zoom_first or zoom_first > since else None,
+        'rows': cur,
+        'zoom_rows': zcur,
+    }
 
 
 # ---------- 세션 ----------
@@ -371,18 +442,23 @@ async def servers(request: web.Request):
     since = int(time.time()) - 30 * 86400
     usage = dict(db.execute(
         "SELECT guild_id, COUNT(*) FROM command_log WHERE ts >= ? GROUP BY guild_id", (since,)).fetchall())
+    zooms = dict(db.execute(
+        "SELECT guild_id, COUNT(*) FROM zoom_log WHERE ts >= ? GROUP BY guild_id", (since,)).fetchall())
+    disabled = load_disabled_servers()
     joined, others = [], []
     for g in sorted(guilds, key=lambda g: g['name'].lower()):
         gid = int(g['id'])
         item = {'id': gid, 'name': g['name'], 'icon': guild_icon(gid, g.get('icon'))}
         guild = client.get_guild(gid)
         if guild:
-            item['members'] = guild.member_count
-            item['usage'] = usage.get(gid, 0)
+            item.update(members=guild.member_count, usage=usage.get(gid, 0), zooms=zooms.get(gid, 0),
+                        zoom_on=gid not in disabled)
             joined.append(item)
         else:
             item['invite'] = invite_url(gid)
             others.append(item)
+    # 많이 쓰는 서버가 위로, 같으면 이름순
+    joined.sort(key=lambda g: -(g['usage'] + g['zooms']))
     return render(request, 'servers.html', joined=joined, others=others)
 
 
@@ -444,18 +520,16 @@ async def server_detail(request: web.Request):
         'locale': LOCALES.get(str(guild.preferred_locale), str(guild.preferred_locale)),
     }
     permissions = [
-        ('관리자', perms.administrator, '모든 권한 포함'),
-        ('채널 보기', perms.view_channel, '이모지 확대'),
-        ('웹후크 관리', perms.manage_webhooks, '이모지 확대'),
-        ('메시지 관리', perms.manage_messages, '이모지 확대 원본 삭제'),
+        ('채널 보기', perms.view_channel, '메시지 확인', True),
+        ('웹후크 관리', perms.manage_webhooks, '확대 이미지 전송', True),
+        ('메시지 관리', perms.manage_messages, '원본 메시지 삭제', False),
     ]
-    since = int(time.time()) - 30 * 86400
-    rows = db.execute(
-        "SELECT ts, user_id, command, status FROM command_log WHERE guild_id = ? AND ts >= ?",
-        (guild.id, since),
-    ).fetchall()
-    by_command = Counter(r['command'] for r in rows).most_common()
-    first = db.execute("SELECT MIN(ts) FROM command_log").fetchone()[0]
+    now = int(time.time())
+    cmd_rows = db.execute("SELECT ts, user_id, command FROM command_log WHERE guild_id = ? AND ts >= ?",
+                          (guild.id, now - 60 * 86400)).fetchall()
+    zoom_rows = db.execute("SELECT ts, user_id FROM zoom_log WHERE guild_id = ? AND ts >= ?",
+                           (guild.id, now - 60 * 86400)).fetchall()
+    usage = usage_summary(cmd_rows, zoom_rows, now)
 
     return render(
         request, 'server.html',
@@ -464,13 +538,11 @@ async def server_detail(request: web.Request):
                'joined_at': guild.me.joined_at.astimezone(KST) if guild.me and guild.me.joined_at else None},
         info=info,
         permissions=permissions,
+        is_admin=perms.administrator,
         zoom_enabled=guild.id not in load_disabled_servers(),
-        can_webhook=guild.me.guild_permissions.manage_webhooks,
-        total=len(rows),
-        users=len({r['user_id'] for r in rows}),
-        by_command=by_command,
-        chart=daily_series(rows),
-        recording_since=datetime.fromtimestamp(first, KST) if first and first > since else None,
+        can_webhook=perms.manage_webhooks,
+        usage=usage,
+        by_command=tally(r['command'] for r in usage['rows']),
     )
 
 
@@ -505,49 +577,57 @@ async def admin(request: web.Request):
 
     now = int(time.time())
     since = now - 30 * 86400
-    rows = db.execute("SELECT ts, guild_id, user_id, command, status, ms FROM command_log WHERE ts >= ?", (since,)).fetchall()
+    cmd_rows = db.execute("SELECT ts, guild_id, user_id, command, status, ms, shown_ms FROM command_log WHERE ts >= ?",
+                          (now - 60 * 86400,)).fetchall()
+    zoom_rows = db.execute("SELECT ts, guild_id, user_id FROM zoom_log WHERE ts >= ?", (now - 60 * 86400,)).fetchall()
+    usage = usage_summary(cmd_rows, zoom_rows, now)
+    rows = usage['rows']
 
-    per_command = {}
-    for r in rows:
-        c = per_command.setdefault(r['command'], {'name': r['command'], 'count': 0, 'errors': 0, 'ms': []})
-        c['count'] += 1
-        c['errors'] += r['status'] == 'error'
-        if r['ms'] is not None:
-            c['ms'].append(r['ms'])
-    commands = sorted(per_command.values(), key=lambda c: -c['count'])
-    for c in commands:
-        ms = sorted(c.pop('ms'))
-        c['median'] = ms[len(ms) // 2] if ms else None
+    errors = sum(1 for r in rows if r['status'] == 'error')
+    down = sum(1 for r in rows if r['status'] == 'down')
+    commands = []
+    for item in tally(r['command'] for r in rows):
+        mine = [r for r in rows if r['command'] == item['name']]
+        shown = [r['shown_ms'] for r in mine if r['shown_ms'] is not None]
+        # 화면 표시 시각은 10월부터 일부 명령만 기록돼 표본이 충분할 때만 씀
+        source = shown if len(shown) >= 20 else [r['ms'] for r in mine if r['ms'] is not None]
+        failed = sum(1 for r in mine if r['status'] == 'error')
+        item.update(errors=failed, error_rate=failed / len(mine) * 100,
+                    median=percentile(source, 0.5), p95=percentile(source, 0.95),
+                    basis='표시' if source is shown else '처리')
+        commands.append(item)
 
-    by_guild = Counter(r['guild_id'] for r in rows if r['guild_id']).most_common(10)
+    by_guild = Counter(r['guild_id'] for r in rows if r['guild_id'])
+    zoom_by_guild = Counter(r['guild_id'] for r in usage['zoom_rows'])
     top_guilds = []
-    for gid, count in by_guild:
+    for gid, count in by_guild.most_common(10):
         g = client.get_guild(gid)
-        top_guilds.append({'id': gid, 'name': g.name if g else str(gid), 'count': count, 'gone': g is None})
+        top_guilds.append({'id': gid, 'name': g.name if g else str(gid), 'icon': guild_icon(gid, g.icon and g.icon.key) if g else None,
+                           'members': g.member_count if g else None, 'count': count, 'zooms': zoom_by_guild.get(gid, 0),
+                           'bar': round(count / by_guild.most_common(1)[0][1] * 100, 1), 'gone': g is None})
 
     events = [dict(e) for e in db.execute(
-        "SELECT ts, guild_id, name, members, kind FROM guild_events ORDER BY ts DESC LIMIT 15").fetchall()]
+        "SELECT ts, guild_id, name, members, kind FROM guild_events ORDER BY ts DESC LIMIT 12").fetchall()]
     for e in events:
         e['when'] = datetime.fromtimestamp(e['ts'], KST)
     joins = db.execute("SELECT COUNT(*) FROM guild_events WHERE kind = 'join' AND ts >= ?", (since,)).fetchone()[0]
     leaves = db.execute("SELECT COUNT(*) FROM guild_events WHERE kind = 'leave' AND ts >= ?", (since,)).fetchone()[0]
-
-    today = kst_day(now)
+    stamp = datetime.now(KST)
 
     return render(
         request, 'admin.html',
         guild_count=len(client.guilds),
-        today_count=sum(1 for r in rows if kst_day(r['ts']) == today),
-        users_30=len({r['user_id'] for r in rows}),
-        error_count=sum(1 for r in rows if r['status'] == 'error'),
-        total=len(rows),
+        joins=joins,
+        leaves=leaves,
+        usage=usage,
+        errors=errors,
+        error_rate=errors / len(rows) * 100 if rows else 0,
+        down=down,
         uptime=client.uptime,
-        chart=daily_series(rows),
+        stamp=f"{stamp:%H:%M}",
         commands=commands,
         top_guilds=top_guilds,
         events=events,
-        joins=joins,
-        leaves=leaves,
     )
 
 
