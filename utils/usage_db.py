@@ -1,5 +1,5 @@
 """
-명령어 사용과 서버 참가, 퇴장 기록. 대시보드용
+명령어 사용, 이모지 확대, 서버 참가와 퇴장 기록. 대시보드용
 """
 import sqlite3
 import time
@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS guild_events (
 );
 CREATE INDEX IF NOT EXISTS guild_events_ts ON guild_events (ts);
 
+CREATE TABLE IF NOT EXISTS zoom_log (
+    ts INTEGER NOT NULL,
+    guild_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS zoom_log_ts ON zoom_log (ts);
+CREATE INDEX IF NOT EXISTS zoom_log_guild ON zoom_log (guild_id, ts);
+
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL,
@@ -61,6 +69,21 @@ def record_command(guild_id, user_id: int, command: str, status: str, ms: int, s
         )
     except sqlite3.Error as e:
         logger.warning(f"명령어 기록 실패: {e}")
+
+
+def record_zoom(guild_id: int, user_id: int) -> None:
+    try:
+        db.execute("INSERT INTO zoom_log VALUES (?, ?, ?)", (int(time.time()), guild_id, user_id))
+    except sqlite3.Error as e:
+        logger.warning(f"이모지 확대 기록 실패: {e}")
+
+
+def zoom_count(guild_id: int, days: int = 30) -> int:
+    try:
+        return db.execute("SELECT COUNT(*) FROM zoom_log WHERE guild_id = ? AND ts >= ?",
+                          (guild_id, int(time.time()) - days * 86400)).fetchone()[0]
+    except sqlite3.Error:
+        return 0
 
 
 def record_guild_event(guild_id: int, name: str, members, kind: str) -> None:

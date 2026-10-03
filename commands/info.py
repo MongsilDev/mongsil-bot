@@ -97,7 +97,8 @@ def guild_block(guild: discord.Guild) -> Optional[ui.Item]:
         top = ", ".join(f"/{name}" for name, _ in usage[:3])
         lines.append(f"최근 30일 명령어 **{sum(n for _, n in usage):,}**회 | {top}")
     zoom = "꺼짐" if guild.id in load_disabled_servers() else "켜짐"
-    lines.append(f"이모지 확대 {zoom}")
+    zooms = usage_db.zoom_count(guild.id)
+    lines.append(f"이모지 확대 {zoom}" + (f" | 30일 **{zooms:,}**회" if zooms else ""))
     return ui.TextDisplay("\n".join(lines))
 
 

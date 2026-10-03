@@ -9,6 +9,7 @@ from typing import Optional, Set, Dict
 from pathlib import Path
 from datetime import datetime, timedelta
 from utils.logging_config import get_logger
+from utils.usage_db import record_zoom
 
 logger = get_logger('이모지확대')
 
@@ -221,6 +222,7 @@ async def process_emoji_zoom(message: discord.Message) -> None:
         logger.warning(f"확대 이모지 전송 실패 (채널 {message.channel.id}): {e}")
         return
 
+    record_zoom(guild_id, message.author.id)
     try:
         await message.delete()
     except (discord.Forbidden, discord.NotFound):
