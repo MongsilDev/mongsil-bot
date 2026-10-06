@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from urllib.parse import quote
 
 import discord
@@ -56,8 +57,36 @@ MODE_NAMES = {3: '랭크', 2: '일반', 6: '코발트', 9: '론울프'}
 SESSION_GAP = timedelta(minutes=20)
 
 
+# uid별로 다 읽은 기록. 다음 조회는 새 게임만 받고 나머지는 여기서 씀
+GAMES_CACHE_SIZE = 300
+_games_cache: "OrderedDict[str, Tuple[datetime.date, List[GameStats]]]" = OrderedDict()
+
+
 async def get_user_games(client, user_id: str, start_date: datetime.date) -> Tuple[List[GameStats], bool]:
     """start_date 이후 게임 기록과 그 날짜까지 다 읽었는지 여부"""
+    cached = _games_cache.get(user_id)
+    if cached and cached[0] <= start_date and cached[1]:
+        fresh, complete = await _fetch_games(client, user_id, start_date, seen=cached[1][0].start)
+        if complete:
+            games = fresh + [g for g in cached[1] if g.date >= start_date]
+            _remember(user_id, start_date, games)
+            return games, True
+    games, complete = await _fetch_games(client, user_id, start_date)
+    if complete:
+        _remember(user_id, start_date, games)
+    return games, complete
+
+
+def _remember(user_id: str, start_date: datetime.date, games: List[GameStats]) -> None:
+    _games_cache[user_id] = (start_date, games)
+    _games_cache.move_to_end(user_id)
+    while len(_games_cache) > GAMES_CACHE_SIZE:
+        _games_cache.popitem(last=False)
+
+
+async def _fetch_games(client, user_id: str, start_date: datetime.date,
+                       seen: Optional[datetime] = None) -> Tuple[List[GameStats], bool]:
+    """최신 게임부터 start_date까지, seen이 있으면 이미 받은 그 게임 직전까지"""
     games = []
     next_cursor = None
     # 페이지당 10게임
@@ -83,7 +112,7 @@ async def get_user_games(client, user_id: str, start_date: datetime.date) -> Tup
                     started = datetime.strptime(game['startDtm'], "%Y-%m-%dT%H:%M:%S.%f%z").astimezone(KST)
                 except (ValueError, KeyError):
                     continue
-                if started.date() < start_date:
+                if started.date() < start_date or (seen and started <= seen):
                     return games, True
                 games.append(GameStats(
                     date=started.date(),
