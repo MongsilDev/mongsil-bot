@@ -1,13 +1,15 @@
 """
 동물 이미지 관련 공통 유틸리티
 """
+import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 import discord
 from discord import ui
 from .api_client import api_client
 from . import visual
 from .config import config
-from .layouts import create_error_layout, CooldownLayoutView
+from .errors import ServiceDownError
+from .layouts import create_error_layout, send_card, CooldownLayoutView
 from .logging_config import get_logger
 
 logger = get_logger('동물유틸')
@@ -46,7 +48,7 @@ class AnimalView(CooldownLayoutView):
 
     async def next_photo(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        photo = await fetch_photo(self.api_url, self.animal_name)
+        photo = await take_photo(self.api_url, self.animal_name)
         if not photo:
             await interaction.followup.send(
                 view=create_error_layout(f"{self.animal_name} 사진을 가져오지 못했습니다. 잠시 후 다시 시도해주세요."),
@@ -64,6 +66,19 @@ async def fetch_photo(api_url: str, animal_name: str) -> Optional[Tuple[str, Lis
     return image_data['url'], breeds
 
 
+# 외부 사진 API가 1초 넘게 걸려 다음 사진을 미리 받아 둠. 사진 주소는 바뀌지 않음
+_next: Dict[str, asyncio.Task] = {}
+
+
+async def take_photo(api_url: str, animal_name: str) -> Optional[Tuple[str, List[str]]]:
+    ready = _next.pop(api_url, None)
+    photo = await ready if ready else None
+    if not photo:
+        photo = await fetch_photo(api_url, animal_name)
+    _next[api_url] = asyncio.create_task(fetch_photo(api_url, animal_name))
+    return photo
+
+
 async def send_animal_photo(
     interaction: discord.Interaction,
     api_url: str,
@@ -71,12 +86,12 @@ async def send_animal_photo(
     filename_prefix: str,
 ) -> None:
     """동물 사진 명령 공통 흐름: 조회, 전송."""
-    await interaction.response.defer()
+    async def build():
+        photo = await take_photo(api_url, animal_name)
+        if not photo:
+            raise ServiceDownError(f"{animal_name} 사진 조회 실패", f"{animal_name} 사진을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
+        return AnimalView(api_url, animal_name, *photo)
 
-    photo = await fetch_photo(api_url, animal_name)
-    if not photo:
-        await interaction.followup.send(view=create_error_layout(f"{animal_name} 사진을 가져오지 못했습니다. 잠시 후 다시 시도해주세요."))
-        return
-
-    view = AnimalView(api_url, animal_name, *photo)
-    view.message = await interaction.followup.send(view=view, wait=True)
+    view, message = await send_card(interaction, f"{animal_name} 사진 찾는 중", build)
+    if view:
+        view.message = message
