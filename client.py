@@ -161,6 +161,24 @@ class ERClient(commands.Bot):
         logger.info(f"서버 참가: {guild.name} (ID: {guild.id}, 멤버: {guild.member_count})")
         record_guild_event(guild.id, guild.name, guild.member_count, 'join')
 
+    async def on_invite_create(self, invite: discord.Invite):
+        if invite.guild is None or invite.guild.id not in config.temporary_invite_guilds or invite.max_age:
+            return
+        try:
+            await invite.delete(reason="만료 없는 초대 링크 자동 삭제")
+        except discord.HTTPException as e:
+            logger.warning(f"만료 없는 초대 삭제 실패: {invite.guild.id} {type(e).__name__}: {e}")
+            return
+        logger.info(f"만료 없는 초대 삭제: {invite.guild.id} 만든 사람 {invite.inviter.id if invite.inviter else '?'}")
+        if invite.inviter:
+            try:
+                await invite.inviter.send(
+                    f"{invite.guild.name} 서버는 만료 없는 초대 링크를 쓰지 않아 방금 만든 링크를 지웠습니다. "
+                    "만료 기간을 정해 다시 만들어 주세요."
+                )
+            except discord.HTTPException:
+                pass
+
     async def on_guild_remove(self, guild):
         """봇이 서버에서 제거되었을 때 호출됩니다."""
         logger.info(f"서버 제거: {guild.name} (ID: {guild.id})")
