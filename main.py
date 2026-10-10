@@ -9,7 +9,7 @@ import sentry_sdk
 from utils.config import config  # import 시점에 load_dotenv()가 실행된다
 from utils.errors import is_transient, redact_secrets
 from utils.logging_config import setup_logging, get_logger
-from utils.emoji_zoom import process_emoji_zoom, cleanup_emoji_zoom_cache
+from utils.emoji_zoom import process_emoji_zoom, cleanup_emoji_zoom_cache, schedule_webhook_warmup
 
 # 장애 추적. config import로 .env가 로드된 뒤여야 DSN이 잡힌다.
 # DSN이 비어 있으면 transport가 없어 어디로도 전송되지 않는다.
@@ -81,6 +81,7 @@ async def on_ready():
     if client.start_time is None:
         client.start_time = datetime.now()
         await cleanup_emoji_zoom_cache()
+        schedule_webhook_warmup(client)
 
     logger.info(f"{client.user} 온라인")
 

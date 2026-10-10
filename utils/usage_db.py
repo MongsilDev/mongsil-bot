@@ -86,6 +86,14 @@ def zoom_count(guild_id: int, days: int = 30) -> int:
         return 0
 
 
+def recent_zoom_guilds(days: int) -> set:
+    try:
+        rows = db.execute("SELECT DISTINCT guild_id FROM zoom_log WHERE ts >= ?", (int(time.time()) - days * 86400,))
+        return {r[0] for r in rows}
+    except sqlite3.Error:
+        return set()
+
+
 def record_guild_event(guild_id: int, name: str, members, kind: str) -> None:
     try:
         db.execute(

@@ -8,22 +8,16 @@ import os
 import re
 from typing import Optional, Set, Dict
 from pathlib import Path
-from datetime import datetime, timedelta
 from utils.logging_config import get_logger
-from utils.usage_db import record_zoom
+from utils.usage_db import record_zoom, recent_zoom_guilds
 
 logger = get_logger('이모지확대')
 
 # 설정 파일 경로
 SETTINGS_PATH = Path('./data/settings.json')
 
-# 웹훅 캐시 (채널 ID -> 웹훅)
+# 웹훅 캐시 (채널 ID -> 웹훅). 지워진 웹훅은 전송 때 NotFound로 걸러 다시 만든다
 _webhook_cache: Dict[int, discord.Webhook] = {}
-_webhook_cache_times: Dict[int, datetime] = {}
-
-# 웹훅 캐시 TTL (24시간) 및 최대 크기
-WEBHOOK_CACHE_TTL = timedelta(hours=24)
-MAX_WEBHOOK_CACHE_SIZE = 500
 
 # 설정 캐시
 _disabled_servers_cache: Optional[Set[int]] = None
@@ -31,7 +25,7 @@ _disabled_servers_cache: Optional[Set[int]] = None
 # 웹훅 권한 오류 알림 캐시 (서버별로 한 번만 알림)
 _webhook_permission_notified: Set[int] = set()
 
-_cleanup_tasks: Set[asyncio.Task] = set()
+_background_tasks: Set[asyncio.Task] = set()
 
 WEBHOOK_NAME = "몽실봇 이모지 확대"
 EMOJI_CDN_BASE = "https://cdn.discordapp.com/emojis/"
@@ -61,14 +55,6 @@ def load_disabled_servers() -> Set[int]:
         logger.error(f"설정 파일 로드 실패, 빈 목록으로 시작: {e}")
         _disabled_servers_cache = set()
         return _disabled_servers_cache
-
-def _clean_webhook_cache():
-    """웹훅 캐시 크기를 제한합니다."""
-    if len(_webhook_cache) > MAX_WEBHOOK_CACHE_SIZE:
-        # 가장 오래된 항목 제거
-        oldest_channel = min(_webhook_cache_times.keys(), key=lambda k: _webhook_cache_times[k])
-        _webhook_cache.pop(oldest_channel, None)
-        _webhook_cache_times.pop(oldest_channel, None)
 
 def save_disabled_servers(disabled_servers: Set[int]) -> bool:
     """비활성화된 서버 목록을 저장합니다. 파손 방지를 위해 임시 파일 후 원자적 교체."""
@@ -134,7 +120,6 @@ async def remove_guild_webhooks(guild: discord.Guild) -> None:
     """이모지 확대를 끈 서버에서 몽실봇이 만든 웹훅을 지웁니다."""
     for channel_id in [cid for cid, w in _webhook_cache.items() if w.guild_id == guild.id]:
         _webhook_cache.pop(channel_id, None)
-        _webhook_cache_times.pop(channel_id, None)
     if not guild.me.guild_permissions.manage_webhooks:
         return
     try:
@@ -151,25 +136,26 @@ async def remove_guild_webhooks(guild: discord.Guild) -> None:
         logger.info(f"이모지 확대를 꺼 웹훅 {len(webhooks)}개 삭제: 서버 {guild.id}")
 
 
+def _run_in_background(coro) -> None:
+    task = asyncio.get_running_loop().create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
 def schedule_webhook_removal(guild: discord.Guild) -> None:
-    task = asyncio.get_running_loop().create_task(remove_guild_webhooks(guild))
-    _cleanup_tasks.add(task)
-    task.add_done_callback(_cleanup_tasks.discard)
+    _run_in_background(remove_guild_webhooks(guild))
+
+
+def schedule_webhook_warmup(client: discord.Client) -> None:
+    _run_in_background(warm_webhook_cache(client))
 
 
 async def get_or_create_webhook(channel) -> Optional[discord.Webhook]:
     """채널의 웹훅을 가져오거나 생성합니다."""
     channel_id = channel.id
 
-    # 캐시에서 웹훅 확인 및 TTL 체크
     if channel_id in _webhook_cache:
-        cache_time = _webhook_cache_times.get(channel_id)
-        if cache_time and datetime.now() - cache_time < WEBHOOK_CACHE_TTL:
-            return _webhook_cache[channel_id]
-        else:
-            # TTL 만료 - 캐시에서 제거
-            _webhook_cache.pop(channel_id, None)
-            _webhook_cache_times.pop(channel_id, None)
+        return _webhook_cache[channel_id]
 
     try:
         webhook = await _pick_webhook(channel) or await channel.create_webhook(
@@ -177,8 +163,6 @@ async def get_or_create_webhook(channel) -> Optional[discord.Webhook]:
             reason="이모지 확대 기능"
         )
         _webhook_cache[channel_id] = webhook
-        _webhook_cache_times[channel_id] = datetime.now()
-        _clean_webhook_cache()
         return webhook
 
     except discord.Forbidden:
@@ -188,11 +172,47 @@ async def get_or_create_webhook(channel) -> Optional[discord.Webhook]:
         return None
     except discord.NotFound:
         _webhook_cache.pop(channel_id, None)
-        _webhook_cache_times.pop(channel_id, None)
         return None
     except discord.HTTPException as e:
         logger.warning(f"웹훅 준비 실패 (채널 {channel_id}): {e}")
         return None
+
+async def warm_webhook_cache(client: discord.Client) -> None:
+    """최근 확대가 쓰인 서버의 웹훅을 미리 받아 재시작 뒤 첫 확대가 느려지지 않게 합니다."""
+    recent = recent_zoom_guilds(days=30)
+    disabled = load_disabled_servers()
+    count = 0
+    for guild in client.guilds:
+        if guild.id not in recent or guild.id in disabled or not guild.me.guild_permissions.manage_webhooks:
+            continue
+        try:
+            hooks = await guild.webhooks()
+        except discord.HTTPException as e:
+            logger.warning(f"웹훅 미리 받기 실패 (서버 {guild.id}): {e}")
+            continue
+        by_channel: Dict[int, list] = {}
+        for w in hooks:
+            if _owned(w, guild):
+                by_channel.setdefault(w.channel_id, []).append(w)
+        # 중복이 있는 채널은 비워 두어 첫 확대 때 _pick_webhook이 합치게 한다
+        for channel_id, owned in by_channel.items():
+            if len(owned) == 1 and owned[0].name == WEBHOOK_NAME:
+                _webhook_cache.setdefault(channel_id, owned[0])
+                count += 1
+        await asyncio.sleep(0.2)
+    logger.info(f"이모지 확대 웹훅 {count}개 미리 받음")
+
+
+async def _delete_original(message: discord.Message) -> bool:
+    try:
+        await message.delete()
+        return True
+    except (discord.Forbidden, discord.NotFound):
+        return False  # 메시지 관리 권한이 없으면 원본과 확대본이 함께 남는다
+    except discord.HTTPException as e:
+        logger.warning(f"원본 이모지 삭제 실패 (채널 {message.channel.id}): {e}")
+        return False
+
 
 async def process_emoji_zoom(message: discord.Message) -> None:
     """이모지 확대 기능을 처리합니다."""
@@ -247,37 +267,42 @@ async def process_emoji_zoom(message: discord.Message) -> None:
             wait=False
         )
 
-    # 확대본 전송이 성공한 뒤에만 원본을 지운다. 동시에 실행하면
-    # 전송 실패 시 유저 메시지만 사라진다.
+    # 원본 삭제와 확대본 전송을 동시에 보내 왕복 한 번을 줄인다
+    deleting = asyncio.create_task(_delete_original(message))
+    sent = True
     try:
         await send_zoom(webhook)
     except discord.NotFound:
         # 웹훅이 수동 삭제된 경우: 캐시 비우고 한 번 재생성해 재시도
         _webhook_cache.pop(hook_channel.id, None)
-        _webhook_cache_times.pop(hook_channel.id, None)
         webhook = await get_or_create_webhook(hook_channel)
-        if not webhook:
-            return
         try:
+            if not webhook:
+                raise discord.ClientException("웹훅 재생성 실패")
             await send_zoom(webhook)
-        except discord.HTTPException as e:
+        except (discord.HTTPException, discord.ClientException) as e:
             logger.warning(f"확대 이모지 재전송 실패 (채널 {message.channel.id}): {e}")
-            return
+            sent = False
     except discord.HTTPException as e:
         logger.warning(f"확대 이모지 전송 실패 (채널 {message.channel.id}): {e}")
-        return
+        sent = False
 
-    record_zoom(guild_id, message.author.id)
-    try:
-        await message.delete()
-    except (discord.Forbidden, discord.NotFound):
-        pass  # 메시지 관리 권한이 없으면 원본과 확대본이 함께 남는다
+    if not sent and await deleting:
+        # 원본만 지워진 경우 봇 이름으로라도 확대본을 남긴다
+        try:
+            await message.channel.send(f"**{discord.utils.escape_markdown(message.author.display_name)}**\n{emoji_url}",
+                                       allowed_mentions=discord.AllowedMentions.none())
+        except discord.HTTPException as e:
+            logger.warning(f"확대 이모지 대체 전송 실패 (채널 {message.channel.id}): {e}")
+        return
+    if sent:
+        record_zoom(guild_id, message.author.id)
+    await deleting
 
 async def cleanup_emoji_zoom_cache():
     """이모지 확대 관련 캐시를 정리합니다."""
     global _webhook_cache, _disabled_servers_cache, _webhook_permission_notified
     _webhook_cache.clear()
-    _webhook_cache_times.clear()
     _disabled_servers_cache = None
     _webhook_permission_notified.clear()
     logger.info("이모지 확대 관련 캐시가 정리되었습니다.")
