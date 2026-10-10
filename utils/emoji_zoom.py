@@ -1,6 +1,7 @@
 """
 이모지 확대 기능 모듈
 """
+import asyncio
 import discord
 import json
 import os
@@ -29,6 +30,8 @@ _disabled_servers_cache: Optional[Set[int]] = None
 
 # 웹훅 권한 오류 알림 캐시 (서버별로 한 번만 알림)
 _webhook_permission_notified: Set[int] = set()
+
+_cleanup_tasks: Set[asyncio.Task] = set()
 
 WEBHOOK_NAME = "몽실봇 이모지 확대"
 EMOJI_CDN_BASE = "https://cdn.discordapp.com/emojis/"
@@ -106,7 +109,55 @@ async def disable_emoji_zoom_and_notify(guild_id: int, channel: discord.TextChan
     except Exception as e:
         logger.error(f"웹훅 권한 오류 알림 전송 실패: {e}")
 
-async def get_or_create_webhook(channel: discord.TextChannel) -> Optional[discord.Webhook]:
+def _owned(webhook: discord.Webhook, guild: discord.Guild) -> bool:
+    return webhook.type == discord.WebhookType.incoming and webhook.user is not None and webhook.user.id == guild.me.id
+
+
+async def _pick_webhook(channel) -> Optional[discord.Webhook]:
+    """몽실봇이 만든 웹훅 하나만 남기고 이름을 맞춘다. 이름이 바뀌었거나 중복으로 생긴 것도 여기서 합친다."""
+    owned = [w for w in await channel.webhooks() if _owned(w, channel.guild)]
+    if not owned:
+        return None
+    keep = next((w for w in owned if w.name == WEBHOOK_NAME), owned[0])
+    for extra in owned:
+        if extra.id != keep.id:
+            try:
+                await extra.delete(reason="이모지 확대 중복 웹훅 정리")
+            except discord.HTTPException as e:
+                logger.warning(f"중복 웹훅 삭제 실패 (채널 {channel.id}): {e}")
+    if keep.name != WEBHOOK_NAME:
+        keep = await keep.edit(name=WEBHOOK_NAME, reason="이모지 확대 웹훅 이름 통일")
+    return keep
+
+
+async def remove_guild_webhooks(guild: discord.Guild) -> None:
+    """이모지 확대를 끈 서버에서 몽실봇이 만든 웹훅을 지웁니다."""
+    for channel_id in [cid for cid, w in _webhook_cache.items() if w.guild_id == guild.id]:
+        _webhook_cache.pop(channel_id, None)
+        _webhook_cache_times.pop(channel_id, None)
+    if not guild.me.guild_permissions.manage_webhooks:
+        return
+    try:
+        webhooks = [w for w in await guild.webhooks() if _owned(w, guild)]
+    except discord.HTTPException as e:
+        logger.warning(f"웹훅 목록 조회 실패 (서버 {guild.id}): {e}")
+        return
+    for webhook in webhooks:
+        try:
+            await webhook.delete(reason="이모지 확대 끔")
+        except discord.HTTPException as e:
+            logger.warning(f"웹훅 삭제 실패 (서버 {guild.id}): {e}")
+    if webhooks:
+        logger.info(f"이모지 확대를 꺼 웹훅 {len(webhooks)}개 삭제: 서버 {guild.id}")
+
+
+def schedule_webhook_removal(guild: discord.Guild) -> None:
+    task = asyncio.get_running_loop().create_task(remove_guild_webhooks(guild))
+    _cleanup_tasks.add(task)
+    task.add_done_callback(_cleanup_tasks.discard)
+
+
+async def get_or_create_webhook(channel) -> Optional[discord.Webhook]:
     """채널의 웹훅을 가져오거나 생성합니다."""
     channel_id = channel.id
 
@@ -121,16 +172,7 @@ async def get_or_create_webhook(channel: discord.TextChannel) -> Optional[discor
             _webhook_cache_times.pop(channel_id, None)
 
     try:
-        webhooks = await channel.webhooks()
-
-        for webhook in webhooks:
-            if webhook.name == WEBHOOK_NAME:
-                _webhook_cache[channel_id] = webhook
-                _webhook_cache_times[channel_id] = datetime.now()
-                _clean_webhook_cache()
-                return webhook
-
-        webhook = await channel.create_webhook(
+        webhook = await _pick_webhook(channel) or await channel.create_webhook(
             name=WEBHOOK_NAME,
             reason="이모지 확대 기능"
         )
@@ -154,8 +196,10 @@ async def get_or_create_webhook(channel: discord.TextChannel) -> Optional[discor
 
 async def process_emoji_zoom(message: discord.Message) -> None:
     """이모지 확대 기능을 처리합니다."""
-    # 웹훅을 만들 수 있는 채널만 (스레드 등은 webhooks API가 없다)
-    if not isinstance(message.channel, (discord.TextChannel, discord.VoiceChannel)):
+    # 스레드와 포럼 글은 부모 채널의 웹훅으로 보낸다
+    thread = message.channel if isinstance(message.channel, discord.Thread) else None
+    hook_channel = thread.parent if thread else message.channel
+    if not isinstance(hook_channel, (discord.TextChannel, discord.VoiceChannel, discord.ForumChannel)):
         return
 
     guild_id = message.guild.id
@@ -184,10 +228,10 @@ async def process_emoji_zoom(message: discord.Message) -> None:
     except (ValueError, AttributeError):
         return
 
-    webhook = await get_or_create_webhook(message.channel)
+    webhook = await get_or_create_webhook(hook_channel)
     if not webhook:
         return
-    
+
     # 이모지 URL 생성 (원본 화질)
     emoji_url = f"{EMOJI_CDN_BASE}{emoji.id}.{'gif' if emoji.animated else 'png'}"
 
@@ -199,6 +243,7 @@ async def process_emoji_zoom(message: discord.Message) -> None:
             content=emoji_url,
             username=message.author.display_name,
             avatar_url=avatar_url,
+            thread=thread or discord.utils.MISSING,
             wait=False
         )
 
@@ -208,9 +253,9 @@ async def process_emoji_zoom(message: discord.Message) -> None:
         await send_zoom(webhook)
     except discord.NotFound:
         # 웹훅이 수동 삭제된 경우: 캐시 비우고 한 번 재생성해 재시도
-        _webhook_cache.pop(message.channel.id, None)
-        _webhook_cache_times.pop(message.channel.id, None)
-        webhook = await get_or_create_webhook(message.channel)
+        _webhook_cache.pop(hook_channel.id, None)
+        _webhook_cache_times.pop(hook_channel.id, None)
+        webhook = await get_or_create_webhook(hook_channel)
         if not webhook:
             return
         try:

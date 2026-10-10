@@ -12,7 +12,7 @@ from utils.config import config
 from utils.layouts import create_error_layout, CooldownLayoutView, mark_shown, sent_message
 from utils.errors import handle_errors
 from utils.logging_config import get_logger
-from utils.emoji_zoom import load_disabled_servers, save_disabled_servers
+from utils.emoji_zoom import load_disabled_servers, save_disabled_servers, schedule_webhook_removal
 from utils.emojis import EMOJIS
 from utils import usage_db, visual
 
@@ -94,6 +94,8 @@ class SettingsView(CooldownLayoutView):
             disabled_servers.discard(self.guild_id)
 
         if save_disabled_servers(disabled_servers):
+            if current_enabled:
+                schedule_webhook_removal(interaction.guild)
             # 카드가 새 상태를 바로 보여주므로 별도 완료 안내는 두지 않는다
             self.build_layout()
             await interaction.response.edit_message(view=self)

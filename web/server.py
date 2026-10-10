@@ -17,7 +17,7 @@ import jinja2
 from aiohttp import web
 
 from utils.config import config
-from utils.emoji_zoom import load_disabled_servers, save_disabled_servers
+from utils.emoji_zoom import load_disabled_servers, save_disabled_servers, schedule_webhook_removal
 from utils.logging_config import get_logger
 from utils.usage_db import db
 from web import previews
@@ -566,6 +566,8 @@ async def toggle_zoom(request: web.Request):
 
     if not save_disabled_servers(disabled):
         return web.json_response({'enabled': not enable, 'error': "저장하지 못했습니다. 잠시 후 다시 시도해주세요."}, status=500)
+    if not enable:
+        schedule_webhook_removal(guild)
     logger.info(f"대시보드 설정 변경: {guild.name} ({guild.id}) 이모지 확대 {'켬' if enable else '끔'}")
     return web.json_response({'enabled': enable})
 
