@@ -119,6 +119,7 @@ class ERClient(commands.Bot):
             asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, lambda: asyncio.create_task(self.close()))
             await app_emojis.load(self)
             self.refresh_names.start()
+            self.prune_invites.start()
 
             if os.getenv('DASHBOARD_URL') and os.getenv('DASHBOARD_CLIENT_SECRET'):
                 # 대시보드 설정 오류로 봇까지 내려가지 않게 여기서 끊음
@@ -141,6 +142,25 @@ class ERClient(commands.Bot):
         except Exception:
             raise
 
+    @tasks.loop(hours=1)
+    async def prune_invites(self):
+        cutoff = discord.utils.utcnow() - timedelta(days=7)
+        for guild_id in config.invite_prune_guilds:
+            guild = self.get_guild(guild_id)
+            if guild is None:
+                continue
+            try:
+                for invite in await guild.invites():
+                    if invite.created_at and invite.created_at < cutoff:
+                        await invite.delete(reason="만든 지 7일 지난 초대 링크 정리")
+                        logger.info(f"오래된 초대 삭제: {guild_id} {invite.created_at:%Y-%m-%d}")
+            except discord.HTTPException as e:
+                logger.warning(f"초대 정리 실패: {guild_id} {type(e).__name__}: {e}")
+
+    @prune_invites.before_loop
+    async def _before_prune_invites(self):
+        await self.wait_until_ready()
+
     @tasks.loop(hours=24)
     async def refresh_names(self):
         """시즌 중 추가되는 신규 실험체 이름 반영"""
@@ -160,24 +180,6 @@ class ERClient(commands.Bot):
         """봇이 새 서버에 참가했을 때 호출됩니다."""
         logger.info(f"서버 참가: {guild.name} (ID: {guild.id}, 멤버: {guild.member_count})")
         record_guild_event(guild.id, guild.name, guild.member_count, 'join')
-
-    async def on_invite_create(self, invite: discord.Invite):
-        if invite.guild is None or invite.guild.id not in config.temporary_invite_guilds or invite.max_age:
-            return
-        try:
-            await invite.delete(reason="만료 없는 초대 링크 자동 삭제")
-        except discord.HTTPException as e:
-            logger.warning(f"만료 없는 초대 삭제 실패: {invite.guild.id} {type(e).__name__}: {e}")
-            return
-        logger.info(f"만료 없는 초대 삭제: {invite.guild.id} 만든 사람 {invite.inviter.id if invite.inviter else '?'}")
-        if invite.inviter:
-            try:
-                await invite.inviter.send(
-                    f"{invite.guild.name} 서버는 만료 없는 초대 링크를 쓰지 않아 방금 만든 링크를 지웠습니다. "
-                    "만료 기간을 정해 다시 만들어 주세요."
-                )
-            except discord.HTTPException:
-                pass
 
     async def on_guild_remove(self, guild):
         """봇이 서버에서 제거되었을 때 호출됩니다."""
