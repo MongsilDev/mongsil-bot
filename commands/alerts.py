@@ -1,5 +1,5 @@
 """
-서버 알림. 패치 노트, 점검, 새 실험체, 매일 이터컷을 서버가 고른 채널에 올림
+서버 알림. 패치 노트, 점검, 매일 이터컷을 서버가 고른 채널에 올림
 """
 import asyncio
 import re
@@ -13,10 +13,8 @@ from discord import ui
 from discord.ext import commands, tasks
 
 from client import ERClient
-from utils import app_emojis, guild_settings, visual
+from utils import guild_settings, visual
 from utils.api_client import api_client
-from utils.character_names import CHARACTER_NAMES, refresh_character_names
-from utils.config import config
 from utils.emojis import EMOJIS
 from utils.logging_config import get_logger
 
@@ -116,28 +114,16 @@ def maintenance_layout(kind: str, article: dict, window: Optional[str]) -> ui.La
     return view
 
 
-def character_layout(code: int, key: str) -> ui.LayoutView:
-    face = app_emojis.EMOJI.get(key, '')
-    name = CHARACTER_NAMES.get(code, key)
-    view = ui.LayoutView(timeout=None)
-    view.add_item(ui.Container(
-        ui.TextDisplay(f"### 새 실험체\n{face + ' ' if face else ''}**{name}**\n-# 게임 데이터 기준, 출시 전일 수 있음"),
-        accent_colour=visual.colour('info')))
-    return view
-
-
 class Alerts(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
         self._cut_view = None
         self._cut_key = None
         self.watch_news.start()
-        self.watch_characters.start()
         self.daily_cut.start()
 
     def cog_unload(self):
         self.watch_news.cancel()
-        self.watch_characters.cancel()
         self.daily_cut.cancel()
 
     def turn_off(self, guild_id: int, key: str, reason: str):
@@ -217,29 +203,6 @@ class Alerts(commands.Cog):
             sent = await self.deliver('alert_maintenance', lambda: maintenance_layout(kind, article, window))
             logger.info(f"점검 알림 {kind} {_title(article)}, {sent}개 서버")
 
-    @tasks.loop(minutes=30)
-    async def watch_characters(self):
-        try:
-            game = await api_client.get(f"{config.api_url.replace('/v1', '/v2')}/data/Character", use_cache=False)
-            rows = {row['code']: row['name'] for row in game.get('data', [])
-                    if row.get('code') and row.get('name', '').isascii() and row['name'].isalnum()}
-            known = guild_settings.state('characters')
-            if known is None or not rows:
-                if rows:
-                    guild_settings.set_state('characters', sorted(rows))
-                return
-            new = [code for code in sorted(rows) if code not in known]
-            if not new:
-                return
-            guild_settings.set_state('characters', sorted(set(known) | set(rows)))
-            await refresh_character_names()
-            await app_emojis.sync_characters(self.client)
-            for code in new:
-                sent = await self.deliver('alert_character', lambda: character_layout(code, rows[code]))
-                logger.info(f"새 실험체 알림 {code} {rows[code]}, {sent}개 서버")
-        except Exception as e:
-            logger.warning(f"새 실험체 확인 실패: {type(e).__name__}: {e}")
-
     async def cut_view(self) -> Optional[ui.LayoutView]:
         from commands.rating import create_rating_layout, fetch_rating_info, season_end_for
         from commands.season import get_ranked_season, get_season_info
@@ -281,7 +244,6 @@ class Alerts(commands.Cog):
         logger.info(f"매일 이터컷 {sent}개 서버")
 
     @watch_news.before_loop
-    @watch_characters.before_loop
     @daily_cut.before_loop
     async def _before(self):
         await self.client.wait_until_ready()
