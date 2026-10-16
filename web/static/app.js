@@ -1,32 +1,147 @@
 const csrf = document.querySelector('meta[name="csrf"]')?.content;
 
+const settingsUrl = document.querySelector('[data-settings-url]')?.dataset.settingsUrl;
+
+const failText = (e) => (e instanceof TypeError ? '서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.' : e.message);
+
+// kind는 ok, error, hint. 저장 완료만 잠시 뒤 지움
+const showState = (el, text, kind = 'ok') => {
+  const box = el.closest('[data-setting]')?.querySelector('.save-state');
+  if (!box) return;
+  clearTimeout(box.timer);
+  box.textContent = text;
+  box.dataset.kind = kind;
+  if (kind === 'ok' && text) box.timer = setTimeout(() => { box.textContent = ''; }, 2400);
+};
+
+const addChange = (entry) => {
+  const list = document.querySelector('.changes');
+  if (!entry || !list) return;
+  const li = document.createElement('li');
+  const p = document.createElement('p');
+  const meta = document.createElement('span');
+  p.textContent = entry.text;
+  meta.className = 'change-meta';
+  meta.textContent = entry.meta;
+  li.append(p, meta);
+  list.prepend(li);
+  list.hidden = false;
+  document.querySelector('.changes-empty')?.remove();
+  while (list.children.length > 15) list.lastElementChild.remove();
+};
+
+const send = async (url, payload) => {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || '저장하지 못했습니다. 새로고침한 뒤 다시 시도해주세요.');
+  addChange(body.entry);
+  return body;
+};
+
 for (const sw of document.querySelectorAll('.switch[data-url]')) {
-  const errorBox = document.getElementById('zoom-error');
   sw.addEventListener('click', async () => {
     if (sw.getAttribute('aria-busy') === 'true') return;
     const next = sw.getAttribute('aria-checked') !== 'true';
     sw.setAttribute('aria-checked', String(next));
     sw.setAttribute('aria-busy', 'true');
-    errorBox.hidden = true;
+    showState(sw, '');
     try {
-      const res = await fetch(sw.dataset.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-        body: JSON.stringify({ enabled: next }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || '저장하지 못했습니다. 새로고침한 뒤 다시 시도해주세요.');
+      const body = await send(sw.dataset.url, { enabled: next });
       sw.setAttribute('aria-checked', String(body.enabled));
+      showState(sw, body.enabled ? '켰습니다.' : '껐습니다.');
     } catch (e) {
       sw.setAttribute('aria-checked', String(!next));
-      errorBox.textContent = e instanceof TypeError
-        ? '서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.'
-        : e.message;
-      errorBox.hidden = false;
+      showState(sw, failText(e), 'error');
     } finally {
       sw.removeAttribute('aria-busy');
     }
   });
+}
+
+for (const select of document.querySelectorAll('select[data-key]')) {
+  select.dataset.saved = select.value;
+  select.addEventListener('change', async () => {
+    select.disabled = true;
+    showState(select, '');
+    try {
+      await send(settingsUrl, { key: select.dataset.key, value: Number(select.value) });
+      select.dataset.saved = select.value;
+      showState(select, '저장했습니다.');
+      if (select.dataset.key === 'alert_cut') {
+        const hour = select.closest('.controls').querySelector('[data-key="cut_hour"]');
+        hour.disabled = select.value === '0';
+      }
+    } catch (e) {
+      select.value = select.dataset.saved;
+      showState(select, failText(e), 'error');
+    } finally {
+      select.disabled = select.dataset.key === 'cut_hour' && select.closest('.controls').querySelector('[data-key="alert_cut"]').value === '0';
+    }
+  });
+}
+
+for (const scope of document.querySelectorAll('[data-scope]')) {
+  const picker = scope.querySelector('.picker');
+  const save = scope.querySelector('.picker-save');
+  const count = scope.querySelector('.picker-count');
+  const boxes = [...scope.querySelectorAll('.pick input')];
+  const radios = [...scope.querySelectorAll('input[type="radio"]')];
+  const chosen = () => boxes.filter((b) => b.checked).map((b) => b.value);
+  const mode = () => radios.find((r) => r.checked).value;
+  let saved = { mode: mode(), channels: chosen().join() };
+
+  const refresh = () => {
+    const n = chosen().length;
+    count.textContent = n ? `고른 채널 ${n}개` : '채널을 골라주세요';
+    save.disabled = !n || (mode() === saved.mode && chosen().join() === saved.channels);
+  };
+
+  const commit = async () => {
+    save.disabled = true;
+    showState(scope, '');
+    try {
+      await send(settingsUrl, { key: scope.dataset.scope, value: { mode: mode(), channels: chosen() } });
+      saved = { mode: mode(), channels: chosen().join() };
+      showState(scope, '저장했습니다.');
+    } catch (e) {
+      showState(scope, failText(e), 'error');
+    }
+    refresh();
+  };
+
+  for (const radio of radios) {
+    radio.addEventListener('change', () => {
+      picker.hidden = mode() === 'all';
+      refresh();
+      if (mode() === 'all' || chosen().length) commit();
+      else showState(scope, '채널을 고른 뒤 저장해주세요.', 'hint');
+    });
+  }
+  for (const box of boxes) {
+    box.addEventListener('change', () => {
+      refresh();
+      if (!save.disabled) showState(scope, '');
+    });
+  }
+  save.addEventListener('click', commit);
+
+  const filter = scope.querySelector('.picker-filter');
+  filter.addEventListener('input', () => {
+    const q = filter.value.trim().toLowerCase();
+    for (const group of scope.querySelectorAll('.picker-group')) {
+      let any = false;
+      for (const pick of group.querySelectorAll('.pick')) {
+        pick.hidden = q && !pick.dataset.name.includes(q);
+        any ||= !pick.hidden;
+      }
+      group.hidden = !any;
+    }
+  });
+  refresh();
 }
 
 for (const plot of document.querySelectorAll('.plot')) {

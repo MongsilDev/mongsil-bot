@@ -16,7 +16,7 @@ from utils.layouts import create_error_layout
 from utils.logging_config import get_logger
 from utils.api_client import api_client
 from utils.character_names import refresh_character_names
-from utils import app_emojis
+from utils import app_emojis, guild_settings
 from utils.usage_db import record_command, record_guild_event
 
 logger = get_logger(__name__)
@@ -41,6 +41,7 @@ class ERClient(commands.Bot):
 
         # 이름만 on_tree_error인 메서드는 아무 데도 연결되지 않는다. 명시적으로 바인딩해야 동작.
         self.tree.on_error = self.on_tree_error
+        self.tree.interaction_check = self.command_channel_check
 
     @property
     def uptime(self) -> Optional[timedelta]:
@@ -112,6 +113,7 @@ class ERClient(commands.Bot):
                 "commands.rank",
                 "commands.rating",
                 "commands.account",
+                "commands.alerts",
             ]:
                 await self.load_extension(module)
 
@@ -144,16 +146,20 @@ class ERClient(commands.Bot):
 
     @tasks.loop(hours=1)
     async def prune_invites(self):
-        cutoff = discord.utils.utcnow() - timedelta(days=7)
-        for guild_id in config.invite_prune_guilds:
+        for guild_id, days in guild_settings.guilds_with('invite_days'):
             guild = self.get_guild(guild_id)
             if guild is None:
                 continue
+            cutoff = discord.utils.utcnow() - timedelta(days=days)
             try:
                 for invite in await guild.invites():
                     if invite.created_at and invite.created_at < cutoff:
-                        await invite.delete(reason="만든 지 7일 지난 초대 링크 정리")
+                        await invite.delete(reason=f"만든 지 {days}일 지난 초대 링크 정리")
                         logger.info(f"오래된 초대 삭제: {guild_id} {invite.created_at:%Y-%m-%d}")
+            except discord.Forbidden:
+                guild_settings.put(guild_id, 'invite_days', 0)
+                guild_settings.log(guild_id, "서버 관리 권한이 없어 오래된 초대 링크 정리를 껐습니다", source='bot')
+                logger.warning(f"초대 정리 권한 없음, 끔: {guild_id}")
             except discord.HTTPException as e:
                 logger.warning(f"초대 정리 실패: {guild_id} {type(e).__name__}: {e}")
 
@@ -166,6 +172,24 @@ class ERClient(commands.Bot):
         """시즌 중 추가되는 신규 실험체 이름 반영"""
         await refresh_character_names()
         await app_emojis.sync_characters(self)
+
+    async def command_channel_check(self, interaction: discord.Interaction) -> bool:
+        """서버가 고른 채널 밖의 명령을 막음. 서버 관리 권한이 있으면 어디서나 씀"""
+        if interaction.type is not discord.InteractionType.application_command or interaction.guild_id is None:
+            return True
+        channel = interaction.channel
+        channel_id = channel.parent_id if isinstance(channel, discord.Thread) else interaction.channel_id
+        if guild_settings.command_allowed(interaction.guild_id, channel_id) or interaction.permissions.manage_guild:
+            return True
+        allowed = guild_settings.get(interaction.guild_id, 'command_channels')
+        where = ", ".join(f"<#{c}>" for c in allowed[:5]) + (f" 외 {len(allowed) - 5}개" if len(allowed) > 5 else "")
+        try:
+            await interaction.response.send_message(
+                view=create_error_layout(f"이 서버에서는 {where} 채널에서 명령어를 쓸 수 있습니다."), ephemeral=True)
+        except discord.HTTPException as e:
+            logger.warning(f"채널 제한 안내 전송 실패: {e}")
+        record_command(interaction.guild_id, interaction.user.id, interaction.data.get('name', ''), 'user', 0)
+        return False
 
     async def on_disconnect(self):
         """봇이 연결이 끊어졌을 때 호출됩니다."""

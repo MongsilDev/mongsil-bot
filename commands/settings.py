@@ -14,7 +14,7 @@ from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emoji_zoom import load_disabled_servers, save_disabled_servers, schedule_webhook_removal
 from utils.emojis import EMOJIS
-from utils import usage_db, visual
+from utils import guild_settings, usage_db, visual
 
 logger = get_logger('설정')
 
@@ -96,6 +96,8 @@ class SettingsView(CooldownLayoutView):
         if save_disabled_servers(disabled_servers):
             if current_enabled:
                 schedule_webhook_removal(interaction.guild)
+            guild_settings.log(self.guild_id, f"이모지 확대를 {'껐' if current_enabled else '켰'}습니다",
+                               interaction.user.id, interaction.user.display_name, 'discord')
             # 카드가 새 상태를 바로 보여주므로 별도 완료 안내는 두지 않는다
             self.build_layout()
             await interaction.response.edit_message(view=self)

@@ -9,6 +9,7 @@ import re
 from typing import Optional, Set, Dict
 from pathlib import Path
 from utils.logging_config import get_logger
+from utils import guild_settings
 from utils.usage_db import record_zoom, recent_zoom_guilds
 
 logger = get_logger('이모지확대')
@@ -77,8 +78,10 @@ async def disable_emoji_zoom_and_notify(guild_id: int, channel: discord.TextChan
     # 비활성화는 항상 수행한다. 알림 캐시로 비활성화까지 건너뛰면
     # 저장 실패 후 같은 서버에서 Forbidden을 무한 반복한다.
     disabled_servers = set(load_disabled_servers())
-    disabled_servers.add(guild_id)
-    save_disabled_servers(disabled_servers)
+    if guild_id not in disabled_servers:
+        disabled_servers.add(guild_id)
+        if save_disabled_servers(disabled_servers):
+            guild_settings.log(guild_id, "웹후크 관리 권한이 없어 이모지 확대를 껐습니다", source='bot')
 
     # 알림은 서버당 한 번만
     if guild_id in _webhook_permission_notified:
@@ -223,7 +226,7 @@ async def process_emoji_zoom(message: discord.Message) -> None:
         return
 
     guild_id = message.guild.id
-    if guild_id in load_disabled_servers():
+    if guild_id in load_disabled_servers() or not guild_settings.zoom_allowed(guild_id, hook_channel.id):
         return
 
     content = message.content.strip()

@@ -1,5 +1,37 @@
 {% extends "base.html" %}
 {% from "_chart.html" import guild_icon, stat, trend, num %}
+{% macro scope(key, label, mode, chosen, modes) %}
+<fieldset class="scope" data-scope="{{ key }}">
+  <legend class="visually-hidden">{{ label }}</legend>
+  <div class="seg">
+    {% for value, text in modes %}
+    <label><input type="radio" name="{{ key }}" value="{{ value }}"{% if value == mode %} checked{% endif %}><span>{{ text }}</span></label>
+    {% endfor %}
+  </div>
+  <div class="picker"{% if mode == 'all' %} hidden{% endif %}>
+    <input class="picker-filter" type="search" placeholder="채널 이름 검색" aria-label="채널 이름 검색" autocomplete="off">
+    <div class="picker-list">
+      {% for g in scope_channels %}
+      <div class="picker-group">
+        {% if g.name %}<p class="picker-cat">{{ g.name }}</p>{% endif %}
+        {% for c in g.channels %}
+        <label class="pick" data-name="{{ c.name|lower }}">
+          <input type="checkbox" value="{{ c.id }}"{% if c.id in chosen %} checked{% endif %}>
+          <span class="ch ch-{{ c.kind }}" aria-hidden="true"></span>{{ c.name }}
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty">몽실봇이 볼 수 있는 채널이 없습니다.</p>
+      {% endfor %}
+    </div>
+    <div class="picker-foot">
+      <span class="picker-count"></span>
+      <button type="button" class="btn btn-small picker-save" disabled>저장</button>
+    </div>
+  </div>
+</fieldset>
+{% endmacro %}
 {% block title %}{{ guild.name }} - 몽실봇{% endblock %}
 {% block main %}
 <header class="guild-head{% if info.banner %} has-banner{% endif %}">
@@ -13,16 +45,17 @@
   </div>
 </header>
 
-<div class="detail">
+<div class="detail" data-settings-url="/servers/{{ guild.id }}/settings">
   <section class="settings" aria-labelledby="settings-title">
     <h2 id="settings-title">설정</h2>
     <div class="setting-group">
-      <div class="setting">
+      <div class="setting" data-setting>
         <div class="setting-text">
           <h3 id="zoom-label">이모지 확대</h3>
           <p>커스텀 이모지 하나만 보낸 메시지를 큰 이미지로 바꿔 다시 올립니다.</p>
         </div>
         <button type="button" class="switch" role="switch" aria-checked="{{ 'true' if zoom_enabled else 'false' }}" aria-labelledby="zoom-label" data-url="/servers/{{ guild.id }}/emoji-zoom"{% if not can_webhook and not zoom_enabled %} disabled{% endif %}></button>
+        {{ scope('zoom_scope', '이모지 확대를 쓸 채널', zoom_mode, zoom_channels, [('all', '모든 채널'), ('only', '고른 채널만'), ('except', '고른 채널 빼고')]) }}
         <ul class="perms" aria-label="필요한 봇 권한">
           {% for name, ok, use, required in permissions %}
           <li class="{{ 'ok' if ok else ('miss' if required else 'opt') }}" title="{{ use }}">
@@ -33,11 +66,74 @@
         </ul>
         {% if not can_webhook %}
         <p class="notice">웹후크 관리 권한이 없어 이모지 확대가 동작하지 않습니다. 몽실봇 역할에 권한을 준 뒤 새로고침해주세요.</p>
+        {% elif zoom_blocked %}
+        <p class="notice">{{ zoom_blocked[:5]|join(', ') }}{% if zoom_blocked|length > 5 %} 외 {{ zoom_blocked|length - 5 }}개{% endif %} 채널은 채널 권한에서 웹후크 관리가 막혀 이모지 확대가 동작하지 않습니다.</p>
         {% elif is_admin %}
         <p class="setting-note">몽실봇에 관리자 권한이 있어 모든 권한을 쓸 수 있습니다.</p>
         {% endif %}
-        <p class="notice notice-error" id="zoom-error" role="alert" hidden></p>
+        <p class="save-state" role="status"></p>
       </div>
+
+      <div class="setting" data-setting>
+        <div class="setting-text">
+          <h3 id="command_scope-label">명령어 채널</h3>
+          <p>몽실봇 명령어를 쓸 수 있는 채널을 정합니다. 서버 관리 권한이 있는 멤버는 어느 채널에서나 씁니다.</p>
+        </div>
+        {{ scope('command_scope', '명령어를 쓸 채널', command_mode, command_channels, [('all', '모든 채널'), ('only', '고른 채널만')]) }}
+        <p class="save-state" role="status"></p>
+      </div>
+
+      <div class="setting" data-setting>
+        <div class="setting-text">
+          <h3 id="invite_days-label">오래된 초대 링크 정리</h3>
+          <p>만든 지 정한 기간이 지난 초대 링크를 1시간마다 지웁니다.</p>
+        </div>
+        <select class="select" data-key="invite_days" aria-labelledby="invite_days-label"{% if not can_invites and not invite_days %} disabled{% endif %}>
+          {% for d in invite_options %}
+          <option value="{{ d }}"{% if d == invite_days %} selected{% endif %}>{{ '끔' if not d else d ~ '일 지난 링크' }}</option>
+          {% endfor %}
+        </select>
+        {% if not can_invites %}
+        <p class="notice">서버 관리 권한이 없어 초대 링크를 정리할 수 없습니다. 몽실봇 역할에 권한을 준 뒤 새로고침해주세요.</p>
+        {% endif %}
+        <p class="save-state" role="status"></p>
+      </div>
+    </div>
+
+    <div class="sec-head sec-alerts">
+      <h2 id="alerts-title">알림</h2>
+      <p class="sec-meta">디스코드에서 /알림으로도 바꿀 수 있습니다.</p>
+    </div>
+    <div class="setting-group" aria-labelledby="alerts-title">
+      {% for a in alerts %}
+      <div class="setting" data-setting>
+        <div class="setting-text">
+          <h3 id="{{ a.key }}-label">{{ a.name }}</h3>
+          <p>{{ a.desc }}</p>
+        </div>
+        <div class="controls">
+          <select class="select" data-key="{{ a.key }}" aria-labelledby="{{ a.key }}-label">
+            <option value="0">끔</option>
+            {% for g in alert_channels %}
+            {% if g.name %}<optgroup label="{{ g.name }}">{% endif %}
+            {% for c in g.channels %}
+            <option value="{{ c.id }}"{% if c.id == a.channel %} selected{% endif %}># {{ c.name }}</option>
+            {% endfor %}
+            {% if g.name %}</optgroup>{% endif %}
+            {% endfor %}
+          </select>
+          {% if a.key == 'alert_cut' %}
+          <select class="select select-hour" data-key="cut_hour" aria-label="매일 이터컷 시각"{% if not a.channel %} disabled{% endif %}>
+            {% for h, label in hours %}
+            <option value="{{ h }}"{% if h == cut_hour %} selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          {% endif %}
+        </div>
+        {% if a.problem %}<p class="notice">{{ a.problem }}</p>{% endif %}
+        <p class="save-state" role="status"></p>
+      </div>
+      {% endfor %}
     </div>
   </section>
 
@@ -70,6 +166,16 @@
       {% else %}
       <p class="empty">최근 30일 동안 실행한 명령어가 없습니다.</p>
       {% endif %}
+    </section>
+
+    <section aria-labelledby="log-title">
+      <div class="sec-head"><h2 id="log-title">변경 기록</h2></div>
+      <ol class="changes"{% if not changes %} hidden{% endif %}>
+        {% for c in changes %}
+        <li{% if c.bot %} class="by-bot"{% endif %}><p>{{ c.text }}</p><span class="change-meta">{{ c.meta }}</span></li>
+        {% endfor %}
+      </ol>
+      {% if not changes %}<p class="empty changes-empty">아직 바꾼 설정이 없습니다.</p>{% endif %}
     </section>
   </aside>
 

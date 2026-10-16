@@ -16,6 +16,8 @@ import discord
 import jinja2
 from aiohttp import web
 
+from commands.alerts import channel_ok, hour_label
+from utils import guild_settings
 from utils.config import config
 from utils.emoji_zoom import load_disabled_servers, save_disabled_servers, schedule_webhook_removal
 from utils.logging_config import get_logger
@@ -44,7 +46,16 @@ LOCALES = {'ko': '한국어', 'en-US': '영어', 'en-GB': '영어', 'ja': '일�
 FEATURES = {'COMMUNITY': '커뮤니티', 'PARTNERED': '파트너', 'VERIFIED': '인증됨', 'DISCOVERABLE': '서버 찾기'}
 
 # 봇에서 자주 쓰는 순서, 목록에 없는 명령은 맨 뒤
-COMMAND_ORDER = ['랭크', '랭킹', '이터컷', '플탐', '시즌', '동접', '계정', '강아지', '고양이', '설정', '정보']
+COMMAND_ORDER = ['랭크', '랭킹', '이터컷', '플탐', '시즌', '동접', '계정', '강아지', '고양이', '설정', '알림', '정보']
+
+# 이모지 확대와 명령어는 스레드와 포럼 글도 부모 채널 기준
+SCOPE_TYPES = (discord.TextChannel, discord.VoiceChannel, discord.ForumChannel)
+SCOPES = {
+    'zoom_scope': ('zoom_mode', 'zoom_channels', ('all', 'only', 'except')),
+    'command_scope': ('command_mode', 'command_channels', ('all', 'only')),
+}
+INVITE_DAYS = (0, 1, 3, 7, 30)
+SOURCES = {'dashboard': '대시보드', 'discord': '디스코드', 'bot': '자동'}
 
 client: discord.Client = None
 base_url = ''
@@ -513,6 +524,64 @@ async def guild_counts(guild: discord.Guild) -> dict:
     return extra
 
 
+def channel_kind(channel) -> str:
+    if isinstance(channel, discord.ForumChannel):
+        return 'forum'
+    if isinstance(channel, discord.VoiceChannel):
+        return 'voice'
+    return 'news' if channel.is_news() else 'text'
+
+
+def channel_groups(guild: discord.Guild, types) -> list[dict]:
+    """카테고리별 채널. 몽실봇이 볼 수 없는 채널은 이름도 내보내지 않음"""
+    groups = []
+    for category, channels in guild.by_category():
+        items = [{'id': c.id, 'name': c.name, 'kind': channel_kind(c)} for c in channels
+                 if isinstance(c, types) and c.permissions_for(guild.me).view_channel]
+        if items:
+            groups.append({'name': category.name if category else None, 'channels': items})
+    return groups
+
+
+def channel_names(guild: discord.Guild, ids) -> str:
+    names = [f"#{c.name}" for c in map(guild.get_channel, ids) if c]
+    return ", ".join(names[:3]) + (f" 외 {len(names) - 3}개" if len(names) > 3 else "")
+
+
+def change_entry(row) -> dict:
+    who = row['user_name'] or '몽실봇'
+    when = datetime.fromtimestamp(row['ts'], KST)
+    return {'text': row['text'], 'meta': f"{who}, {SOURCES.get(row['source'], row['source'])}, {when.month}월 {when.day}일 {when:%H:%M}",
+            'bot': row['source'] == 'bot'}
+
+
+def alert_rows(guild: discord.Guild) -> list[dict]:
+    rows = []
+    for key, name, desc in guild_settings.ALERTS:
+        cid = guild_settings.get(guild.id, key)
+        channel = guild.get_channel(cid) if cid else None
+        problem = None
+        if cid and not isinstance(channel, discord.TextChannel):
+            problem = "고른 채널이 없어졌습니다. 다른 채널을 골라주세요."
+        elif channel and (missing := channel_ok(channel, key == 'alert_cut')):
+            problem = f"몽실봇에 #{channel.name} 채널의 {', '.join(missing)} 권한이 없어 알림을 보내지 못합니다."
+        rows.append({'key': key, 'name': name, 'desc': desc, 'channel': cid, 'problem': problem})
+    return rows
+
+
+def zoom_blocked(guild: discord.Guild) -> list[str]:
+    """서버 권한은 있는데 채널 설정에 막혀 이모지 확대가 안 되는 채널"""
+    if not guild.me.guild_permissions.manage_webhooks:
+        return []
+    out = []
+    for channel in guild.channels:
+        if isinstance(channel, SCOPE_TYPES) and guild_settings.zoom_allowed(guild.id, channel.id):
+            perms = channel.permissions_for(guild.me)
+            if perms.view_channel and not perms.manage_webhooks:
+                out.append(f"#{channel.name}")
+    return out
+
+
 async def server_detail(request: web.Request):
     guild = await managed_guild(request)
     extra = await guild_counts(guild)
@@ -561,6 +630,20 @@ async def server_detail(request: web.Request):
         can_webhook=perms.manage_webhooks,
         usage=usage,
         by_command=tally(r['command'] for r in usage['rows']),
+        scope_channels=channel_groups(guild, SCOPE_TYPES),
+        alert_channels=channel_groups(guild, discord.TextChannel),
+        zoom_mode=guild_settings.get(guild.id, 'zoom_mode'),
+        zoom_channels=set(guild_settings.get(guild.id, 'zoom_channels')),
+        zoom_blocked=zoom_blocked(guild),
+        command_mode=guild_settings.get(guild.id, 'command_mode'),
+        command_channels=set(guild_settings.get(guild.id, 'command_channels')),
+        invite_days=guild_settings.get(guild.id, 'invite_days'),
+        invite_options=INVITE_DAYS,
+        can_invites=perms.manage_guild,
+        alerts=alert_rows(guild),
+        cut_hour=guild_settings.get(guild.id, 'cut_hour'),
+        hours=[(h, hour_label(h)) for h in range(24)],
+        changes=[change_entry(r) for r in guild_settings.history(guild.id)],
     )
 
 
@@ -587,7 +670,88 @@ async def toggle_zoom(request: web.Request):
     if not enable:
         schedule_webhook_removal(guild)
     logger.info(f"대시보드 설정 변경: {guild.name} ({guild.id}) 이모지 확대 {'켬' if enable else '끔'}")
-    return web.json_response({'enabled': enable})
+    entry = record_change(request, guild, f"이모지 확대를 {'켰' if enable else '껐'}습니다")
+    return web.json_response({'enabled': enable, 'entry': entry})
+
+
+def record_change(request: web.Request, guild: discord.Guild, text: str) -> dict:
+    session = request['session']
+    guild_settings.log(guild.id, text, session['user_id'], session['username'])
+    return change_entry({'ts': int(time.time()), 'user_name': session['username'], 'source': 'dashboard', 'text': text})
+
+
+async def save_setting(request: web.Request):
+    guild = await managed_guild(request)
+    check_csrf(request, request.headers.get('X-CSRF-Token'))
+    try:
+        body = await request.json()
+    except ValueError:
+        raise web.HTTPBadRequest()
+    key, value = body.get('key'), body.get('value')
+
+    def refuse(message: str, status: int = 409):
+        return web.json_response({'error': message}, status=status)
+
+    def as_int(v) -> int | None:
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    changes: list[tuple[str, object]] = []
+    if key in SCOPES:
+        mode_key, list_key, modes = SCOPES[key]
+        mode = (value or {}).get('mode')
+        valid = {c['id'] for g in channel_groups(guild, SCOPE_TYPES) for c in g['channels']}
+        ids = sorted({i for i in map(as_int, (value or {}).get('channels') or []) if i in valid})
+        if mode not in modes:
+            raise web.HTTPBadRequest()
+        if mode != 'all' and not ids:
+            return refuse("채널을 하나 이상 골라주세요.", 400)
+        changes = [(mode_key, mode), (list_key, ids)]
+        subject = '이모지 확대' if key == 'zoom_scope' else '명령어'
+        names = channel_names(guild, ids)
+        text = {'all': f"{subject}를 모든 채널에서 쓰게 했습니다",
+                'only': f"{subject}를 {names} 채널에서만 쓰게 했습니다",
+                'except': f"{subject}에서 {names} 채널을 뺐습니다"}[mode]
+    elif key == 'invite_days':
+        days = as_int(value)
+        if days not in INVITE_DAYS:
+            raise web.HTTPBadRequest()
+        if days and not guild.me.guild_permissions.manage_guild:
+            return refuse("몽실봇에 서버 관리 권한이 없어 초대 링크를 정리할 수 없습니다. 권한을 준 뒤 다시 시도해주세요.")
+        changes = [(key, days)]
+        text = f"만든 지 {days}일 지난 초대 링크를 지우게 했습니다" if days else "오래된 초대 링크 정리를 껐습니다"
+    elif key in guild_settings.ALERT_NAMES:
+        cid = as_int(value)
+        name = guild_settings.ALERT_NAMES[key]
+        if cid is None:
+            raise web.HTTPBadRequest()
+        if cid:
+            channel = guild.get_channel(cid)
+            if not isinstance(channel, discord.TextChannel) or not channel.permissions_for(guild.me).view_channel:
+                return refuse("고를 수 없는 채널입니다. 새로고침한 뒤 다시 골라주세요.", 400)
+            if missing := channel_ok(channel, key == 'alert_cut'):
+                return refuse(f"몽실봇에 #{channel.name} 채널의 {', '.join(missing)} 권한이 없습니다. 권한을 준 뒤 다시 골라주세요.")
+            text = f"{name} 알림을 #{channel.name} 채널로 정했습니다"
+        else:
+            text = f"{name} 알림을 껐습니다"
+        changes = [(key, cid)]
+    elif key == 'cut_hour':
+        hour = as_int(value)
+        if hour is None or not 0 <= hour <= 23:
+            raise web.HTTPBadRequest()
+        changes = [(key, hour)]
+        text = f"매일 이터컷 시각을 {hour_label(hour)}로 바꿨습니다"
+    else:
+        raise web.HTTPBadRequest()
+
+    if all(guild_settings.get(guild.id, k) == v for k, v in changes):
+        return web.json_response({'ok': True})
+    if not all(guild_settings.put(guild.id, k, v) for k, v in changes):
+        return refuse("저장하지 못했습니다. 잠시 후 다시 시도해주세요.", 500)
+    logger.info(f"대시보드 설정 변경: {guild.name} ({guild.id}) {text}")
+    return web.json_response({'ok': True, 'entry': record_change(request, guild, text)})
 
 
 async def admin(request: web.Request):
@@ -676,6 +840,7 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
     app.router.add_get('/servers', servers)
     app.router.add_get('/servers/{guild_id}', server_detail)
     app.router.add_post('/servers/{guild_id}/emoji-zoom', toggle_zoom)
+    app.router.add_post('/servers/{guild_id}/settings', save_setting)
     app.router.add_get('/admin', admin)
     app.router.add_get('/favicon.ico', favicon)
     app.router.add_static('/static', ROOT / 'static')
