@@ -165,8 +165,13 @@ class Settings(commands.Cog):
     @handle_errors(user_message="설정을 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def settings_command(self, interaction: discord.Interaction):
         """서버의 봇 설정을 관리합니다."""
+        # 서버 연동 설정에서 명령 권한을 넓혀도 설정 카드는 관리자에게만
+        if not interaction.permissions.manage_guild:
+            await interaction.response.send_message(
+                view=create_error_layout("서버 관리 권한이 있는 유저만 쓸 수 있습니다."), ephemeral=True)
+            return
         view = SettingsView(interaction.guild_id, interaction.channel_id)
-        view.message = await sent_message(interaction, await interaction.response.send_message(view=view))
+        view.message = await sent_message(interaction, await interaction.response.send_message(view=view, ephemeral=True))
         mark_shown(interaction)
 
 async def setup(client: ERClient):

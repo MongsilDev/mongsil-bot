@@ -871,6 +871,12 @@ def document(name: str):
     return handler
 
 
+def redirect_to(path: str):
+    async def handler(request: web.Request):
+        raise web.HTTPMovedPermanently(path)
+    return handler
+
+
 async def preview_image(request: web.Request):
     data = preview_images.get(request.match_info['key'])
     if data is None:
@@ -920,6 +926,8 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
     app.router.add_get('/preview/{key}.png', preview_image)
     app.router.add_get('/terms', document('terms.html'))
     app.router.add_get('/privacy', document('privacy.html'))
+    app.router.add_get('/tos', redirect_to('/terms'))
+    app.router.add_get('/privacy-policy', redirect_to('/privacy'))
     app.router.add_get('/speculation.json', speculation)
     app.router.add_static('/static', ROOT / 'static')
     app.on_cleanup.append(lambda _: http.close())
