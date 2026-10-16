@@ -612,6 +612,9 @@ def alert_rows(guild: discord.Guild) -> list[dict]:
         problem = None
         if cid and not isinstance(channel, discord.TextChannel):
             problem = "고른 채널이 삭제됨. 다른 채널을 골라주세요."
+        elif channel and not channel.permissions_for(guild.me).view_channel:
+            # 11월 16일부터 볼 수 없는 채널은 이름이 가려져 이름을 쓰지 않음
+            problem = "몽실봇이 고른 채널을 볼 수 없음. 채널 권한을 준 뒤 새로고침해주세요."
         elif channel and (missing := channel_ok(channel, key == 'alert_cut')):
             problem = f"#{channel.name} 채널에 몽실봇의 {', '.join(missing)} 권한 없음. 권한을 준 뒤 새로고침해주세요."
         rows.append({'key': key, 'name': name, 'desc': desc, 'channel': cid, 'problem': problem})

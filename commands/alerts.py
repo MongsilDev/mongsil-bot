@@ -148,7 +148,7 @@ class Alerts(commands.Cog):
                 await channel.send(view=view, files=visual.files_of(view))
                 sent += 1
             except discord.Forbidden:
-                self.turn_off(guild_id, key, f"#{channel.name} 채널 권한 없음")
+                self.turn_off(guild_id, key, "채널 권한 없음")
             except discord.HTTPException as e:
                 logger.warning(f"알림 전송 실패: {guild_id} {key} {type(e).__name__}: {e}")
             await asyncio.sleep(0.2)
