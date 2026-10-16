@@ -1,12 +1,10 @@
 {% extends "base.html" %}
-{% from "_chart.html" import message %}
+{% from "_chart.html" import message, num %}
 {% block main_class %}page home{% endblock %}
 {% block main %}
 <section class="hero">
   <div class="hero-copy">
-    {% if avatar %}
-    <img class="bot-avatar" src="{{ avatar }}" alt="" width="128" height="128">
-    {% endif %}
+    {% if avatar %}<img class="bot-avatar" src="{{ avatar }}" alt="" width="112" height="112">{% endif %}
     <h1>몽실봇</h1>
     <p class="lede">이터널 리턴 정보 봇</p>
     <div class="actions">
@@ -16,91 +14,71 @@
       </a>
       <a class="btn" href="/servers">대시보드</a>
     </div>
-    <dl class="facts">
-      <div><dt>서버</dt><dd>{{ guild_count|number }}</dd></div>
-      <div><dt>사용자</dt><dd>{{ user_count|compact }}</dd></div>
-      <div><dt>운영</dt><dd>{{ days|number }}일</dd></div>
-    </dl>
+    {% set people = user_count|compact %}
+    <p class="reach">서버 {{ num(guild_count, '개') }}, 멤버 합계 {% if people.endswith('만') %}<span class="n">{{ people[:-1] }}</span><span class="u">만 명</span>{% else %}{{ num(user_count, '명') }}{% endif %}<br>{{ num(days, '일') }}째 운영 중입니다.</p>
   </div>
-  {% if previews['랭크'] %}
-  <div class="hero-shot">
-    {{ message('랭크', previews['랭크'], avatar, stamp) }}
+
+  <div class="hero-stage" id="commands">
+    <div class="cmd-tabs" role="tablist" aria-label="명령어 미리보기">
+      {% for c in commands %}
+      <button type="button" role="tab" id="tab-{{ loop.index }}" aria-controls="panel-{{ loop.index }}"
+        aria-selected="{{ 'true' if c.name == selected else 'false' }}" tabindex="{{ '0' if c.name == selected else '-1' }}">/{{ c.name }}</button>
+      {% endfor %}
+    </div>
+    {% for c in commands %}
+    <div class="cmd-panel" role="tabpanel" id="panel-{{ loop.index }}" aria-labelledby="tab-{{ loop.index }}"{% if c.name != selected %} hidden{% endif %}>
+      <p class="cmd-desc">{{ c.description }}</p>
+      {% if previews[c.name] %}
+      {{ message(c.name, previews[c.name], avatar, stamp) }}
+      {% else %}
+      <p class="empty">미리보기를 준비하고 있습니다.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
   </div>
-  {% endif %}
 </section>
 
 {% if live %}
-<section class="block">
-  <div class="block-head">
-    <h2>이터널 리턴</h2>
-    <p class="block-sub">
-      {% if live.season_name %}<span>{{ live.season_name }}</span>{% endif %}
-      <span>아시아1</span>
-      {% if stamp %}<span>{{ stamp }} 갱신</span>{% endif %}
-    </p>
+<section class="board" aria-labelledby="board-title">
+  <div class="sec-head">
+    <h2 id="board-title">지금 이터널 리턴</h2>
+    <p class="sec-meta">아시아1{% if live.season_name %}, {{ live.season_name }}{% endif %}{% if stamp %}, {{ stamp }} 갱신{% endif %}</p>
   </div>
-  <div class="live">
+  <dl class="score">
     {% if live.players is defined %}
-    <div class="live-card">
-      <span class="live-label"><i class="dot" aria-hidden="true"></i>동시 접속자</span>
-      <strong>{{ live.players|number }}</strong>
+    <div class="score-cell">
+      <dt><i class="dot" aria-hidden="true"></i>동시 접속자</dt>
+      <dd class="score-value">{{ num(live.players, '명') }}</dd>
       {% if live.spark is defined %}
-      <svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none" role="img" aria-label="최근 24시간 동시 접속자 추이">
+      <dd><svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none" role="img" aria-label="최근 24시간 동시 접속자 추이">
         <polyline points="{{ live.spark }}" fill="none" vector-effect="non-scaling-stroke"/>
-      </svg>
+      </svg></dd>
       {% endif %}
     </div>
     {% endif %}
     {% if live.eternity is defined and live.eternity %}
-    <div class="live-card live-tier">
-      <img src="/static/tier/10.png" alt="" width="64" height="64">
-      <span class="live-label">이터니티 컷</span>
-      <strong>{{ live.eternity|number }}<small>RP</small></strong>
+    <div class="score-cell">
+      <dt><img src="/static/tier/10.png" alt="" width="28" height="28">이터니티 컷</dt>
+      <dd class="score-value">{{ num(live.eternity, 'RP') }}</dd>
     </div>
     {% endif %}
     {% if live.demigod is defined and live.demigod %}
-    <div class="live-card live-tier">
-      <img src="/static/tier/9.png" alt="" width="64" height="64">
-      <span class="live-label">데미갓 컷</span>
-      <strong>{{ live.demigod|number }}<small>RP</small></strong>
+    <div class="score-cell">
+      <dt><img src="/static/tier/9.png" alt="" width="28" height="28">데미갓 컷</dt>
+      <dd class="score-value">{{ num(live.demigod, 'RP') }}</dd>
     </div>
     {% endif %}
     {% if live.season_days is defined %}
-    <div class="live-card">
-      <span class="live-label">시즌 종료</span>
-      <strong>{{ 'D-' ~ live.season_days if live.season_days > 0 else 'D-day' }}</strong>
-      <div class="progress" role="img" aria-label="시즌 진행 {{ '%.0f'|format(live.season_pct) }}%"><i style="width:{{ '%.1f'|format(live.season_pct) }}%"></i></div>
-      <span class="live-foot">{{ live.season_start.month }}/{{ live.season_start.day }} ~ {{ live.season_end.month }}/{{ live.season_end.day }}</span>
+    <div class="score-cell">
+      <dt>시즌 종료</dt>
+      <dd class="score-value"><span class="n">{{ 'D-' ~ live.season_days if live.season_days > 0 else 'D-day' }}</span></dd>
+      <dd class="season">
+        <span class="progress" role="img" aria-label="시즌 진행 {{ '%.0f'|format(live.season_pct) }}%"><i style="width:{{ '%.1f'|format(live.season_pct) }}%"></i></span>
+        <span>{{ live.season_start.month }}월 {{ live.season_start.day }}일부터 {{ live.season_end.month }}월 {{ live.season_end.day }}일까지</span>
+      </dd>
     </div>
     {% endif %}
-  </div>
+  </dl>
 </section>
 {% endif %}
-
-<section class="block" id="commands">
-  <div class="block-head"><h2>명령어</h2></div>
-  <div class="cmd-browser">
-    <div class="cmd-list" role="tablist" aria-label="명령어" aria-orientation="vertical">
-      {% for c in commands %}
-      <button type="button" role="tab" id="tab-{{ loop.index }}" aria-controls="panel-{{ loop.index }}"
-        aria-selected="{{ 'true' if c.name == selected else 'false' }}" tabindex="{{ '0' if c.name == selected else '-1' }}">
-        <span class="cmd">/{{ c.name }}{% for p in c.params %} <span class="param">{{ p }}</span>{% endfor %}</span>
-        <span class="desc">{{ c.description }}</span>
-      </button>
-      {% endfor %}
-    </div>
-    <div class="cmd-panels">
-      {% for c in commands %}
-      <div class="cmd-panel" role="tabpanel" id="panel-{{ loop.index }}" aria-labelledby="tab-{{ loop.index }}"{% if c.name != selected %} hidden{% endif %}>
-        <p class="panel-desc">{{ c.description }}</p>
-        {% if previews[c.name] %}
-        {{ message(c.name, previews[c.name], avatar, stamp) }}
-        {% else %}
-        <p class="empty">미리보기를 준비하고 있습니다.</p>
-        {% endif %}
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-</section>
 {% endblock %}

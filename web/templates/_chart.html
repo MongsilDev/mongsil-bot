@@ -1,3 +1,5 @@
+{% macro num(value, unit='') %}<span class="n">{{ value|number }}</span>{% if unit %}<span class="u">{{ unit }}</span>{% endif %}{% endmacro %}
+
 {% macro columns(chart, name, unit='회', tone='') %}
 <figure class="chart{% if tone %} chart-{{ tone }}{% endif %}">
   <div class="plot" tabindex="0" role="group" aria-label="{{ name }}, 방향키로 날짜 이동">
@@ -45,34 +47,34 @@
 </div>
 {% endmacro %}
 
-{% macro kpi(label, item, note=none, tone='') %}
-<div class="kpi{% if tone %} kpi-{{ tone }}{% endif %}">
-  <span class="kpi-label">{{ label }}</span>
-  <strong class="kpi-value">{{ item.value|number }}</strong>
-  <span class="kpi-foot">
-    {% if item.delta %}<span class="delta delta-{{ item.delta.dir }}">{{ item.delta.text }}</span><span>지난 30일보다</span>
-    {% elif note %}<span>{{ note }}</span>
-    {% elif item.since %}<span>{{ item.since|mdate }}부터 기록</span>{% endif %}
-  </span>
+{# 점수판 한 칸. 지난 기간 대비가 있으면 같이 #}
+{% macro stat(label, item, unit='회') %}
+<div class="stat">
+  <dt>{{ label }}</dt>
+  <dd>
+    <span class="stat-value">{{ num(item.value, unit) }}</span>
+    {% if item.delta %}<span class="delta delta-{{ item.delta.dir }}">지난 30일보다 {{ item.delta.text }}</span>
+    {% elif item.since %}<span class="stat-note">{{ item.since|mdate }}부터 기록</span>{% endif %}
+  </dd>
 </div>
 {% endmacro %}
 
 {% macro trend(usage, label='명령어') %}
-<section class="card card-trend" aria-labelledby="trend-title">
-  <div class="card-head">
+<section class="trend" aria-labelledby="trend-title">
+  <div class="sec-head">
     <h2 id="trend-title">일별 추이</h2>
-    <div class="seg" role="tablist" aria-label="추이 종류">
+    <div class="tabs" role="tablist" aria-label="추이 종류">
       <button type="button" role="tab" id="tab-cmd" aria-selected="true" aria-controls="chart-cmd">{{ label }}</button>
       <button type="button" role="tab" id="tab-zoom" aria-selected="false" aria-controls="chart-zoom" tabindex="-1">이모지 확대</button>
     </div>
   </div>
   <div id="chart-cmd" role="tabpanel" aria-labelledby="tab-cmd">
     {{ columns(usage.cmd_chart, label + ' 실행') }}
-    {% if usage.cmd_since %}<p class="card-note">{{ usage.cmd_since|mdate }}부터 기록했습니다.</p>{% endif %}
+    {% if usage.cmd_since %}<p class="note">{{ usage.cmd_since|mdate }}부터 기록했습니다.</p>{% endif %}
   </div>
   <div id="chart-zoom" role="tabpanel" aria-labelledby="tab-zoom" hidden>
     {{ columns(usage.zoom_chart, '이모지 확대', tone='lavender') }}
-    {% if usage.zoom_since %}<p class="card-note">{{ usage.zoom_since|mdate }}부터 기록했습니다.</p>{% endif %}
+    {% if usage.zoom_since %}<p class="note">{{ usage.zoom_since|mdate }}부터 기록했습니다.</p>{% endif %}
   </div>
 </section>
 {% endmacro %}

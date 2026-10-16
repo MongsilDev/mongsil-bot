@@ -83,7 +83,7 @@ if (account) {
   });
 }
 
-const tablist = document.querySelector('.cmd-list[role="tablist"]');
+const tablist = document.querySelector('.cmd-tabs[role="tablist"]');
 if (tablist) {
   const tabs = [...tablist.querySelectorAll('[role="tab"]')];
   const select = (tab, focus) => {
@@ -94,7 +94,7 @@ if (tablist) {
       document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
     }
     if (focus) tab.focus();
-    tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    tab.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
   };
   tablist.addEventListener('click', (e) => {
     const tab = e.target.closest('[role="tab"]');
@@ -110,7 +110,7 @@ if (tablist) {
   });
 }
 
-for (const seg of document.querySelectorAll('.seg[role="tablist"]')) {
+for (const seg of document.querySelectorAll('.tabs[role="tablist"]')) {
   const tabs = [...seg.querySelectorAll('[role="tab"]')];
   const select = (tab, focus) => {
     for (const t of tabs) {

@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#0c0d1a">
 <title>{% block title %}몽실봇{% endblock %}</title>
 <link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/static/fonts/pretendard/pretendardvariable-dynamic-subset.css">
 <link rel="stylesheet" href="/static/style.css?v={{ static_version }}">
 <link rel="stylesheet" href="/static/discord.css?v={{ static_version }}">
 {% if session %}
@@ -14,43 +15,58 @@
 {% endif %}
 <script src="/static/app.js?v={{ static_version }}" defer></script>
 </head>
-<body>
+<body{% if rail is not none %} class="has-rail"{% endif %}>
 <header class="bar">
-  <div class="bar-inner">
-    <a class="wordmark" href="/"><img src="{{ bot_avatar(64) }}" alt="" width="28" height="28">몽실봇</a>
-    <nav class="nav">
-      {% if session %}
-      <a href="/servers"{% if path.startswith('/servers') %} aria-current="page"{% endif %}>내 서버</a>
-      {% if is_owner %}
-      <a href="/admin"{% if path == '/admin' %} aria-current="page"{% endif %}>운영 현황</a>
-      {% endif %}
-      <details class="account">
-        <summary aria-label="계정"><img src="{{ session_avatar(session) }}" alt="" width="30" height="30"></summary>
-        <div class="account-menu">
-          <span class="account-name">{{ session.username }}</span>
-          <form method="post" action="/logout">
-            <input type="hidden" name="csrf" value="{{ session.csrf }}">
-            <button type="submit">로그아웃</button>
-          </form>
-        </div>
-      </details>
-      {% else %}
-      <a class="btn btn-small" href="/login">로그인</a>
-      {% endif %}
-    </nav>
-  </div>
+  <a class="wordmark" href="/"><img src="{{ bot_avatar(64) }}" alt="" width="28" height="28">몽실봇</a>
+  <nav class="nav" aria-label="계정">
+    {% if session %}
+    {% if rail is none %}<a href="/servers">내 서버</a>{% endif %}
+    <details class="account">
+      <summary aria-label="계정 메뉴"><img src="{{ session_avatar(session) }}" alt="" width="30" height="30"></summary>
+      <div class="account-menu">
+        <span class="account-name">{{ session.username }}</span>
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf" value="{{ session.csrf }}">
+          <button type="submit">로그아웃</button>
+        </form>
+      </div>
+    </details>
+    {% else %}
+    <a class="btn btn-small" href="/login">로그인</a>
+    {% endif %}
+  </nav>
 </header>
-<main class="{% block main_class %}page{% endblock %}">
-{% block main %}{% endblock %}
-</main>
+<div class="shell">
+  {% if rail is not none %}
+  <nav class="rail" aria-label="서버 이동">
+    <a class="rail-item" href="/servers" title="내 서버"{% if path == '/servers' %} aria-current="page"{% endif %}>
+      <span class="rail-glyph"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="2" y="2" width="7.5" height="7.5" rx="2.2" fill="currentColor"/><rect x="12.5" y="2" width="7.5" height="7.5" rx="2.2" fill="currentColor"/><rect x="2" y="12.5" width="7.5" height="7.5" rx="2.2" fill="currentColor"/><rect x="12.5" y="12.5" width="7.5" height="7.5" rx="2.2" fill="currentColor"/></svg></span>
+      <span class="rail-tip">내 서버</span>
+    </a>
+    {% if rail %}<hr>{% endif %}
+    {% for g in rail %}
+    <a class="rail-item" href="/servers/{{ g.id }}" title="{{ g.name }}"{% if path == '/servers/' ~ g.id %} aria-current="page"{% endif %}>
+      {% if g.icon %}<img src="{{ g.icon }}" alt="" width="44" height="44" loading="lazy">{% else %}<span class="rail-glyph">{{ g.name|initials }}</span>{% endif %}
+      <span class="rail-tip">{{ g.name }}</span>
+    </a>
+    {% endfor %}
+    {% if is_owner %}
+    <hr>
+    <a class="rail-item" href="/admin" title="운영 현황"{% if path == '/admin' %} aria-current="page"{% endif %}>
+      <span class="rail-glyph"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M3 19V12M8.5 19V4M14 19v-9M19.5 19V7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg></span>
+      <span class="rail-tip">운영 현황</span>
+    </a>
+    {% endif %}
+  </nav>
+  {% endif %}
+  <main class="{% block main_class %}page{% endblock %}">
+  {% block main %}{% endblock %}
+  </main>
+</div>
 <footer class="foot">
-  <div class="foot-inner">
-    <span class="foot-name"><img src="{{ bot_avatar(64) }}" alt="" width="20" height="20">몽실봇</span>
-    <nav class="foot-links">
-      <a href="{{ support_server }}">지원 서버</a>
-      <a href="https://mongsil.dev">mongsil.dev</a>
-    </nav>
-  </div>
+  <span>몽실봇</span>
+  <a href="{{ support_server }}">지원 서버</a>
+  <a href="https://mongsil.dev">mongsil.dev</a>
 </footer>
 </body>
 </html>

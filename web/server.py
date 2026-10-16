@@ -109,6 +109,7 @@ def render(request: web.Request, name: str, status: int = 200, **context) -> web
         session=session,
         is_owner=bool(session) and session['user_id'] in owner_ids(),
         path=request.path,
+        rail=context.pop('rail', None),
         **context,
     )
     return web.Response(text=html, status=status, content_type='text/html')
@@ -321,6 +322,22 @@ def can_manage(g: dict) -> bool:
     return g.get('owner') or bool(perms & (ADMINISTRATOR | MANAGE_GUILD))
 
 
+async def rail(request: web.Request) -> list[dict] | None:
+    """왼쪽 서버 줄. 몽실봇이 있고 관리 권한이 있는 서버를 30일 사용량 순으로"""
+    if not request['session']:
+        return None
+    since = int(time.time()) - 30 * 86400
+    usage = dict(db.execute(
+        "SELECT guild_id, COUNT(*) FROM command_log WHERE ts >= ? GROUP BY guild_id", (since,)).fetchall())
+    items = []
+    for g in await user_guilds(request):
+        gid = int(g['id'])
+        if can_manage(g) and client.get_guild(gid):
+            items.append({'id': gid, 'name': g['name'], 'icon': guild_icon(gid, g.get('icon')), 'usage': usage.get(gid, 0)})
+    items.sort(key=lambda g: -g['usage'])
+    return items
+
+
 # ---------- 로그인 ----------
 
 async def login(request: web.Request):
@@ -459,7 +476,7 @@ async def servers(request: web.Request):
             others.append(item)
     # 많이 쓰는 서버가 위로, 같으면 이름순
     joined.sort(key=lambda g: -(g['usage'] + g['zooms']))
-    return render(request, 'servers.html', joined=joined, others=others)
+    return render(request, 'servers.html', joined=joined, others=others, rail=joined)
 
 
 async def managed_guild(request: web.Request) -> discord.Guild:
@@ -533,6 +550,7 @@ async def server_detail(request: web.Request):
 
     return render(
         request, 'server.html',
+        rail=await rail(request),
         guild={'id': guild.id, 'name': guild.name, 'icon': guild_icon(guild.id, guild.icon and guild.icon.key),
                'members': guild.member_count,
                'joined_at': guild.me.joined_at.astimezone(KST) if guild.me and guild.me.joined_at else None},
@@ -618,6 +636,7 @@ async def admin(request: web.Request):
 
     return render(
         request, 'admin.html',
+        rail=await rail(request),
         guild_count=len(client.guilds),
         joins=joins,
         leaves=leaves,
