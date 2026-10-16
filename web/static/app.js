@@ -68,7 +68,7 @@ for (const select of document.querySelectorAll('select[data-key]')) {
     select.disabled = true;
     showState(select, '');
     try {
-      await send(settingsUrl, { key: select.dataset.key, value: Number(select.value) });
+      await send(settingsUrl, { key: select.dataset.key, value: select.value });
       select.dataset.saved = select.value;
       showState(select, '저장했습니다.');
       if (select.dataset.key === 'alert_cut') {
