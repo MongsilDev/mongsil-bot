@@ -52,7 +52,7 @@ for (const sw of document.querySelectorAll('.switch[data-url]')) {
     try {
       const body = await send(sw.dataset.url, { enabled: next });
       sw.setAttribute('aria-checked', String(body.enabled));
-      showState(sw, body.enabled ? '켰습니다.' : '껐습니다.');
+      showState(sw, body.enabled ? '켜짐' : '꺼짐');
     } catch (e) {
       sw.setAttribute('aria-checked', String(!next));
       showState(sw, failText(e), 'error');
@@ -70,7 +70,7 @@ for (const select of document.querySelectorAll('select[data-key]')) {
     try {
       await send(settingsUrl, { key: select.dataset.key, value: select.value });
       select.dataset.saved = select.value;
-      showState(select, '저장했습니다.');
+      showState(select, '저장됨');
       if (select.dataset.key === 'alert_cut') {
         const hour = select.closest('.controls').querySelector('[data-key="cut_hour"]');
         hour.disabled = select.value === '0';
@@ -106,7 +106,7 @@ for (const scope of document.querySelectorAll('[data-scope]')) {
     try {
       await send(settingsUrl, { key: scope.dataset.scope, value: { mode: mode(), channels: chosen() } });
       saved = { mode: mode(), channels: chosen().join() };
-      showState(scope, '저장했습니다.');
+      showState(scope, '저장됨');
     } catch (e) {
       showState(scope, failText(e), 'error');
     }

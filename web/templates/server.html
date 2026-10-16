@@ -22,7 +22,7 @@
         {% endfor %}
       </div>
       {% else %}
-      <p class="empty">몽실봇이 볼 수 있는 채널이 없습니다.</p>
+      <p class="empty">몽실봇이 볼 수 있는 채널 없음</p>
       {% endfor %}
     </div>
     <div class="picker-foot">
@@ -65,9 +65,9 @@
           {% endfor %}
         </ul>
         {% if not can_webhook %}
-        <p class="notice">웹후크 관리 권한이 없어 이모지 확대가 동작하지 않습니다. 몽실봇 역할에 권한을 준 뒤 새로고침해주세요.</p>
+        <p class="notice">웹후크 관리 권한 없음. 몽실봇 역할에 권한을 준 뒤 새로고침해주세요.</p>
         {% elif zoom_blocked %}
-        <p class="notice">{{ zoom_blocked[:5]|join(', ') }}{% if zoom_blocked|length > 5 %} 외 {{ zoom_blocked|length - 5 }}개{% endif %} 채널은 웹후크 관리 권한이 막혀 있어 확대되지 않습니다. 채널 권한에서 몽실봇에 웹후크 관리를 허용해주세요.</p>
+        <p class="notice">{{ zoom_blocked[:5]|join(', ') }}{% if zoom_blocked|length > 5 %} 외 {{ zoom_blocked|length - 5 }}개{% endif %} 채널은 웹후크 관리 권한이 막혀 확대 불가. 채널 권한에서 몽실봇에 웹후크 관리를 허용해주세요.</p>
         {% endif %}
         <p class="save-state" role="status"></p>
       </div>
@@ -92,7 +92,7 @@
           {% endfor %}
         </select>
         {% if not can_invites %}
-        <p class="notice">서버 관리 권한이 없어 초대 링크를 정리할 수 없습니다. 몽실봇 역할에 권한을 준 뒤 새로고침해주세요.</p>
+        <p class="notice">서버 관리 권한 없음. 몽실봇 역할에 권한을 준 뒤 새로고침해주세요.</p>
         {% endif %}
         <p class="save-state" role="status"></p>
       </div>
@@ -161,7 +161,7 @@
         {% endfor %}
       </ul>
       {% else %}
-      <p class="empty">최근 30일 동안 실행한 명령어가 없습니다.</p>
+      <p class="empty">최근 30일 명령어 기록 없음</p>
       {% endif %}
     </section>
 
@@ -172,7 +172,7 @@
         <li{% if c.bot %} class="by-bot"{% endif %}><p>{{ c.text }}</p><span class="change-meta">{{ c.meta }}</span></li>
         {% endfor %}
       </ol>
-      {% if not changes %}<p class="empty changes-empty">아직 바꾼 설정이 없습니다.</p>{% endif %}
+      {% if not changes %}<p class="empty changes-empty">변경 기록 없음</p>{% endif %}
     </section>
   </aside>
 

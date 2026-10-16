@@ -105,7 +105,7 @@ def patch_layout(article: dict) -> ui.LayoutView:
 
 def maintenance_layout(kind: str, article: dict, window: Optional[str]) -> ui.LayoutView:
     head = {'notice': '점검 안내', 'extended': '점검 연장', 'done': '점검 완료'}[kind]
-    body = "점검이 끝났습니다. 게임을 다시 시작해주세요." if kind == 'done' else window or _title(article)
+    body = "게임을 다시 시작해주세요." if kind == 'done' else window or _title(article)
     view = ui.LayoutView(timeout=None)
     view.add_item(ui.Container(ui.TextDisplay(f"### {head}\n{body}"),
                                accent_colour=visual.colour('concurrent' if kind == 'done' else 'season')))

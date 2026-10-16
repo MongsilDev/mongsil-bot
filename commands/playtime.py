@@ -279,7 +279,7 @@ async def get_playtime_info(client: ERClient, nickname: str, user_id: Optional[s
 def no_playtime_layout(nickname: str) -> ui.LayoutView:
     view = ui.LayoutView()
     view.add_item(ui.Container(
-        ui.TextDisplay(f"### {nickname}\n최근 7일 플레이 기록이 없습니다."),
+        ui.TextDisplay(f"### {nickname}\n최근 7일 플레이 기록 없음"),
         accent_colour=visual.colour('playtime'),
     ))
     view.add_item(dakgg_row(nickname))
