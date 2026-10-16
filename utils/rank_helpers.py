@@ -127,7 +127,7 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
             return top_ranks
         else:
             error_msg = data.get('message') if data else 'No response'
-            logger.error(f"랭킹 API 오류: {error_msg}")
+            logger.warning(f"랭킹 API 오류: {error_msg}")
             return None
     except Exception as e:
         logger.error(f"랭킹 API 실패: {e}", exc_info=True)

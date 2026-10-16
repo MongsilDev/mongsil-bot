@@ -102,7 +102,7 @@ async def fetch_season_data(season_id: Optional[int] = None) -> Optional[Dict[st
         data = await api_client.get(url, use_cache=True, ttl=1800)
 
         if not data:
-            logger.error("시즌 API 응답 없음")
+            logger.warning("시즌 API 응답 없음")
             return None
 
         # API 응답 형식 유연하게 처리 (data 필드가 리스트인 경우와 아닌 경우)
@@ -111,7 +111,7 @@ async def fetch_season_data(season_id: Optional[int] = None) -> Optional[Dict[st
             season_list = [season_list] if season_list else []
 
         if not season_list:
-            logger.error("시즌 데이터 없음")
+            logger.warning("시즌 데이터 없음")
             return None
 
         # 특정 season_id를 찾는 경우

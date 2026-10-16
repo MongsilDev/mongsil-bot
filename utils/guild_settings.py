@@ -105,11 +105,14 @@ def state(key: str, default: Any = None) -> Any:
     return json.loads(row['value']) if row else default
 
 
-def set_state(key: str, value: Any) -> None:
+def set_state(key: str, value: Any) -> bool:
+    """알림 중복 방지가 이 저장에 기대므로 실패하면 False를 돌려 전송을 막게 함"""
     try:
         db.execute("INSERT OR REPLACE INTO bot_state VALUES (?, ?)", (key, json.dumps(value, ensure_ascii=False)))
+        return True
     except sqlite3.Error as e:
-        logger.warning(f"상태 저장 실패: {key} {e}")
+        logger.error(f"상태 저장 실패: {key} {e}")
+        return False
 
 
 def zoom_allowed(guild_id: int, channel_id: int) -> bool:

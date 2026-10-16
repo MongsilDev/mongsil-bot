@@ -101,7 +101,7 @@ async def _fetch_games(client, user_id: str, start_date: datetime.date,
 
             data = await client.api_client.get(url, use_cache=True, ttl=300)
             if not data:
-                logger.error("게임 기록 조회 실패")
+                logger.warning("게임 기록 조회 실패")
                 return games, False
             if data.get('message') in ('User Not Found', 'Unauthorized'):
                 client.api_client.uncache(url)

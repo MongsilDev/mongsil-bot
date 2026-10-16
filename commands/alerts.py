@@ -2,6 +2,7 @@
 서버 알림. 패치 노트, 점검, 매일 이터컷을 서버가 고른 채널에 올림
 """
 import asyncio
+import logging
 import re
 import time
 from datetime import datetime
@@ -118,6 +119,7 @@ class Alerts(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
         self._cut_view = None
+        self._failures: dict = {}
         self._cut_key = None
         self.watch_news.start()
         self.daily_cut.start()
@@ -132,16 +134,18 @@ class Alerts(commands.Cog):
         logger.warning(f"알림 끔: {guild_id} {key} {reason}")
 
     async def deliver(self, key: str, make: Callable[[], ui.LayoutView], only: Optional[Set[int]] = None) -> int:
-        sent = 0
-        for guild_id, channel_id in guild_settings.guilds_with(key):
-            if only is not None and guild_id not in only:
-                continue
+        targets = [(g, c) for g, c in guild_settings.guilds_with(key) if only is None or g in only]
+        sent = failed = skipped = 0
+        for guild_id, channel_id in targets:
             guild = self.client.get_guild(guild_id)
-            if guild is None:
+            # 기동 직후나 디스코드 장애 때는 채널 정보가 없어 삭제로 오판하지 않게 건너뜀
+            if guild is None or guild.unavailable:
+                skipped += 1
                 continue
             channel = guild.get_channel(channel_id)
             if not isinstance(channel, discord.TextChannel):
                 self.turn_off(guild_id, key, "채널 삭제됨")
+                failed += 1
                 continue
             view = make()
             try:
@@ -149,18 +153,30 @@ class Alerts(commands.Cog):
                 sent += 1
             except discord.Forbidden:
                 self.turn_off(guild_id, key, "채널 권한 없음")
-            except discord.HTTPException as e:
+                failed += 1
+            except Exception as e:
                 logger.warning(f"알림 전송 실패: {guild_id} {key} {type(e).__name__}: {e}")
+                failed += 1
             await asyncio.sleep(0.2)
+        if targets:
+            logger.info(f"알림 전송 {key}: 보냄 {sent}, 실패 {failed}, 건너뜀 {skipped}")
         return sent
+
+    def note_failure(self, name: str, e: Exception):
+        """연속 6번 실패하면 ERROR로 올려 Sentry에 남김. 공식 사이트 형식이 바뀐 경우 등"""
+        count = self._failures.get(name, 0) + 1
+        self._failures[name] = count
+        level = logging.ERROR if count == 6 else logging.WARNING
+        logger.log(level, f"{name} 실패 {count}회 연속: {type(e).__name__}: {e}")
 
     @tasks.loop(minutes=5)
     async def watch_news(self):
-        try:
-            await self.check_patches()
-            await self.check_maintenance()
-        except Exception as e:
-            logger.warning(f"공식 소식 확인 실패: {type(e).__name__}: {e}")
+        for name, check in (('패치 노트 확인', self.check_patches), ('점검 공지 확인', self.check_maintenance)):
+            try:
+                await check()
+                self._failures[name] = 0
+            except Exception as e:
+                self.note_failure(name, e)
 
     async def check_patches(self):
         articles = (await api_client.get(NEWS.format('patchnote'), use_cache=False))['articles']
@@ -173,11 +189,12 @@ class Alerts(commands.Cog):
         new = [a for a in articles if a['id'] not in seen]
         if not new:
             return
-        guild_settings.set_state('seen_patches', (ids + [i for i in seen if i not in ids])[:60])
+        if not guild_settings.set_state('seen_patches', (ids + [i for i in seen if i not in ids])[:60]):
+            return
         for article in sorted(new, key=lambda a: a['id']):
             if _recent(article):
-                sent = await self.deliver('alert_patch', lambda: patch_layout(article))
-                logger.info(f"패치 노트 알림 {_title(article)}, {sent}개 서버")
+                logger.info(f"패치 노트 알림 시작: {_title(article)}")
+                await self.deliver('alert_patch', lambda: patch_layout(article))
 
     async def check_maintenance(self):
         articles = (await api_client.get(NEWS.format('news'), use_cache=False))['articles']
@@ -190,7 +207,8 @@ class Alerts(commands.Cog):
         if not changed:
             return
         seen.update({str(a['id']): kind for a, kind in changed})
-        guild_settings.set_state('seen_maintenance', dict(list(seen.items())[-30:]))
+        if not guild_settings.set_state('seen_maintenance', dict(list(seen.items())[-30:])):
+            return
         for article, kind in sorted(changed, key=lambda c: c[0]['id']):
             if not _recent(article):
                 continue
@@ -198,10 +216,11 @@ class Alerts(commands.Cog):
             if kind == 'done':
                 if time.time() - guild_settings.state('maintenance_done_at', 0) < 6 * 3600:
                     continue
-                guild_settings.set_state('maintenance_done_at', time.time())
+                if not guild_settings.set_state('maintenance_done_at', time.time()):
+                    continue
             window = None if kind == 'done' else await maintenance_window(article['id'])
-            sent = await self.deliver('alert_maintenance', lambda: maintenance_layout(kind, article, window))
-            logger.info(f"점검 알림 {kind} {_title(article)}, {sent}개 서버")
+            logger.info(f"점검 알림 시작: {kind} {_title(article)}")
+            await self.deliver('alert_maintenance', lambda: maintenance_layout(kind, article, window))
 
     async def cut_view(self) -> Optional[ui.LayoutView]:
         from commands.rating import create_rating_layout, fetch_rating_info, season_end_for
@@ -219,6 +238,12 @@ class Alerts(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def daily_cut(self):
+        try:
+            await self.post_daily_cut()
+        except Exception as e:
+            self.note_failure('매일 이터컷', e)
+
+    async def post_daily_cut(self):
         subs = guild_settings.guilds_with('alert_cut')
         if not subs:
             return
@@ -228,20 +253,20 @@ class Alerts(commands.Cog):
         due = {gid for gid, _ in subs if guild_settings.get(gid, 'cut_hour') == now.hour and posted.get(str(gid)) != today}
         if not due:
             return
-        try:
-            # 같은 시각 서버들은 같은 카드를 받음
-            if self._cut_key != (today, now.hour) or self._cut_view is None:
-                self._cut_view, self._cut_key = await self.cut_view(), (today, now.hour)
-        except Exception as e:
-            logger.warning(f"이터컷 카드 생성 실패: {type(e).__name__}: {e}")
-            return
-        if self._cut_view is None:
-            return
+        # 같은 시각 서버들은 같은 카드를 받음
+        if self._cut_key != (today, now.hour) or self._cut_view is None:
+            first = self._cut_key != (today, now.hour)
+            self._cut_view, self._cut_key = await self.cut_view(), (today, now.hour)
+            if self._cut_view is None:
+                if first:
+                    logger.info(f"매일 이터컷 {now.hour}시: 컷 정보가 없어 다음 분에 다시 시도")
+                return
         posted.update({str(gid): today for gid in due})
-        guild_settings.set_state('cut_posted', posted)
+        if not guild_settings.set_state('cut_posted', posted):
+            return
         view = self._cut_view
-        sent = await self.deliver('alert_cut', lambda: view, only=due)
-        logger.info(f"매일 이터컷 {sent}개 서버")
+        await self.deliver('alert_cut', lambda: view, only=due)
+        self._failures['매일 이터컷'] = 0
 
     @watch_news.before_loop
     @daily_cut.before_loop

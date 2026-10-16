@@ -122,7 +122,8 @@ class OptimizedAPIClient:
                         if response.status == 200:
                             data = await response.json()
                             elapsed = (time.perf_counter() - started) * 1000
-                            if elapsed >= SLOW_REQUEST_MS:
+                            # 동물 사진 API는 원래 느려 bser 기준으로 기록하지 않음
+                            if elapsed >= SLOW_REQUEST_MS and url.startswith('https://open-api.bser.io'):
                                 logger.info(f"느린 요청 {elapsed:.0f}ms {url.split('?')[0]}")
                             # bser는 실패도 HTTP 200에 본문 code로 알림. 점검 중 실패가 점검 뒤까지 남지 않게 캐시하지 않음
                             if use_cache and not (isinstance(data, dict) and data.get('code', 200) != 200):
