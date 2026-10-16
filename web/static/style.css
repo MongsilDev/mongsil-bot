@@ -1139,6 +1139,10 @@ a.grow:hover {
   vertical-align: top;
 }
 
+.doc .doc-table .nw {
+  white-space: nowrap;
+}
+
 .doc .doc-table td:first-child {
   color: var(--fg);
 }
