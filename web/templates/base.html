@@ -6,6 +6,13 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#14162c">
 <title>{% block title %}몽실봇{% endblock %}</title>
+<meta name="description" content="이터널 리턴 전적, 랭킹, 이터컷을 보여 주는 디스코드 봇">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="몽실봇">
+<meta property="og:title" content="{{ self.title() }}">
+<meta property="og:description" content="이터널 리턴 전적, 랭킹, 이터컷을 보여 주는 디스코드 봇">
+<meta property="og:image" content="{{ bot_avatar(256) }}">
+<meta name="twitter:card" content="summary">
 <link rel="icon" href="/favicon.ico">
 <link rel="stylesheet" href="/static/fonts/pretendard/pretendardvariable-dynamic-subset.css">
 <link rel="stylesheet" href="/static/style.css?v={{ static_version }}">

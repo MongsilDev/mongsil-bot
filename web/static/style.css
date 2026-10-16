@@ -8,7 +8,7 @@
   --line-strong: #3c4272;
   --fg: #eeeef8;
   --muted: #a3a5c4;
-  --faint: #6f7296;
+  --faint: #888bb0;
   --rose: #e8508a;
   --lavender: #b9bbf2;
   --discord: #5865f2;
@@ -1264,6 +1264,11 @@ a.grow:hover {
   background: var(--surface);
 }
 
+.picker-filter:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: -2px;
+}
+
 .picker-list {
   max-height: 268px;
   overflow-y: auto;
@@ -1890,6 +1895,39 @@ a.grow:hover {
 @media (max-width: 760px) {
   .bar {
     padding: 0 16px;
+  }
+
+  .doc .doc-table thead {
+    display: none;
+  }
+
+  .doc .doc-table tr {
+    display: block;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .doc .doc-table td {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 10px;
+    padding: 3px 0;
+    border: 0;
+  }
+
+  .doc .doc-table td::before {
+    content: attr(data-label);
+    color: var(--faint);
+    font-size: 13px;
+  }
+
+  .foot a,
+  .account-menu button {
+    padding: 10px 0;
+  }
+
+  .tabs button {
+    padding: 10px 0 12px;
   }
 
   .setting > .select,
