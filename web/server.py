@@ -119,7 +119,7 @@ env.filters['numdate'] = lambda d: d.strftime('%Y.%m.%d')
 env.filters['mdate'] = lambda d: f"{d.month}월 {d.day}일" if d.year == datetime.now(KST).year else f"{d.year}년 {d.month}월 {d.day}일"
 env.filters['shortdate'] = lambda d: f"{d.month}월 {d.day}일 {d:%H:%M}"
 env.globals['session_avatar'] = lambda s: avatar_url(s['user_id'], s['avatar'])
-env.globals['support_server'] = config.support_server
+env.globals['support_server'] = '/support'
 env.globals['bot_avatar'] = lambda size: client.user.display_avatar.with_size(size).url if client.user else '/favicon.ico'
 env.globals['static_version'] = str(int(max(f.stat().st_mtime for f in (ROOT / 'static').iterdir())))
 
@@ -953,9 +953,9 @@ async def health(request: web.Request):
                              status=200 if ok else 503)
 
 
-def redirect_to(path: str):
+def redirect_to(path: str, permanent: bool = True):
     async def handler(request: web.Request):
-        raise web.HTTPMovedPermanently(path)
+        raise (web.HTTPMovedPermanently if permanent else web.HTTPFound)(path)
     return handler
 
 
@@ -1011,6 +1011,8 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
     app.router.add_get('/preview/{key}.png', preview_image)
     app.router.add_get('/terms', document('terms.html'))
     app.router.add_get('/privacy', document('privacy.html'))
+    app.router.add_get('/support', redirect_to(config.support_server, permanent=False))
+    app.router.add_get('/discord', redirect_to(config.support_server, permanent=False))
     app.router.add_get('/tos', redirect_to('/terms'))
     app.router.add_get('/privacy-policy', redirect_to('/privacy'))
     app.router.add_get('/speculation.json', speculation)
