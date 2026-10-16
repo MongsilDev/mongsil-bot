@@ -14,6 +14,7 @@ from utils.errors import handle_errors
 from utils.logging_config import get_logger
 from utils.emoji_zoom import load_disabled_servers, save_disabled_servers, schedule_webhook_removal
 from utils.emojis import EMOJIS
+from commands.alerts import channel_ok, hour_label
 from utils import guild_settings, usage_db, visual
 
 logger = get_logger('설정')
@@ -30,82 +31,130 @@ def guild_usage(guild_id: int) -> List[Tuple[str, int]]:
     return [(r['command'], r['n']) for r in rows]
 
 
+def scope_text(guild_id: int, prefix: str) -> str:
+    mode = guild_settings.get(guild_id, f'{prefix}_mode')
+    channels = guild_settings.get(guild_id, f'{prefix}_channels')
+    if mode == 'all' or not channels:
+        return "모든 채널"
+    where = ", ".join(f"<#{c}>" for c in channels[:3]) + (f" 외 {len(channels) - 3}개" if len(channels) > 3 else "")
+    return f"{where}만" if mode == 'only' else f"{where} 빼고 모든 채널"
+
+
 class SettingsView(CooldownLayoutView):
-    def __init__(self, guild_id: int):
+    def __init__(self, guild_id: int, channel_id: int = 0):
         super().__init__(timeout=config.view_timeout_interactive)
         self.guild_id = guild_id
+        self.channel_id = channel_id
         self.build_layout()
 
     def build_layout(self):
         self.clear_items()
-        disabled_servers = load_disabled_servers()
-        is_enabled = self.guild_id not in disabled_servers
+        gid = self.guild_id
+        is_enabled = gid not in load_disabled_servers()
 
-        status = "켜짐" if is_enabled else "꺼짐"
-        status_emoji = EMOJIS['on'] if is_enabled else EMOJIS['off']
+        container = ui.Container(ui.TextDisplay("### 서버 설정"), accent_colour=visual.colour('info'))
+        zooms = usage_db.zoom_count(gid)
+        zoom_note = [scope_text(gid, 'zoom')] + ([f"최근 30일 {zooms:,}회 확대"] if zooms else [])
+        container.add_item(ui.Section(
+            ui.TextDisplay(f"**이모지 확대** {EMOJIS['on'] if is_enabled else EMOJIS['off']} {'켜짐' if is_enabled else '꺼짐'}\n"
+                           f"-# {' | '.join(zoom_note)}"),
+            accessory=ui.Button(style=discord.ButtonStyle.danger if is_enabled else discord.ButtonStyle.success,
+                                label="끄기" if is_enabled else "켜기", custom_id="toggle_emoji")))
+        days = guild_settings.get(gid, 'invite_days')
+        container.add_item(ui.TextDisplay(
+            f"**명령어 채널** {scope_text(gid, 'command')}\n"
+            f"**초대 링크 정리** {f'만든 지 {days}일 지난 링크를 지움' if days else '꺼짐'}\n"
+            "-# 채널 지정과 정리 기간은 대시보드에서 바꿀 수 있습니다."))
 
-        container = ui.Container(accent_colour=visual.colour('info'))
-        zooms = usage_db.zoom_count(self.guild_id)
-        zoom_line = f"이모지 확대 {status_emoji} **{status}**" + (f"\n-# 최근 30일 {zooms:,}회 확대" if zooms else "")
-        container.add_item(ui.TextDisplay(f"### 서버 설정\n{zoom_line}"))
-        usage = guild_usage(self.guild_id)
+        container.add_item(ui.Separator())
+        container.add_item(ui.TextDisplay("### 알림"))
+        for key, name, desc in guild_settings.ALERTS:
+            current = guild_settings.get(gid, key)
+            where = f"<#{current}>" if current else "꺼짐"
+            if key == 'alert_cut' and current:
+                where += f" 매일 {hour_label(guild_settings.get(gid, 'cut_hour'))}"
+            here = bool(current) and current == self.channel_id
+            button = ui.Button(style=discord.ButtonStyle.secondary if here else discord.ButtonStyle.primary,
+                               label="끄기" if here else "이 채널로 받기", custom_id=f"alert:{key}")
+            container.add_item(ui.Section(ui.TextDisplay(f"**{name}** {where}\n-# {desc}"), accessory=button))
+
+        usage = guild_usage(gid)
         if usage:
             total = sum(n for _, n in usage)
             top = " | ".join(f"/{name} {n:,}" for name, n in usage[:3])
             container.add_item(ui.Separator())
-            container.add_item(ui.TextDisplay(f"최근 30일 사용 **{total:,}**회\n-# {top}"))
+            container.add_item(ui.TextDisplay(f"최근 30일 명령어 **{total:,}**회\n-# {top}"))
         self.add_item(container)
+        self.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="대시보드", emoji=EMOJIS['web'],
+                                             url=f"{config.dashboard_url}/servers/{gid}")))
 
-        if is_enabled:
-            btn = ui.Button(style=discord.ButtonStyle.danger, label="끄기", custom_id="toggle_emoji")
-        else:
-            btn = ui.Button(style=discord.ButtonStyle.success, label="켜기", custom_id="toggle_emoji")
-        dashboard = ui.Button(style=discord.ButtonStyle.link, label="대시보드", emoji=EMOJIS['web'],
-                              url=f"{config.dashboard_url}/servers/{self.guild_id}")
-        self.add_item(ui.ActionRow(btn, dashboard))
+    async def refuse(self, interaction: Interaction, text: str):
+        await interaction.response.send_message(view=create_error_layout(text), ephemeral=True)
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         if not await super().interaction_check(interaction):
             return False
 
-        custom_id = interaction.data.get("custom_id")
-        if custom_id != "toggle_emoji":
+        custom_id = interaction.data.get("custom_id", "")
+        key = custom_id.removeprefix("alert:")
+        if custom_id != "toggle_emoji" and key not in guild_settings.ALERT_NAMES:
             await interaction.response.defer()
             return False
 
-        if not interaction.user.guild_permissions.manage_guild:
-            error_layout = create_error_layout("서버 관리 권한이 있는 유저만 설정을 바꿀 수 있습니다.")
-            await interaction.response.send_message(view=error_layout, ephemeral=True)
+        if not interaction.permissions.manage_guild:
+            await self.refuse(interaction, "서버 관리 권한이 있는 유저만 설정을 바꿀 수 있습니다.")
             return False
 
-        # 토글 로직. 캐시 원본을 직접 바꾸면 저장 실패 시 메모리만 바뀐 채 남는다
+        if custom_id == "toggle_emoji":
+            text = await self.toggle_zoom(interaction)
+        else:
+            text = await self.set_alert(interaction, key)
+        if text is None:
+            return False
+        guild_settings.log(self.guild_id, text, interaction.user.id, interaction.user.display_name, 'discord')
+        # 카드가 새 상태를 바로 보여주므로 별도 완료 안내는 두지 않는다
+        self.build_layout()
+        await interaction.response.edit_message(view=self)
+        return False
+
+    async def toggle_zoom(self, interaction: Interaction):
+        # 캐시 원본을 직접 바꾸면 저장 실패 시 메모리만 바뀐 채 남는다
         disabled_servers = set(load_disabled_servers())
         current_enabled = self.guild_id not in disabled_servers
-
         if current_enabled:
             disabled_servers.add(self.guild_id)
         else:
             if not interaction.guild.me.guild_permissions.manage_webhooks:
-                error_layout = create_error_layout(
-                    "봇에 웹후크 관리 권한이 없어 이모지 확대를 켤 수 없습니다.\n몽실봇 역할에 웹후크 관리 권한을 준 뒤 다시 시도해주세요."
-                )
-                await interaction.response.send_message(view=error_layout, ephemeral=True)
-                return False
+                await self.refuse(interaction, "봇에 웹후크 관리 권한이 없어 이모지 확대를 켤 수 없습니다.\n"
+                                               "몽실봇 역할에 웹후크 관리 권한을 준 뒤 다시 시도해주세요.")
+                return None
             disabled_servers.discard(self.guild_id)
+        if not save_disabled_servers(disabled_servers):
+            await self.refuse(interaction, "설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.")
+            return None
+        if current_enabled:
+            schedule_webhook_removal(interaction.guild)
+        return f"이모지 확대를 {'껐' if current_enabled else '켰'}습니다"
 
-        if save_disabled_servers(disabled_servers):
-            if current_enabled:
-                schedule_webhook_removal(interaction.guild)
-            guild_settings.log(self.guild_id, f"이모지 확대를 {'껐' if current_enabled else '켰'}습니다",
-                               interaction.user.id, interaction.user.display_name, 'discord')
-            # 카드가 새 상태를 바로 보여주므로 별도 완료 안내는 두지 않는다
-            self.build_layout()
-            await interaction.response.edit_message(view=self)
+    async def set_alert(self, interaction: Interaction, key: str):
+        name = guild_settings.ALERT_NAMES[key]
+        if guild_settings.get(self.guild_id, key) == self.channel_id:
+            value, text = 0, f"{name} 알림을 껐습니다"
         else:
-            error_layout = create_error_layout("설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.")
-            await interaction.response.send_message(view=error_layout, ephemeral=True)
+            channel = interaction.channel
+            if not isinstance(channel, discord.TextChannel):
+                await self.refuse(interaction, "알림은 일반 채널이나 공지 채널에만 보낼 수 있습니다.")
+                return None
+            missing = channel_ok(channel, key == 'alert_cut')
+            if missing:
+                await self.refuse(interaction, f"몽실봇에 이 채널의 {', '.join(missing)} 권한이 없습니다. 권한을 준 뒤 다시 시도해주세요.")
+                return None
+            value, text = channel.id, f"{name} 알림을 #{channel.name} 채널로 정했습니다"
+        if not guild_settings.put(self.guild_id, key, value):
+            await self.refuse(interaction, "설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.")
+            return None
+        return text
 
-        return False
 
 class Settings(commands.Cog):
     def __init__(self, client: ERClient):
@@ -117,7 +166,7 @@ class Settings(commands.Cog):
     @handle_errors(user_message="설정을 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def settings_command(self, interaction: discord.Interaction):
         """서버의 봇 설정을 관리합니다."""
-        view = SettingsView(interaction.guild_id)
+        view = SettingsView(interaction.guild_id, interaction.channel_id)
         view.message = await sent_message(interaction, await interaction.response.send_message(view=view))
         mark_shown(interaction)
 

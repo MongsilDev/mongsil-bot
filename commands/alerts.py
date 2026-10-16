@@ -9,7 +9,7 @@ from typing import Callable, Optional, Set
 from zoneinfo import ZoneInfo
 
 import discord
-from discord import app_commands, ui
+from discord import ui
 from discord.ext import commands, tasks
 
 from client import ERClient
@@ -18,8 +18,6 @@ from utils.api_client import api_client
 from utils.character_names import CHARACTER_NAMES, refresh_character_names
 from utils.config import config
 from utils.emojis import EMOJIS
-from utils.errors import handle_errors
-from utils.layouts import create_error_layout, CooldownLayoutView, mark_shown, sent_message
 from utils.logging_config import get_logger
 
 logger = get_logger('알림')
@@ -128,68 +126,6 @@ def character_layout(code: int, key: str) -> ui.LayoutView:
     return view
 
 
-class AlertsView(CooldownLayoutView):
-    def __init__(self, guild_id: int, channel_id: int):
-        super().__init__(timeout=config.view_timeout_interactive)
-        self.guild_id = guild_id
-        self.channel_id = channel_id
-        self.build_layout()
-
-    def build_layout(self):
-        self.clear_items()
-        container = ui.Container(ui.TextDisplay("### 알림"), accent_colour=visual.colour('info'))
-        for key, name, _ in guild_settings.ALERTS:
-            current = guild_settings.get(self.guild_id, key)
-            where = f"<#{current}>" if current else "꺼짐"
-            if key == 'alert_cut' and current:
-                where += f" 매일 {hour_label(guild_settings.get(self.guild_id, 'cut_hour'))}"
-            here = bool(current) and current == self.channel_id
-            button = ui.Button(style=discord.ButtonStyle.secondary if here else discord.ButtonStyle.primary,
-                               label="끄기" if here else "이 채널로 받기", custom_id=f"alert:{key}")
-            container.add_item(ui.Section(ui.TextDisplay(f"**{name}**\n{where}"), accessory=button))
-        self.add_item(container)
-        self.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="대시보드", emoji=EMOJIS['web'],
-                                             url=f"{config.dashboard_url}/servers/{self.guild_id}")))
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if not await super().interaction_check(interaction):
-            return False
-        custom_id = interaction.data.get("custom_id", "")
-        key = custom_id.removeprefix("alert:")
-        if key not in guild_settings.ALERT_NAMES:
-            await interaction.response.defer()
-            return False
-
-        async def refuse(text: str):
-            await interaction.response.send_message(view=create_error_layout(text), ephemeral=True)
-
-        if not interaction.permissions.manage_guild:
-            await refuse("서버 관리 권한이 있는 유저만 알림을 바꿀 수 있습니다.")
-            return False
-
-        name = guild_settings.ALERT_NAMES[key]
-        if guild_settings.get(self.guild_id, key) == self.channel_id:
-            value, text = 0, f"{name} 알림을 껐습니다"
-        else:
-            channel = interaction.channel
-            if not isinstance(channel, discord.TextChannel):
-                await refuse("알림은 일반 채널이나 공지 채널에만 보낼 수 있습니다.")
-                return False
-            missing = channel_ok(channel, key == 'alert_cut')
-            if missing:
-                await refuse(f"몽실봇에 이 채널의 {', '.join(missing)} 권한이 없습니다. 권한을 준 뒤 다시 시도해주세요.")
-                return False
-            value, text = channel.id, f"{name} 알림을 #{channel.name} 채널로 정했습니다"
-
-        if not guild_settings.put(self.guild_id, key, value):
-            await refuse("설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.")
-            return False
-        guild_settings.log(self.guild_id, text, interaction.user.id, interaction.user.display_name, 'discord')
-        self.build_layout()
-        await interaction.response.edit_message(view=self)
-        return False
-
-
 class Alerts(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
@@ -203,15 +139,6 @@ class Alerts(commands.Cog):
         self.watch_news.cancel()
         self.watch_characters.cancel()
         self.daily_cut.cancel()
-
-    @app_commands.command(name="알림", description="서버 알림 채널")
-    @app_commands.guild_only()
-    @app_commands.default_permissions(manage_guild=True)
-    @handle_errors(user_message="알림 설정을 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
-    async def alerts_command(self, interaction: discord.Interaction):
-        view = AlertsView(interaction.guild_id, interaction.channel_id)
-        view.message = await sent_message(interaction, await interaction.response.send_message(view=view))
-        mark_shown(interaction)
 
     def turn_off(self, guild_id: int, key: str, reason: str):
         guild_settings.put(guild_id, key, 0)
