@@ -59,14 +59,16 @@
     {% endif %}
   </nav>
   {% endif %}
-  <main class="{% block main_class %}page{% endblock %}">
-  {% block main %}{% endblock %}
-  </main>
+  <div class="content">
+    <main class="{% block main_class %}page{% endblock %}">
+    {% block main %}{% endblock %}
+    </main>
+    <footer class="foot">
+      <span>몽실봇</span>
+      <a href="{{ support_server }}">지원 서버</a>
+      <a href="https://mongsil.dev">mongsil.dev</a>
+    </footer>
+  </div>
 </div>
-<footer class="foot">
-  <span>몽실봇</span>
-  <a href="{{ support_server }}">지원 서버</a>
-  <a href="https://mongsil.dev">mongsil.dev</a>
-</footer>
 </body>
 </html>

@@ -242,6 +242,14 @@ img {
 }
 
 /* 서버 줄 바탕이 본문 끝까지 이어지게 */
+/* 바닥글을 본문 칸 안에 두어 왼쪽 서버 줄이 페이지 끝까지 고정됨 */
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .has-rail .shell {
   background: linear-gradient(to right, #080913 71px, var(--line) 71px, var(--line) 72px, transparent 72px);
 }
