@@ -11,7 +11,8 @@ from utils.config import config
 from utils.layouts import create_error_layout, send_card, CooldownLayoutView
 from utils.errors import ServiceDownError, handle_errors
 from utils.logging_config import get_logger
-from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo, fetch_ranking_data
+from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo, fetch_ranking_data, tier_and_place
+from utils.tier_system import TierSystem
 from utils import accounts, app_emojis, rank_history, visual
 
 logger = get_logger('랭킹')
@@ -59,6 +60,34 @@ def format_user_text(u: RankUser, highlight: bool = False) -> str:
     return line
 
 
+GUILD_RANKS = 20
+
+
+async def guild_ranking(client: ERClient, guild: discord.Guild, season_id: int) -> List[tuple]:
+    """/계정으로 등록한 이 서버 멤버의 RP 순. (표시 이름, 닉네임, RP, 티어, 순위 문구)"""
+    registered = accounts.all_accounts()
+    members = {}
+    for i in range(0, len(registered), 100):
+        found = await guild.query_members(user_ids=[r[0] for r in registered[i:i + 100]], cache=False)
+        members.update({m.id: m.display_name for m in found})
+    limit = asyncio.Semaphore(5)
+
+    async def one(user_id: int, uid: str, nickname: str):
+        async with limit:
+            try:
+                stats, rank = await asyncio.gather(fetch_user_stats_solo(client, uid, season_id),
+                                                   fetch_user_rank(client, uid, season_id))
+            except Exception:
+                return None
+        if not stats:
+            return None
+        tier, place = tier_and_place(stats, rank)
+        return members[user_id], (rank or {}).get('nickname') or nickname, int(stats.get('mmr', 0)), tier, place
+
+    rows = await asyncio.gather(*[one(*r) for r in registered if r[0] in members])
+    return sorted((r for r in rows if r), key=lambda r: -r[2])
+
+
 class PaginationView(CooldownLayoutView):
     def __init__(self, client: ERClient, season_id: int, total_pages: int, first_page_users: List[RankUser], season_name: str):
         super().__init__(timeout=config.view_timeout_interactive)
@@ -70,6 +99,9 @@ class PaginationView(CooldownLayoutView):
         self._prefetching: Dict[int, asyncio.Task] = {}
         self.season_name = season_name
         self.highlight: Optional[str] = None
+        self.guild_rows: Optional[List[tuple]] = None
+        self.guild_name = ''
+        self.show_guild = False
 
         self.build_layout()
         self._prefetch(2)
@@ -82,6 +114,9 @@ class PaginationView(CooldownLayoutView):
     def build_layout(self):
         """현재 페이지 기준으로 레이아웃을 빌드합니다."""
         self.clear_items()
+        if self.show_guild:
+            self.build_guild_layout()
+            return
 
         users = self.page_cache.get(self.current_page, [])
 
@@ -101,7 +136,24 @@ class PaginationView(CooldownLayoutView):
             ui.Button(label=f"{self.current_page}/{self.total_pages}", style=discord.ButtonStyle.secondary, disabled=True, custom_id="indicator"),
             ui.Button(label="▶", style=discord.ButtonStyle.secondary, custom_id="next", disabled=(self.current_page == self.total_pages)),
             ui.Button(label="내 순위", style=discord.ButtonStyle.primary, custom_id="find", emoji="🔍"),
+            ui.Button(label="이 서버", style=discord.ButtonStyle.secondary, custom_id="guild"),
         ))
+
+    def build_guild_layout(self):
+        rows = self.guild_rows or []
+        lines = []
+        for i, (member, nickname, mmr, tier, place) in enumerate(rows[:GUILD_RANKS], 1):
+            icon = app_emojis.tier(TierSystem.get_tier_icon(tier))
+            detail = " | ".join(part for part in (discord.utils.escape_markdown(member), place) if part)
+            lines.append(f"`{i:>2}` {icon + ' ' if icon else ''}**{nickname}**  {mmr:,} RP\n-# {detail}")
+        sub = [self.season_name, f"/계정으로 등록한 멤버 {len(rows)}명"]
+        self.add_item(ui.Container(
+            ui.TextDisplay(f"### {discord.utils.escape_markdown(self.guild_name)} 순위\n-# " + " | ".join(sub)),
+            ui.Separator(),
+            ui.TextDisplay("\n".join(lines)),
+            accent_colour=visual.colour('ranking')))
+        self.add_item(ui.ActionRow(
+            ui.Button(label=f"{SERVER_NAMES[RANKING_SERVER]} 랭킹", style=discord.ButtonStyle.secondary, custom_id="asia")))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """버튼 클릭을 핸들링합니다. (1초 쿨다운 적용)"""
@@ -109,6 +161,9 @@ class PaginationView(CooldownLayoutView):
             return False
 
         custom_id = interaction.data.get("custom_id")
+        if custom_id in ("guild", "asia"):
+            await self.toggle_guild(interaction, custom_id == "guild")
+            return False
         if custom_id == "find":
             account = accounts.get(interaction.user.id)
             if account:
@@ -130,6 +185,28 @@ class PaginationView(CooldownLayoutView):
 
         await self.update_page(interaction, target_page)
         return False
+
+    async def toggle_guild(self, interaction: discord.Interaction, show: bool):
+        if show and interaction.guild is None:
+            await interaction.response.send_message(view=create_error_layout("서버 순위는 서버 안에서만 볼 수 있습니다."), ephemeral=True)
+            return
+        await interaction.response.defer()
+        if show and self.guild_rows is None:
+            try:
+                self.guild_rows = await guild_ranking(self.client, interaction.guild, self.season_id)
+                self.guild_name = interaction.guild.name
+            except Exception as e:
+                logger.error(f"서버 순위 조회 실패: {e}", exc_info=True)
+                await interaction.followup.send(view=create_error_layout("서버 순위를 불러오지 못했습니다. 잠시 후 다시 시도해주세요."), ephemeral=True)
+                return
+        if show and not self.guild_rows:
+            self.guild_rows = None
+            await interaction.followup.send(view=create_error_layout(
+                "이 서버에는 /계정으로 닉네임을 등록하고 이번 시즌 랭크 게임을 한 멤버가 없습니다."), ephemeral=True)
+            return
+        self.show_guild = show
+        self.build_layout()
+        await interaction.edit_original_response(view=self, attachments=[])
 
     async def find(self, interaction: discord.Interaction, name: str):
         if not interaction.response.is_done():

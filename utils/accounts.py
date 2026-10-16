@@ -3,7 +3,7 @@
 """
 import sqlite3
 import time
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from utils.logging_config import get_logger
 from utils.usage_db import db
@@ -28,6 +28,15 @@ def get(user_id: int) -> Optional[Tuple[str, str, int]]:
         logger.warning(f"계정 조회 실패: {e}")
         return None
     return (row['uid'], row['nickname'], row['updated']) if row else None
+
+
+def all_accounts() -> List[Tuple[int, str, str]]:
+    """디스코드 유저 ID, uid, 닉네임"""
+    try:
+        return [(r['user_id'], r['uid'], r['nickname']) for r in db.execute("SELECT user_id, uid, nickname FROM accounts")]
+    except sqlite3.Error as e:
+        logger.warning(f"계정 목록 조회 실패: {e}")
+        return []
 
 
 def save(user_id: int, uid: str, nickname: str) -> bool:
