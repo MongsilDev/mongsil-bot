@@ -143,7 +143,7 @@ async def get_current_player_count() -> Optional[int]:
     """Steam API를 통해 현재 플레이어 수를 가져옵니다."""
     try:
         if not config.steam_api_key:
-            logger.warning("STEAM_API_KEY가 설정되지 않았습니다.")
+            logger.warning("STEAM_API_KEY 없음")
             return None
 
         params = {
@@ -154,7 +154,7 @@ async def get_current_player_count() -> Optional[int]:
         data = await api_client.get(STEAM_API_URL, params=params, use_cache=False)
 
         if not data:
-            logger.warning("Steam API 응답이 비어있습니다.")
+            logger.warning("Steam API 빈 응답")
             return None
 
         # API 응답 검증
@@ -184,7 +184,7 @@ async def get_current_player_count() -> Optional[int]:
         logger.warning(f"플레이어 수 조회 실패: {e.message}")
         return None
     except Exception as e:
-        logger.error(f"플레이어 수 조회 중 오류 발생: {e}", exc_info=True)
+        logger.error(f"동접 조회 실패: {e}", exc_info=True)
         return None
 
 def create_concurrent_layout(current_count: int) -> ui.LayoutView:
@@ -286,7 +286,7 @@ class Concurrent(commands.Cog):
                 else:
                     logger.warning(f"동시접속자 수를 가져올 수 없어 수집을 건너뜁니다. ({self._fail_streak}회 연속)")
         except Exception as e:
-            logger.error(f"동접 데이터 수집 중 오류 발생: {e}", exc_info=True)
+            logger.error(f"동접 수집 실패: {e}", exc_info=True)
 
     @save_concurrent_data.before_loop
     async def before_save_concurrent_data(self):

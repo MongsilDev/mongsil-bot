@@ -130,7 +130,7 @@ async def _fetch_games(client, user_id: str, start_date: datetime.date,
     except InvalidUidError:
         raise
     except Exception as e:
-        logger.error(f"게임 기록 조회 중 오류: {e}", exc_info=True)
+        logger.error(f"게임 기록 조회 실패: {e}", exc_info=True)
         raise
 
 

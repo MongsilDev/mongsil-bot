@@ -68,7 +68,7 @@ def save_disabled_servers(disabled_servers: Set[int]) -> bool:
         _disabled_servers_cache = disabled_servers.copy()
         return True
     except Exception as e:
-        logger.error(f"설정 파일 저장 중 오류: {e}")
+        logger.error(f"설정 파일 저장 실패: {e}")
         return False
 
 async def disable_emoji_zoom_and_notify(guild_id: int, channel: discord.TextChannel) -> None:
@@ -308,4 +308,4 @@ async def cleanup_emoji_zoom_cache():
     _webhook_cache.clear()
     _disabled_servers_cache = None
     _webhook_permission_notified.clear()
-    logger.info("이모지 확대 관련 캐시가 정리되었습니다.")
+    logger.info("이모지 확대 캐시 비움")

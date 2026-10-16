@@ -2,6 +2,7 @@
 웹 대시보드. 봇 프로세스 안에서 aiohttp로 돌아 봇 상태와 설정 캐시를 그대로 공유
 """
 import asyncio
+import json
 import os
 import re
 import secrets
@@ -23,6 +24,7 @@ from utils.emoji_zoom import load_disabled_servers, save_disabled_servers, sched
 from utils.logging_config import get_logger
 from utils.usage_db import db
 from web import previews
+from web.discord_render import images as preview_images
 
 logger = get_logger('대시보드')
 
@@ -39,6 +41,8 @@ STATE_COOKIE = 'mb_state'
 SESSION_TTL = 7 * 86400
 GUILDS_TTL = 60
 GUILD_INFO_TTL = 300
+# 이 시간 안의 캐시는 바로 쓰고 뒤에서 새로 받음
+STALE_TTL = 600
 
 VERIFICATION = {'none': '없음', 'low': '낮음', 'medium': '중간', 'high': '높음', 'highest': '매우 높음'}
 LOCALES = {'ko': '한국어', 'en-US': '영어', 'en-GB': '영어', 'ja': '일본어', 'zh-CN': '중국어 간체', 'zh-TW': '중국어 번체',
@@ -63,6 +67,7 @@ client_secret = ''
 http: aiohttp.ClientSession = None
 guild_cache: dict[str, tuple[float, list]] = {}
 guild_info_cache: dict[int, tuple[float, dict]] = {}
+refreshing: set = set()
 
 env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(ROOT / 'templates'),
@@ -269,8 +274,11 @@ async def session_middleware(request: web.Request, handler):
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
     response.headers.setdefault('Referrer-Policy', 'same-origin')
     response.headers.setdefault('X-Frame-Options', 'DENY')
-    if not request.path.startswith('/static/'):
-        response.headers.setdefault('Cache-Control', 'private, no-store')
+    if not request.path.startswith(('/static/', '/preview/')):
+        # no-store는 뒤로 가기 캐시를 막아 no-cache로 둠
+        response.headers.setdefault('Cache-Control', 'private, no-cache')
+    if response.content_type == 'text/html':
+        response.headers.setdefault('Speculation-Rules', '"/speculation.json"')
     response.headers.setdefault(
         'Content-Security-Policy',
         "default-src 'self'; img-src 'self' https: data:; "
@@ -308,24 +316,56 @@ def check_csrf(request: web.Request, token: str | None):
         raise web.HTTPForbidden(text='CSRF')
 
 
-async def user_guilds(request: web.Request) -> list[dict]:
-    """로그인 유저의 서버 목록. Discord 호출은 세션당 60초 캐시"""
-    session = request['session']
-    cached = guild_cache.get(session['id'])
-    if cached and time.time() - cached[0] < GUILDS_TTL:
-        return cached[1]
+class SessionExpired(Exception):
+    pass
 
+
+async def fetch_guilds(session: dict) -> list[dict]:
     async with http.get(f"{API}/users/@me/guilds", headers={'Authorization': f"Bearer {session['token']}"}) as r:
         if r.status == 401:
             db.execute("DELETE FROM sessions WHERE id = ?", (session['id'],))
-            raise web.HTTPFound('/login?' + urlencode({'next': request.path}))
-        if r.status == 429 and cached:
-            return cached[1]
+            guild_cache.pop(session['id'], None)
+            raise SessionExpired()
         r.raise_for_status()
         guilds = await r.json()
-
     guild_cache[session['id']] = (time.time(), guilds)
     return guilds
+
+
+def refresh_later(key, coro_fn) -> None:
+    """같은 대상을 한 번에 하나만 뒤에서 새로 받음"""
+    if key in refreshing:
+        return
+
+    async def run():
+        try:
+            await coro_fn()
+        except Exception as e:
+            logger.warning(f"대시보드 캐시 갱신 실패: {key} {type(e).__name__}: {e}")
+        finally:
+            refreshing.discard(key)
+    refreshing.add(key)
+    asyncio.create_task(run())
+
+
+async def user_guilds(request: web.Request) -> list[dict]:
+    """로그인 유저의 서버 목록. 60초가 지나면 캐시를 쓰면서 뒤에서 새로 받음"""
+    session = request['session']
+    cached = guild_cache.get(session['id'])
+    age = time.time() - cached[0] if cached else None
+    if cached and age < GUILDS_TTL:
+        return cached[1]
+    if cached and age < STALE_TTL:
+        refresh_later(('guilds', session['id']), lambda: fetch_guilds(session))
+        return cached[1]
+    try:
+        return await fetch_guilds(session)
+    except SessionExpired:
+        raise web.HTTPFound('/login?' + urlencode({'next': request.path}))
+    except aiohttp.ClientResponseError as e:
+        if e.status == 429 and cached:
+            return cached[1]
+        raise
 
 
 def can_manage(g: dict) -> bool:
@@ -504,24 +544,33 @@ async def managed_guild(request: web.Request) -> discord.Guild:
     return guild
 
 
-async def guild_counts(guild: discord.Guild) -> dict:
-    """온라인 수와 소유자 이름. 게이트웨이 캐시에 없어 REST로 받고 5분 캐시"""
-    cached = guild_info_cache.get(guild.id)
-    if cached and time.time() - cached[0] < GUILD_INFO_TTL:
-        return cached[1]
-    extra = {}
-    try:
+async def fetch_counts(guild: discord.Guild) -> dict:
+    async def online():
         full = await client.fetch_guild(guild.id, with_counts=True)
-        extra['online'] = full.approximate_presence_count
-    except discord.HTTPException as e:
-        logger.warning(f"서버 인원 조회 실패: {guild.id} {e}")
-    try:
-        owner = guild.get_member(guild.owner_id) or await guild.fetch_member(guild.owner_id)
-        extra['owner'] = owner.display_name
-    except discord.HTTPException as e:
-        logger.warning(f"서버 소유자 조회 실패: {guild.id} {e}")
+        return full.approximate_presence_count
+
+    async def owner():
+        member = guild.get_member(guild.owner_id) or await guild.fetch_member(guild.owner_id)
+        return member.display_name
+
+    extra = {}
+    for key, result in zip(('online', 'owner'), await asyncio.gather(online(), owner(), return_exceptions=True)):
+        if isinstance(result, Exception):
+            logger.warning(f"서버 {key} 조회 실패: {guild.id} {result}")
+        else:
+            extra[key] = result
     guild_info_cache[guild.id] = (time.time(), extra)
     return extra
+
+
+async def guild_counts(guild: discord.Guild) -> dict:
+    """온라인 수와 소유자 이름. 게이트웨이 캐시에 없어 REST로 받고 5분이 지나면 뒤에서 새로 받음"""
+    cached = guild_info_cache.get(guild.id)
+    if cached:
+        if time.time() - cached[0] >= GUILD_INFO_TTL:
+            refresh_later(('counts', guild.id), lambda: fetch_counts(guild))
+        return cached[1]
+    return await fetch_counts(guild)
 
 
 def channel_kind(channel) -> str:
@@ -816,6 +865,31 @@ async def admin(request: web.Request):
     )
 
 
+def document(name: str):
+    async def handler(request: web.Request):
+        return render(request, name, rail=await rail(request))
+    return handler
+
+
+async def preview_image(request: web.Request):
+    data = preview_images.get(request.match_info['key'])
+    if data is None:
+        raise web.HTTPNotFound()
+    return web.Response(body=data, content_type='image/png',
+                        headers={'Cache-Control': 'public, max-age=31536000, immutable'})
+
+
+SPECULATION = json.dumps({'prerender': [{
+    'where': {'and': [{'href_matches': '/*'}, {'not': {'href_matches': '/log*'}}, {'not': {'href_matches': '/auth/*'}}]},
+    'eagerness': 'moderate',
+}]})
+
+
+async def speculation(request: web.Request):
+    return web.Response(text=SPECULATION, content_type='application/speculationrules+json',
+                        headers={'Cache-Control': 'public, max-age=86400'})
+
+
 async def favicon(request: web.Request):
     if not client.user:
         raise web.HTTPNotFound()
@@ -843,6 +917,10 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
     app.router.add_post('/servers/{guild_id}/settings', save_setting)
     app.router.add_get('/admin', admin)
     app.router.add_get('/favicon.ico', favicon)
+    app.router.add_get('/preview/{key}.png', preview_image)
+    app.router.add_get('/terms', document('terms.html'))
+    app.router.add_get('/privacy', document('privacy.html'))
+    app.router.add_get('/speculation.json', speculation)
     app.router.add_static('/static', ROOT / 'static')
     app.on_cleanup.append(lambda _: http.close())
     refresh = asyncio.create_task(previews.refresh_loop(client))

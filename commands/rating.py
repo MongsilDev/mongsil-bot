@@ -47,7 +47,7 @@ async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[
         rank_history.record_cuts(season_id, cut_rp(rank_300), cut_rp(rank_1000))
         return rank_300, rank_1000
     except Exception as e:
-        logger.error(f"레이팅 정보 조회 중 오류 발생: {e}", exc_info=True)
+        logger.error(f"이터컷 조회 실패: {e}", exc_info=True)
         return None, None
 
 def cut_rp(user: Optional[Dict]) -> Optional[int]:

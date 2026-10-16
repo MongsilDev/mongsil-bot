@@ -61,6 +61,21 @@ if 'shown_ms' not in {r[1] for r in db.execute("PRAGMA table_info(command_log)")
     db.execute("ALTER TABLE command_log ADD COLUMN shown_ms INTEGER")
 
 
+# 개인정보 처리방침에 적은 보관 기간
+KEEP_SECONDS = 365 * 86400
+
+
+def prune() -> None:
+    """보관 기간이 지난 기록과 만료된 로그인 세션 삭제"""
+    now = int(time.time())
+    try:
+        for table in ('command_log', 'zoom_log', 'guild_events', 'settings_log'):
+            db.execute(f"DELETE FROM {table} WHERE ts < ?", (now - KEEP_SECONDS,))
+        db.execute("DELETE FROM sessions WHERE expires < ?", (now,))
+    except sqlite3.Error as e:
+        logger.warning(f"오래된 기록 삭제 실패: {e}")
+
+
 def record_command(guild_id, user_id: int, command: str, status: str, ms: int, shown_ms=None) -> None:
     try:
         db.execute(

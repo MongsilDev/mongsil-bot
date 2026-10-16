@@ -1,7 +1,7 @@
 """
 봇이 보내는 LayoutView를 디스코드 다크 테마와 비슷한 HTML로 변환. 웹 미리보기용
 """
-import base64
+import hashlib
 import html
 import re
 from datetime import datetime, timedelta, timezone
@@ -67,10 +67,16 @@ def _button(b: ui.Button) -> str:
     return f'<span class="dc-button dc-{style}{disabled}">{emoji}{label}{external}</span>'
 
 
+# 카드 차트 이미지. HTML에 넣으면 첫 화면이 150KB를 넘어 주소로 따로 받게 함
+images: dict[str, bytes] = {}
+
+
 def _media(url: str, files: dict) -> str:
     name = url.removeprefix('attachment://')
     if url.startswith('attachment://') and name in files:
-        return 'data:image/png;base64,' + base64.b64encode(files[name]).decode()
+        key = hashlib.sha1(files[name]).hexdigest()[:16]
+        images[key] = files[name]
+        return f'/preview/{key}.png'
     return url
 
 

@@ -100,8 +100,8 @@ if __name__ == "__main__":
         # log_handler 기본값은 루트 로거를 덮어쓰므로 자체 설정을 유지한다
         client.run(config.bot_token, log_handler=None)
     except KeyboardInterrupt:
-        logger.warning("봇이 사용자에 의해 중단되었습니다.")
+        logger.warning("사용자 중단")
     except Exception as e:
-        logger.error(f"봇 실행 중 오류 발생: {e}", exc_info=True)
+        logger.error(f"봇 실행 실패: {e}", exc_info=True)
         import sys
         sys.exit(1)

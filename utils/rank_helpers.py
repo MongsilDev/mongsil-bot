@@ -130,7 +130,7 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
             logger.error(f"랭킹 API 오류: {error_msg}")
             return None
     except Exception as e:
-        logger.error(f"랭킹 API 호출 중 오류 발생: {e}", exc_info=True)
+        logger.error(f"랭킹 API 실패: {e}", exc_info=True)
         return None
 
 

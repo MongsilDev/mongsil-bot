@@ -111,7 +111,7 @@ async def fetch_season_data(season_id: Optional[int] = None) -> Optional[Dict[st
             season_list = [season_list] if season_list else []
 
         if not season_list:
-            logger.error("시즌 데이터가 비어있습니다")
+            logger.error("시즌 데이터 없음")
             return None
 
         # 특정 season_id를 찾는 경우
@@ -144,7 +144,7 @@ async def fetch_season_data(season_id: Optional[int] = None) -> Optional[Dict[st
         return current_season
 
     except Exception as e:
-        logger.error(f"시즌 API 호출 중 오류: {e}", exc_info=True)
+        logger.error(f"시즌 API 실패: {e}", exc_info=True)
         return None
 
 async def get_ranked_season() -> Optional[Tuple[int, str]]:

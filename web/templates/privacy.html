@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}개인정보 처리방침 - 몽실봇{% endblock %}
+{% block main_class %}page doc{% endblock %}
+{% block main %}
+<header class="doc-head">
+  <h1>개인정보 처리방침</h1>
+  <p class="sec-meta">2026년 10월 16일부터 적용</p>
+</header>
+
+<p>몽실봇 디스코드 봇과 대시보드 bot.mongsil.dev가 어떤 정보를 왜 저장하고 언제 지우는지 적은 문서입니다. 몽실봇은 개인이 운영하는 무료 서비스입니다.</p>
+
+<h2>저장하는 정보</h2>
+<div class="table-wrap">
+  <table class="data doc-table">
+    <thead><tr><th scope="col">정보</th><th scope="col">저장하는 때</th><th scope="col">쓰는 곳</th><th scope="col">보관 기간</th></tr></thead>
+    <tbody>
+      <tr><td>디스코드 유저 ID, 서버 ID, 명령어 이름, 처리 결과와 걸린 시간</td><td>명령어를 쓸 때</td><td>사용량 통계, 오류 확인</td><td>1년</td></tr>
+      <tr><td>디스코드 유저 ID, 서버 ID</td><td>이모지 확대가 동작할 때</td><td>사용량 통계</td><td>1년</td></tr>
+      <tr><td>디스코드 유저 ID, 이터널 리턴 닉네임과 계정 번호</td><td>/계정으로 닉네임을 등록할 때</td><td>닉네임 없이 전적 조회, 서버 순위</td><td>등록 해제할 때까지</td></tr>
+      <tr><td>디스코드 유저 ID, 사용자 이름, 프로필 사진 주소, 디스코드 로그인 토큰</td><td>대시보드에 로그인할 때</td><td>로그인 유지, 관리할 수 있는 서버 확인</td><td>로그아웃하거나 로그인 7일 뒤까지</td></tr>
+      <tr><td>디스코드 유저 ID, 사용자 이름</td><td>서버 설정을 바꿀 때</td><td>서버의 설정 변경 기록</td><td>1년</td></tr>
+      <tr><td>서버 ID, 서버 이름, 멤버 수</td><td>몽실봇이 서버에 들어가거나 나올 때</td><td>운영 통계</td><td>1년</td></tr>
+    </tbody>
+  </table>
+</div>
+<p>이모지 확대는 커스텀 이모지만 보낸 메시지를 찾으려고 채널 메시지를 읽지만, 메시지 내용은 저장하지 않습니다. 보관 기간이 지난 기록은 매일 자동으로 지웁니다.</p>
+
+<h2>외부 서비스</h2>
+<ul>
+  <li><strong>Discord</strong>, 미국: 봇과 대시보드 로그인이 Discord 위에서 동작합니다.</li>
+  <li><strong>이터널 리턴 Open API</strong>, 대한민국: 전적을 조회할 때 닉네임과 계정 번호를 보냅니다.</li>
+  <li><strong>Cloudflare</strong>, 미국: 대시보드 접속이 Cloudflare를 거치며 접속 IP 주소가 처리됩니다.</li>
+  <li><strong>Sentry</strong>, 미국: 오류가 나면 오류 내용이 전송됩니다. 오류가 난 명령의 서버 ID, 유저 ID, 닉네임이 함께 들어갈 수 있고 Sentry의 보관 기간에 따라 지워집니다.</li>
+</ul>
+<p>그 밖의 곳에 정보를 팔거나 넘기지 않습니다.</p>
+
+<h2>지우기와 열람 요청</h2>
+<ul>
+  <li>/계정의 등록 해제 버튼으로 닉네임 등록 정보를 바로 지울 수 있습니다.</li>
+  <li>대시보드에서 로그아웃하면 로그인 정보가 지워집니다.</li>
+  <li>그 밖의 기록을 보거나 지우거나 처리를 멈추고 싶으면 <a href="{{ support_server }}">지원 서버</a>나 이메일로 요청해주세요. 본인 확인 뒤 처리합니다.</li>
+</ul>
+
+<h2>안전 조치</h2>
+<p>기록은 운영자만 접근할 수 있는 서버에 저장합니다. 디스코드 로그인 토큰은 서버에만 두고 브라우저에는 무작위 세션 값만 보냅니다. 대시보드는 HTTPS로만 접속됩니다.</p>
+
+<h2>개인정보 보호책임자</h2>
+<p>이성원, <a href="mailto:mail@mongsil.dev">mail@mongsil.dev</a></p>
+
+<h2>권리 침해 상담</h2>
+<ul>
+  <li>개인정보분쟁조정위원회: 1833-6972, www.kopico.go.kr</li>
+  <li>개인정보침해신고센터: 118, privacy.kisa.or.kr</li>
+  <li>대검찰청: 1301, www.spo.go.kr</li>
+  <li>경찰청: 182, ecrm.police.go.kr</li>
+</ul>
+
+<h2>변경</h2>
+<p>내용이 바뀌면 이 페이지에 적용 날짜와 함께 올립니다.</p>
+{% endblock %}

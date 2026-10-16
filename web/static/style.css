@@ -1,11 +1,11 @@
 /* 색은 몽실봇 캐릭터에서 뽑음. 남색 드레스가 바탕, 분홍 눈이 강조, 라벤더 머리가 보조 글자색 */
 :root {
-  --bg: #0c0d1a;
-  --surface: #14162b;
-  --raised: #1c1f3a;
-  --raised-hover: #23274a;
-  --line: #262a4a;
-  --line-strong: #353a63;
+  --bg: #14162c;
+  --surface: #1b1e39;
+  --raised: #242847;
+  --raised-hover: #2c3155;
+  --line: #2d3258;
+  --line-strong: #3c4272;
   --fg: #eeeef8;
   --muted: #a3a5c4;
   --faint: #6f7296;
@@ -153,7 +153,7 @@ img {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(12, 13, 26, 0.92);
+  background: rgba(20, 22, 44, 0.92);
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(12px);
 }
@@ -251,7 +251,7 @@ img {
 }
 
 .has-rail .shell {
-  background: linear-gradient(to right, #080913 71px, var(--line) 71px, var(--line) 72px, transparent 72px);
+  background: linear-gradient(to right, #0f1124 71px, var(--line) 71px, var(--line) 72px, transparent 72px);
 }
 
 .rail {
@@ -267,7 +267,7 @@ img {
   gap: 8px;
   overflow-y: auto;
   scrollbar-width: none;
-  background: #080913;
+  background: #0f1124;
   border-right: 1px solid var(--line);
 }
 
@@ -364,7 +364,7 @@ img {
   z-index: 20;
   padding: 6px 10px;
   border-radius: 6px;
-  background: #050610;
+  background: #0b0c1c;
   color: var(--fg);
   font-size: 14px;
   font-weight: 700;
@@ -1073,6 +1073,76 @@ a.grow:hover {
   cursor: not-allowed;
 }
 
+/* 약관 문서 */
+.doc {
+  max-width: 760px;
+}
+
+.doc-head {
+  margin-bottom: 28px;
+}
+
+.doc-head h1 {
+  font-size: 30px;
+}
+
+.doc h2 {
+  margin: 40px 0 12px;
+  font-size: 19px;
+}
+
+.doc p,
+.doc li {
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.doc p + p {
+  margin-top: 12px;
+}
+
+.doc ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.doc li + li {
+  margin-top: 6px;
+}
+
+.doc ul + p {
+  margin-top: 12px;
+}
+
+.doc .doc-table th,
+.doc .doc-table td {
+  padding-right: 18px;
+}
+
+.doc strong {
+  color: var(--fg);
+}
+
+.doc a {
+  color: var(--lavender);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.doc .table-wrap {
+  margin-bottom: 14px;
+}
+
+.doc .doc-table td {
+  color: var(--muted);
+  font-size: 14px;
+  vertical-align: top;
+}
+
+.doc .doc-table td:first-child {
+  color: var(--fg);
+}
+
 /* 고르기 */
 .select {
   appearance: none;
@@ -1775,7 +1845,8 @@ a.grow:hover {
 /* 아래줄 */
 .foot {
   display: flex;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 8px 20px;
   padding: 20px 24px;
   border-top: 1px solid var(--line);
   color: var(--faint);

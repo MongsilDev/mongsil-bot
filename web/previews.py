@@ -6,7 +6,7 @@ import html
 import time
 
 from utils.logging_config import get_logger
-from web.discord_render import render_view
+from web.discord_render import images, render_view
 
 logger = get_logger('미리보기')
 
@@ -124,6 +124,9 @@ async def refresh_loop(client) -> None:
         try:
             await _build(client)
             updated_at = time.time()
+            used = ''.join(p['html'] for p in previews.values())
+            for key in [k for k in images if k not in used]:
+                del images[key]
             logger.info(f"미리보기 갱신 {len(previews)}개, {time.monotonic() - started:.1f}초")
         except Exception:
             logger.error("미리보기 갱신 실패", exc_info=True)

@@ -246,7 +246,7 @@ class PaginationView(CooldownLayoutView):
             await interaction.edit_original_response(view=self, attachments=[])
             self._prefetch(target_page + 1)
         except Exception as e:
-            logger.error(f"페이지 업데이트 중 오류 발생: {e}", exc_info=True)
+            logger.error(f"랭킹 페이지 갱신 실패: {e}", exc_info=True)
             await self._send_page_error(interaction)
 
     async def _send_page_error(self, interaction: discord.Interaction):
@@ -332,7 +332,7 @@ async def get_ranking_info(client: ERClient, season_id: int, page: int = 1) -> O
         users = await asyncio.gather(*[fetch_single_user(ud) for ud in page_data])
         return list(users)
     except Exception as e:
-        logger.error(f"랭킹 정보 처리 중 오류 발생: {e}", exc_info=True)
+        logger.error(f"랭킹 처리 실패: {e}", exc_info=True)
         return None
 
 class Ranking(commands.Cog):

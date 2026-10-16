@@ -17,7 +17,7 @@ from utils.logging_config import get_logger
 from utils.api_client import api_client
 from utils.character_names import refresh_character_names
 from utils import app_emojis, guild_settings
-from utils.usage_db import record_command, record_guild_event
+from utils.usage_db import prune, record_command, record_guild_event
 
 logger = get_logger(__name__)
 
@@ -122,6 +122,7 @@ class ERClient(commands.Bot):
             await app_emojis.load(self)
             self.refresh_names.start()
             self.prune_invites.start()
+            self.prune_records.start()
 
             if os.getenv('DASHBOARD_URL') and os.getenv('DASHBOARD_CLIENT_SECRET'):
                 # 대시보드 설정 오류로 봇까지 내려가지 않게 여기서 끊음
@@ -168,6 +169,10 @@ class ERClient(commands.Bot):
         await self.wait_until_ready()
 
     @tasks.loop(hours=24)
+    async def prune_records(self):
+        prune()
+
+    @tasks.loop(hours=24)
     async def refresh_names(self):
         """시즌 중 추가되는 신규 실험체 이름 반영"""
         await refresh_character_names()
@@ -194,11 +199,11 @@ class ERClient(commands.Bot):
     async def on_disconnect(self):
         """봇이 연결이 끊어졌을 때 호출됩니다."""
         # 대부분 곧바로 RESUME되는 일시 끊김
-        logger.info("봇 연결이 끊어졌습니다.")
+        logger.info("연결 끊김")
 
     async def on_resumed(self):
         """봇이 재연결되었을 때 호출됩니다."""
-        logger.info("봇이 재연결되었습니다.")
+        logger.info("재연결")
 
     async def on_guild_join(self, guild):
         """봇이 새 서버에 참가했을 때 호출됩니다."""
@@ -255,6 +260,6 @@ class ERClient(commands.Bot):
             await self.api_client.close()
             logger.info("리소스 정리 완료")
         except Exception as e:
-            logger.error(f"리소스 정리 중 오류: {e}")
+            logger.error(f"리소스 정리 실패: {e}")
         finally:
             await super().close()
