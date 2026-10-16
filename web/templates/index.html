@@ -15,7 +15,7 @@
       <a class="btn" href="/servers">대시보드</a>
     </div>
     {% set people = user_count|compact %}
-    <p class="reach">서버 {{ num(guild_count, '개') }}, 멤버 합계 {% if people.endswith('만') %}<span class="n">{{ people[:-1] }}</span><span class="u">만 명</span>{% else %}{{ num(user_count, '명') }}{% endif %}<br>{{ num(days, '일') }}째 운영 중입니다.</p>
+    <p class="reach">서버 {{ num(guild_count, '개') }}, 멤버 합계 {% if people.endswith('만') %}<span class="n">{{ people[:-1] }}</span><span class="u">만 명</span>{% else %}{{ num(user_count, '명') }}{% endif %}<br>{{ num(days, '일') }}째 운영 중</p>
   </div>
 
   <div class="hero-stage" id="commands">
@@ -31,7 +31,7 @@
       {% if previews[c.name] %}
       {{ message(c.name, previews[c.name], avatar, stamp) }}
       {% else %}
-      <p class="empty">미리보기를 준비하고 있습니다.</p>
+      <p class="empty">미리보기 준비 중</p>
       {% endif %}
     </div>
     {% endfor %}

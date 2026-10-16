@@ -48,10 +48,10 @@ DEFAULTS: Dict[str, Any] = {
 
 # 설정 키, 이름, 설명
 ALERTS = [
-    ('alert_patch', '패치 노트', '공식 사이트에 패치 노트나 핫픽스가 올라오면 알립니다.'),
-    ('alert_maintenance', '점검', '공식 점검 공지가 올라오거나 점검이 끝나면 알립니다.'),
-    ('alert_character', '새 실험체', '게임 데이터에 새 실험체가 추가되면 알립니다.'),
-    ('alert_cut', '매일 이터컷', '정한 시각에 아시아1 이터니티와 데미갓 컷을 올립니다.'),
+    ('alert_patch', '패치 노트', '공식 패치 노트와 핫픽스'),
+    ('alert_maintenance', '점검', '공식 점검 공지와 점검 완료'),
+    ('alert_character', '새 실험체', '게임 데이터에 추가된 실험체'),
+    ('alert_cut', '매일 이터컷', '아시아1 이터니티와 데미갓 컷'),
 ]
 ALERT_NAMES = {key: name for key, name, _ in ALERTS}
 

@@ -37,7 +37,7 @@ def scope_text(guild_id: int, prefix: str) -> str:
     if mode == 'all' or not channels:
         return "모든 채널"
     where = ", ".join(f"<#{c}>" for c in channels[:3]) + (f" 외 {len(channels) - 3}개" if len(channels) > 3 else "")
-    return f"{where}만" if mode == 'only' else f"{where} 빼고 모든 채널"
+    return f"{where}만" if mode == 'only' else f"{where} 빼고"
 
 
 class SettingsView(CooldownLayoutView):
@@ -63,8 +63,7 @@ class SettingsView(CooldownLayoutView):
         days = guild_settings.get(gid, 'invite_days')
         container.add_item(ui.TextDisplay(
             f"**명령어 채널** {scope_text(gid, 'command')}\n"
-            f"**초대 링크 정리** {f'만든 지 {days}일 지난 링크를 지움' if days else '꺼짐'}\n"
-            "-# 채널 지정과 정리 기간은 대시보드에서 바꿀 수 있습니다."))
+            f"**초대 링크 정리** {f'{days}일 지난 링크 삭제' if days else '꺼짐'}"))
 
         container.add_item(ui.Separator())
         container.add_item(ui.TextDisplay("### 알림"))
@@ -74,7 +73,7 @@ class SettingsView(CooldownLayoutView):
             if key == 'alert_cut' and current:
                 where += f" 매일 {hour_label(guild_settings.get(gid, 'cut_hour'))}"
             here = bool(current) and current == self.channel_id
-            button = ui.Button(style=discord.ButtonStyle.secondary if here else discord.ButtonStyle.primary,
+            button = ui.Button(style=discord.ButtonStyle.secondary,
                                label="끄기" if here else "이 채널로 받기", custom_id=f"alert:{key}")
             container.add_item(ui.Section(ui.TextDisplay(f"**{name}** {where}\n-# {desc}"), accessory=button))
 
@@ -134,12 +133,12 @@ class SettingsView(CooldownLayoutView):
             return None
         if current_enabled:
             schedule_webhook_removal(interaction.guild)
-        return f"이모지 확대를 {'껐' if current_enabled else '켰'}습니다"
+        return f"이모지 확대: {'끔' if current_enabled else '켬'}"
 
     async def set_alert(self, interaction: Interaction, key: str):
         name = guild_settings.ALERT_NAMES[key]
         if guild_settings.get(self.guild_id, key) == self.channel_id:
-            value, text = 0, f"{name} 알림을 껐습니다"
+            value, text = 0, f"{name} 알림: 끔"
         else:
             channel = interaction.channel
             if not isinstance(channel, discord.TextChannel):
@@ -149,7 +148,7 @@ class SettingsView(CooldownLayoutView):
             if missing:
                 await self.refuse(interaction, f"몽실봇에 이 채널의 {', '.join(missing)} 권한이 없습니다. 권한을 준 뒤 다시 시도해주세요.")
                 return None
-            value, text = channel.id, f"{name} 알림을 #{channel.name} 채널로 정했습니다"
+            value, text = channel.id, f"{name} 알림: #{channel.name}"
         if not guild_settings.put(self.guild_id, key, value):
             await self.refuse(interaction, "설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.")
             return None

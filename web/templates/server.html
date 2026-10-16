@@ -52,7 +52,7 @@
       <div class="setting" data-setting>
         <div class="setting-text">
           <h3 id="zoom-label">이모지 확대</h3>
-          <p>커스텀 이모지 하나만 보낸 메시지를 큰 이미지로 바꿔 다시 올립니다.</p>
+          <p>커스텀 이모지 하나만 보낸 메시지를 큰 이미지로 바꿈</p>
         </div>
         <button type="button" class="switch" role="switch" aria-checked="{{ 'true' if zoom_enabled else 'false' }}" aria-labelledby="zoom-label" data-url="/servers/{{ guild.id }}/emoji-zoom"{% if not can_webhook and not zoom_enabled %} disabled{% endif %}></button>
         {{ scope('zoom_scope', '이모지 확대를 쓸 채널', zoom_mode, zoom_channels, [('all', '모든 채널'), ('only', '고른 채널만'), ('except', '고른 채널 빼고')]) }}
@@ -67,9 +67,7 @@
         {% if not can_webhook %}
         <p class="notice">웹후크 관리 권한이 없어 이모지 확대가 동작하지 않습니다. 몽실봇 역할에 권한을 준 뒤 새로고침해주세요.</p>
         {% elif zoom_blocked %}
-        <p class="notice">{{ zoom_blocked[:5]|join(', ') }}{% if zoom_blocked|length > 5 %} 외 {{ zoom_blocked|length - 5 }}개{% endif %} 채널은 채널 권한에서 웹후크 관리가 막혀 이모지 확대가 동작하지 않습니다.</p>
-        {% elif is_admin %}
-        <p class="setting-note">몽실봇에 관리자 권한이 있어 모든 권한을 쓸 수 있습니다.</p>
+        <p class="notice">{{ zoom_blocked[:5]|join(', ') }}{% if zoom_blocked|length > 5 %} 외 {{ zoom_blocked|length - 5 }}개{% endif %} 채널은 웹후크 관리 권한이 막혀 있어 확대되지 않습니다. 채널 권한에서 몽실봇에 웹후크 관리를 허용해주세요.</p>
         {% endif %}
         <p class="save-state" role="status"></p>
       </div>
@@ -77,7 +75,7 @@
       <div class="setting" data-setting>
         <div class="setting-text">
           <h3 id="command_scope-label">명령어 채널</h3>
-          <p>몽실봇 명령어를 쓸 수 있는 채널을 정합니다. 서버 관리 권한이 있는 멤버는 어느 채널에서나 씁니다.</p>
+          <p>서버 관리 권한이 있는 멤버는 어느 채널에서나 사용 가능</p>
         </div>
         {{ scope('command_scope', '명령어를 쓸 채널', command_mode, command_channels, [('all', '모든 채널'), ('only', '고른 채널만')]) }}
         <p class="save-state" role="status"></p>
@@ -86,7 +84,7 @@
       <div class="setting" data-setting>
         <div class="setting-text">
           <h3 id="invite_days-label">오래된 초대 링크 정리</h3>
-          <p>만든 지 정한 기간이 지난 초대 링크를 1시간마다 지웁니다.</p>
+          <p>정한 기간이 지난 초대 링크를 1시간마다 삭제</p>
         </div>
         <select class="select" data-key="invite_days" aria-labelledby="invite_days-label"{% if not can_invites and not invite_days %} disabled{% endif %}>
           {% for d in invite_options %}
@@ -102,7 +100,6 @@
 
     <div class="sec-head sec-alerts">
       <h2 id="alerts-title">알림</h2>
-      <p class="sec-meta">디스코드에서 /설정으로도 바꿀 수 있습니다.</p>
     </div>
     <div class="setting-group" aria-labelledby="alerts-title">
       {% for a in alerts %}

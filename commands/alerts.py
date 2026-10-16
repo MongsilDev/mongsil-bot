@@ -121,7 +121,7 @@ def character_layout(code: int, key: str) -> ui.LayoutView:
     name = CHARACTER_NAMES.get(code, key)
     view = ui.LayoutView(timeout=None)
     view.add_item(ui.Container(
-        ui.TextDisplay(f"### 새 실험체\n{face + ' ' if face else ''}**{name}**\n-# 게임 데이터 기준이라 출시 전일 수 있습니다."),
+        ui.TextDisplay(f"### 새 실험체\n{face + ' ' if face else ''}**{name}**\n-# 게임 데이터 기준, 출시 전일 수 있음"),
         accent_colour=visual.colour('info')))
     return view
 
@@ -142,7 +142,7 @@ class Alerts(commands.Cog):
 
     def turn_off(self, guild_id: int, key: str, reason: str):
         guild_settings.put(guild_id, key, 0)
-        guild_settings.log(guild_id, f"{reason} {guild_settings.ALERT_NAMES[key]} 알림을 껐습니다", source='bot')
+        guild_settings.log(guild_id, f"{guild_settings.ALERT_NAMES[key]} 알림: 끔, {reason}", source='bot')
         logger.warning(f"알림 끔: {guild_id} {key} {reason}")
 
     async def deliver(self, key: str, make: Callable[[], ui.LayoutView], only: Optional[Set[int]] = None) -> int:
@@ -155,14 +155,14 @@ class Alerts(commands.Cog):
                 continue
             channel = guild.get_channel(channel_id)
             if not isinstance(channel, discord.TextChannel):
-                self.turn_off(guild_id, key, "채널이 없어져")
+                self.turn_off(guild_id, key, "채널 삭제됨")
                 continue
             view = make()
             try:
                 await channel.send(view=view, files=visual.files_of(view))
                 sent += 1
             except discord.Forbidden:
-                self.turn_off(guild_id, key, f"#{channel.name} 채널에 글을 쓸 권한이 없어")
+                self.turn_off(guild_id, key, f"#{channel.name} 채널 권한 없음")
             except discord.HTTPException as e:
                 logger.warning(f"알림 전송 실패: {guild_id} {key} {type(e).__name__}: {e}")
             await asyncio.sleep(0.2)

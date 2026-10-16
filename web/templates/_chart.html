@@ -70,11 +70,11 @@
   </div>
   <div id="chart-cmd" role="tabpanel" aria-labelledby="tab-cmd">
     {{ columns(usage.cmd_chart, label + ' 실행') }}
-    {% if usage.cmd_since %}<p class="note">{{ usage.cmd_since|mdate }}부터 기록했습니다.</p>{% endif %}
+    {% if usage.cmd_since %}<p class="note">{{ usage.cmd_since|mdate }}부터 기록</p>{% endif %}
   </div>
   <div id="chart-zoom" role="tabpanel" aria-labelledby="tab-zoom" hidden>
     {{ columns(usage.zoom_chart, '이모지 확대', tone='lavender') }}
-    {% if usage.zoom_since %}<p class="note">{{ usage.zoom_since|mdate }}부터 기록했습니다.</p>{% endif %}
+    {% if usage.zoom_since %}<p class="note">{{ usage.zoom_since|mdate }}부터 기록</p>{% endif %}
   </div>
 </section>
 {% endmacro %}

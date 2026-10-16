@@ -158,7 +158,7 @@ class ERClient(commands.Bot):
                         logger.info(f"오래된 초대 삭제: {guild_id} {invite.created_at:%Y-%m-%d}")
             except discord.Forbidden:
                 guild_settings.put(guild_id, 'invite_days', 0)
-                guild_settings.log(guild_id, "서버 관리 권한이 없어 오래된 초대 링크 정리를 껐습니다", source='bot')
+                guild_settings.log(guild_id, "초대 링크 정리: 끔, 서버 관리 권한 없음", source='bot')
                 logger.warning(f"초대 정리 권한 없음, 끔: {guild_id}")
             except discord.HTTPException as e:
                 logger.warning(f"초대 정리 실패: {guild_id} {type(e).__name__}: {e}")
@@ -185,7 +185,7 @@ class ERClient(commands.Bot):
         where = ", ".join(f"<#{c}>" for c in allowed[:5]) + (f" 외 {len(allowed) - 5}개" if len(allowed) > 5 else "")
         try:
             await interaction.response.send_message(
-                view=create_error_layout(f"이 서버에서는 {where} 채널에서 명령어를 쓸 수 있습니다."), ephemeral=True)
+                view=create_error_layout(f"명령어는 {where} 채널에서 써주세요."), ephemeral=True)
         except discord.HTTPException as e:
             logger.warning(f"채널 제한 안내 전송 실패: {e}")
         record_command(interaction.guild_id, interaction.user.id, interaction.data.get('name', ''), 'user', 0)

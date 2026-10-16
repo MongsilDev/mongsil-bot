@@ -146,7 +146,7 @@ class PaginationView(CooldownLayoutView):
             icon = app_emojis.tier(TierSystem.get_tier_icon(tier))
             detail = " | ".join(part for part in (discord.utils.escape_markdown(member), place) if part)
             lines.append(f"`{i:>2}` {icon + ' ' if icon else ''}**{nickname}**  {mmr:,} RP\n-# {detail}")
-        sub = [self.season_name, f"/계정으로 등록한 멤버 {len(rows)}명"]
+        sub = [self.season_name, f"등록 멤버 {len(rows)}명"]
         self.add_item(ui.Container(
             ui.TextDisplay(f"### {discord.utils.escape_markdown(self.guild_name)} 순위\n-# " + " | ".join(sub)),
             ui.Separator(),
@@ -202,7 +202,7 @@ class PaginationView(CooldownLayoutView):
         if show and not self.guild_rows:
             self.guild_rows = None
             await interaction.followup.send(view=create_error_layout(
-                "이 서버에는 /계정으로 닉네임을 등록하고 이번 시즌 랭크 게임을 한 멤버가 없습니다."), ephemeral=True)
+                "이번 시즌 랭크 기록이 있는 등록 멤버가 없습니다. /계정으로 닉네임을 등록해주세요."), ephemeral=True)
             return
         self.show_guild = show
         self.build_layout()

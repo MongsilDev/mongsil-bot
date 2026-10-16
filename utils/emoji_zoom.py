@@ -81,7 +81,7 @@ async def disable_emoji_zoom_and_notify(guild_id: int, channel: discord.TextChan
     if guild_id not in disabled_servers:
         disabled_servers.add(guild_id)
         if save_disabled_servers(disabled_servers):
-            guild_settings.log(guild_id, "웹후크 관리 권한이 없어 이모지 확대를 껐습니다", source='bot')
+            guild_settings.log(guild_id, "이모지 확대: 끔, 웹후크 관리 권한 없음", source='bot')
 
     # 알림은 서버당 한 번만
     if guild_id in _webhook_permission_notified:

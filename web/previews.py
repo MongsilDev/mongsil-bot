@@ -27,6 +27,7 @@ async def _build(client) -> None:
     from commands.ranking import PaginationView, get_ranking_info
     from commands.rating import create_rating_layout, cut_rp, fetch_rating_info, season_end_for
     from commands.season import create_season_layout, fetch_patch_notes, get_ranked_season, get_season_info
+    from commands.account import account_view
     from commands.settings import SettingsView
     from utils.animal_utils import fetch_animal_image
     from utils.rank_helpers import fetch_ranking_data
@@ -94,6 +95,10 @@ async def _build(client) -> None:
             return {'input': '', 'html': f'<img class="dc-image" src="{src}" alt="{name} 사진" loading="lazy" decoding="async">'}
         return make
 
+    async def account():
+        # 등록하지 않은 유저가 보는 카드
+        return {'input': '', 'html': render_view(await account_view(client, 0))}
+
     async def info():
         return {'input': '', 'html': render_view(create_bot_info_layout(client))}
 
@@ -104,7 +109,7 @@ async def _build(client) -> None:
     # bser API 부담을 나누려고 순서대로 실행
     for name, make in [
         ('랭크', rank), ('랭킹', ranking), ('이터컷', rating), ('플탐', playtime), ('시즌', season_card),
-        ('동접', concurrent), ('정보', info), ('설정', settings),
+        ('동접', concurrent), ('계정', account), ('정보', info), ('설정', settings),
         ('강아지', animal('https://api.thedogapi.com/v1/images/search', '강아지')),
         ('고양이', animal('https://api.thecatapi.com/v1/images/search', '고양이')),
     ]:

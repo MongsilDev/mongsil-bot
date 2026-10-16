@@ -21,7 +21,7 @@ KST = ZoneInfo('Asia/Seoul')
 Target = Tuple[str, Optional[str], Optional[int]]
 AfterRegister = Callable[[discord.Interaction, str, str, int], Awaitable[None]]
 
-HINT = "등록하면 /랭크, /플탐을 닉네임 없이 쓸 수 있습니다."
+HINT = "/랭크, /플탐에서 닉네임 생략 가능"
 
 
 async def account_summary(client: ERClient, user_id: int, uid: str, nickname: str):

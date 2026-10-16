@@ -562,9 +562,9 @@ def alert_rows(guild: discord.Guild) -> list[dict]:
         channel = guild.get_channel(cid) if cid else None
         problem = None
         if cid and not isinstance(channel, discord.TextChannel):
-            problem = "고른 채널이 없어졌습니다. 다른 채널을 골라주세요."
+            problem = "고른 채널이 삭제됐습니다. 다른 채널을 골라주세요."
         elif channel and (missing := channel_ok(channel, key == 'alert_cut')):
-            problem = f"몽실봇에 #{channel.name} 채널의 {', '.join(missing)} 권한이 없어 알림을 보내지 못합니다."
+            problem = f"몽실봇에 #{channel.name} 채널의 {', '.join(missing)} 권한이 없습니다. 권한을 준 뒤 새로고침해주세요."
         rows.append({'key': key, 'name': name, 'desc': desc, 'channel': cid, 'problem': problem})
     return rows
 
@@ -625,7 +625,6 @@ async def server_detail(request: web.Request):
                'joined_at': guild.me.joined_at.astimezone(KST) if guild.me and guild.me.joined_at else None},
         info=info,
         permissions=permissions,
-        is_admin=perms.administrator,
         zoom_enabled=guild.id not in load_disabled_servers(),
         can_webhook=perms.manage_webhooks,
         usage=usage,
@@ -670,7 +669,7 @@ async def toggle_zoom(request: web.Request):
     if not enable:
         schedule_webhook_removal(guild)
     logger.info(f"대시보드 설정 변경: {guild.name} ({guild.id}) 이모지 확대 {'켬' if enable else '끔'}")
-    entry = record_change(request, guild, f"이모지 확대를 {'켰' if enable else '껐'}습니다")
+    entry = record_change(request, guild, f"이모지 확대: {'켬' if enable else '끔'}")
     return web.json_response({'enabled': enable, 'entry': entry})
 
 
@@ -711,9 +710,7 @@ async def save_setting(request: web.Request):
         changes = [(mode_key, mode), (list_key, ids)]
         subject = '이모지 확대' if key == 'zoom_scope' else '명령어'
         names = channel_names(guild, ids)
-        text = {'all': f"{subject}를 모든 채널에서 쓰게 했습니다",
-                'only': f"{subject}를 {names} 채널에서만 쓰게 했습니다",
-                'except': f"{subject}에서 {names} 채널을 뺐습니다"}[mode]
+        text = f"{subject} 채널: " + {'all': "모든 채널", 'only': f"{names}만", 'except': f"{names} 빼고"}[mode]
     elif key == 'invite_days':
         days = as_int(value)
         if days not in INVITE_DAYS:
@@ -721,7 +718,7 @@ async def save_setting(request: web.Request):
         if days and not guild.me.guild_permissions.manage_guild:
             return refuse("몽실봇에 서버 관리 권한이 없어 초대 링크를 정리할 수 없습니다. 권한을 준 뒤 다시 시도해주세요.")
         changes = [(key, days)]
-        text = f"만든 지 {days}일 지난 초대 링크를 지우게 했습니다" if days else "오래된 초대 링크 정리를 껐습니다"
+        text = f"초대 링크 정리: {days}일" if days else "초대 링크 정리: 끔"
     elif key in guild_settings.ALERT_NAMES:
         cid = as_int(value)
         name = guild_settings.ALERT_NAMES[key]
@@ -733,16 +730,16 @@ async def save_setting(request: web.Request):
                 return refuse("고를 수 없는 채널입니다. 새로고침한 뒤 다시 골라주세요.", 400)
             if missing := channel_ok(channel, key == 'alert_cut'):
                 return refuse(f"몽실봇에 #{channel.name} 채널의 {', '.join(missing)} 권한이 없습니다. 권한을 준 뒤 다시 골라주세요.")
-            text = f"{name} 알림을 #{channel.name} 채널로 정했습니다"
+            text = f"{name} 알림: #{channel.name}"
         else:
-            text = f"{name} 알림을 껐습니다"
+            text = f"{name} 알림: 끔"
         changes = [(key, cid)]
     elif key == 'cut_hour':
         hour = as_int(value)
         if hour is None or not 0 <= hour <= 23:
             raise web.HTTPBadRequest()
         changes = [(key, hour)]
-        text = f"매일 이터컷 시각을 {hour_label(hour)}로 바꿨습니다"
+        text = f"매일 이터컷 시각: {hour_label(hour)}"
     else:
         raise web.HTTPBadRequest()
 
@@ -786,7 +783,10 @@ async def admin(request: web.Request):
     top_guilds = []
     for gid, count in by_guild.most_common(10):
         g = client.get_guild(gid)
-        top_guilds.append({'id': gid, 'name': g.name if g else str(gid), 'icon': guild_icon(gid, g.icon and g.icon.key) if g else None,
+        if g is None:
+            last = db.execute("SELECT name FROM guild_events WHERE guild_id = ? AND name IS NOT NULL ORDER BY ts DESC LIMIT 1",
+                              (gid,)).fetchone()
+        top_guilds.append({'id': gid, 'name': g.name if g else (last[0] if last else str(gid)), 'icon': guild_icon(gid, g.icon and g.icon.key) if g else None,
                            'members': g.member_count if g else None, 'count': count, 'zooms': zoom_by_guild.get(gid, 0),
                            'bar': round(count / by_guild.most_common(1)[0][1] * 100, 1), 'gone': g is None})
 
