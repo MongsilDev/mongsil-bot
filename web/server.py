@@ -374,18 +374,16 @@ def can_manage(g: dict) -> bool:
 
 
 async def rail(request: web.Request) -> list[dict] | None:
-    """왼쪽 서버 줄. 몽실봇이 있고 관리 권한이 있는 서버를 30일 사용량 순으로"""
+    """왼쪽 서버 줄. 몽실봇이 있고 관리 권한이 있는 서버를 멤버 많은 순으로"""
     if not request['session']:
         return None
-    since = int(time.time()) - 30 * 86400
-    usage = dict(db.execute(
-        "SELECT guild_id, COUNT(*) FROM command_log WHERE ts >= ? GROUP BY guild_id", (since,)).fetchall())
     items = []
     for g in await user_guilds(request):
         gid = int(g['id'])
-        if can_manage(g) and client.get_guild(gid):
-            items.append({'id': gid, 'name': g['name'], 'icon': guild_icon(gid, g.get('icon')), 'usage': usage.get(gid, 0)})
-    items.sort(key=lambda g: -g['usage'])
+        guild = client.get_guild(gid)
+        if can_manage(g) and guild:
+            items.append({'id': gid, 'name': g['name'], 'icon': guild_icon(gid, g.get('icon')), 'members': guild.member_count or 0})
+    items.sort(key=lambda g: -g['members'])
     return items
 
 
@@ -525,8 +523,8 @@ async def servers(request: web.Request):
         else:
             item['invite'] = invite_url(gid)
             others.append(item)
-    # 많이 쓰는 서버가 위로, 같으면 이름순
-    joined.sort(key=lambda g: -(g['usage'] + g['zooms']))
+    # 멤버 많은 서버가 위로, 같으면 이름순
+    joined.sort(key=lambda g: -(g['members'] or 0))
     return render(request, 'servers.html', joined=joined, others=others, rail=joined)
 
 
