@@ -12,10 +12,18 @@
   <li>개인이 운영하는 무료 서비스</li>
 </ul>
 
-<h2>저장하는 정보</h2>
+<h2>1. 처리 목적</h2>
+<ul>
+  <li>명령어 응답과 서버 설정 적용</li>
+  <li>/계정에 등록한 닉네임으로 전적 조회</li>
+  <li>대시보드 로그인과 관리 권한 확인</li>
+  <li>사용량 통계와 오류 확인</li>
+</ul>
+
+<h2>2. 처리 항목과 보유 기간</h2>
 <div class="table-wrap">
   <table class="data doc-table">
-    <thead><tr><th scope="col">정보</th><th scope="col">저장 시점</th><th scope="col">용도</th><th scope="col">보관 기간</th></tr></thead>
+    <thead><tr><th scope="col">항목</th><th scope="col">수집 시점</th><th scope="col">목적</th><th scope="col">보유 기간</th></tr></thead>
     <tbody>
       <tr><td>디스코드 유저 ID, 서버 ID, 명령어 이름, 처리 결과와 걸린 시간</td><td>명령어 사용</td><td>사용량 통계, 오류 확인</td><td>1년</td></tr>
       <tr><td>디스코드 유저 ID, 서버 ID</td><td>이모지 확대</td><td>사용량 통계</td><td>1년</td></tr>
@@ -28,38 +36,66 @@
 </div>
 <ul>
   <li>이모지 확대는 커스텀 이모지만 보낸 메시지를 찾으려고 채널 메시지를 읽음, 메시지 내용은 저장하지 않음</li>
-  <li>보관 기간이 지난 기록은 매일 자동 삭제</li>
 </ul>
 
-<h2>외부 서비스</h2>
+<h2>3. 파기 절차와 방법</h2>
 <ul>
-  <li>Discord, 미국: 봇과 대시보드 로그인</li>
-  <li>이터널 리턴 Open API, 대한민국: 전적 조회 때 닉네임과 계정 번호 전송</li>
-  <li>Cloudflare, 미국: 대시보드 접속 경로, 접속 IP 주소 처리</li>
-  <li>Sentry, 미국: 오류 기록, 오류가 난 명령의 서버 ID, 유저 ID, 닉네임이 함께 들어갈 수 있음</li>
-  <li>그 밖의 곳에 정보를 팔거나 넘기지 않음</li>
+  <li>보유 기간이 지난 기록은 매일 자동으로 데이터베이스에서 삭제, 복구할 수 없음</li>
+  <li>암호화한 백업본은 최대 5주 뒤 삭제</li>
+  <li>법령에 따라 따로 보존하는 정보 없음</li>
 </ul>
 
-<h2>삭제와 열람 요청</h2>
+<h2>4. 제3자 제공</h2>
 <ul>
-  <li>닉네임 등록 정보: /계정의 등록 해제 버튼으로 바로 삭제</li>
-  <li>로그인 정보: 대시보드 로그아웃 때 삭제</li>
-  <li>그 밖의 기록 열람, 삭제, 처리 정지: <a href="{{ support_server }}">지원 서버</a>나 이메일로 요청, 본인 확인 뒤 처리</li>
+  <li>이터널 리턴 Open API, 님블뉴런, 대한민국: 전적 조회 때 닉네임과 계정 번호 전송, 조회 목적에만 사용</li>
+  <li>그 밖의 제3자 제공과 판매 없음</li>
 </ul>
 
-<h2>안전 조치</h2>
+<h2>5. 처리 위탁과 국외 이전</h2>
+<div class="table-wrap">
+  <table class="data doc-table">
+    <thead><tr><th scope="col">받는 곳</th><th scope="col">국가</th><th scope="col">업무와 항목</th><th scope="col">시기와 방법</th><th scope="col">보유 기간</th></tr></thead>
+    <tbody>
+      <tr><td>Sentry, Functional Software, Inc., compliance@sentry.io</td><td>미국</td><td>오류 기록. 오류가 난 명령의 서버 ID, 유저 ID, 닉네임이 들어갈 수 있음</td><td>오류가 날 때 네트워크로 전송</td><td>Sentry 보관 정책에 따름</td></tr>
+      <tr><td>Cloudflare, Inc., dpo@cloudflare.com</td><td>미국</td><td>대시보드 접속 중계와 백업 보관. 접속 IP 주소, 요청 정보, 암호화한 백업본</td><td>접속할 때와 매일 백업 때 네트워크로 전송</td><td>접속 기록은 Cloudflare 정책, 백업본은 최대 5주</td></tr>
+    </tbody>
+  </table>
+</div>
+<ul>
+  <li>근거: 서비스 제공에 필요한 처리위탁과 보관, 개인정보 보호법 제28조의8 제1항 제3호</li>
+  <li>거부 방법: 봇 명령어와 대시보드를 쓰지 않으면 이전되지 않음, 거부하면 해당 기능 이용 불가</li>
+</ul>
+
+<h2>6. 정보주체의 권리와 행사 방법</h2>
+<ul>
+  <li>개인정보 열람, 정정, 삭제, 처리 정지 요구 가능</li>
+  <li>닉네임 등록 정보는 /계정의 등록 해제 버튼으로, 로그인 정보는 대시보드 로그아웃으로 바로 삭제</li>
+  <li>그 밖의 요구는 <a href="{{ support_server }}">지원 서버</a>나 이메일로 접수, 본인 확인 뒤 지체 없이 처리</li>
+  <li>만 14세 미만 아동은 법정대리인이 요구 가능, 대리인 요구 시 위임 사실 확인</li>
+</ul>
+
+<h2>7. 쿠키</h2>
+<ul>
+  <li>mb_session: 대시보드 로그인 유지, 최대 7일</li>
+  <li>mb_state: 디스코드 로그인 중 위조 요청 방지, 10분</li>
+  <li>광고나 방문 분석 쿠키 없음</li>
+  <li>브라우저에서 쿠키를 막으면 대시보드 로그인 불가</li>
+</ul>
+
+<h2>8. 안전성 확보 조치</h2>
 <ul>
   <li>기록은 운영자만 접근할 수 있는 서버에 저장</li>
   <li>디스코드 로그인 토큰은 서버에만 두고 브라우저에는 무작위 세션 값만 전달</li>
-  <li>대시보드는 HTTPS 접속만 허용</li>
+  <li>대시보드는 HTTPS 접속만 허용, 백업본은 암호화해 보관</li>
 </ul>
 
-<h2>개인정보 보호책임자</h2>
+<h2>9. 개인정보 보호책임자</h2>
 <ul>
-  <li>이성원, <a href="mailto:mail@mongsil.dev">mail@mongsil.dev</a></li>
+  <li>담당: 몽실, 몽실봇 운영자</li>
+  <li>연락처: <a href="mailto:mail@mongsil.dev">mail@mongsil.dev</a>, <a href="{{ support_server }}">지원 서버</a></li>
 </ul>
 
-<h2>권리 침해 상담</h2>
+<h2>10. 권익 침해 구제</h2>
 <ul>
   <li>개인정보분쟁조정위원회: 1833-6972, www.kopico.go.kr</li>
   <li>개인정보침해신고센터: 118, privacy.kisa.or.kr</li>
@@ -67,7 +103,7 @@
   <li>경찰청: 182, ecrm.police.go.kr</li>
 </ul>
 
-<h2>변경</h2>
+<h2>11. 처리방침 변경</h2>
 <ul>
   <li>변경 시 이 페이지에 시행일과 함께 게시</li>
 </ul>
