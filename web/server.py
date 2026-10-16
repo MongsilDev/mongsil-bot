@@ -297,12 +297,15 @@ async def session_middleware(request: web.Request, handler):
         row = db.execute("SELECT * FROM sessions WHERE id = ? AND expires > ?", (session_key(sid), int(time.time()))).fetchone()
         if row:
             request['session'] = dict(row)
+    started = time.perf_counter()
     try:
         response = await handler(request)
     except web.HTTPException as e:
         secure_headers(request, e)
         raise
     secure_headers(request, response)
+    # 브라우저 개발자 도구에서 서버 처리 시간과 네트워크 시간을 나눠 보려고 붙임
+    response.headers['Server-Timing'] = f"app;dur={(time.perf_counter() - started) * 1000:.1f}"
     return response
 
 
@@ -973,10 +976,13 @@ async def preview_image(request: web.Request):
                         headers={'Cache-Control': 'public, max-age=31536000, immutable'})
 
 
-SPECULATION = json.dumps({'prerender': [{
-    'where': {'and': [{'href_matches': '/*'}, {'not': {'href_matches': '/log*'}}, {'not': {'href_matches': '/auth/*'}}]},
-    'eagerness': 'moderate',
-}]})
+SAME_SITE = {'and': [{'href_matches': '/*'}, {'not': {'href_matches': '/log*'}}, {'not': {'href_matches': '/auth/*'}},
+                     {'not': {'href_matches': '/invite*'}}, {'not': {'href_matches': '/support'}}, {'not': {'href_matches': '/discord'}}]}
+# 서버 줄과 내 서버 목록은 화면이 뜨자마자 받아 두어 서버를 바꿀 때 왕복을 기다리지 않음. 나머지는 마우스를 올리면 미리 그림
+SPECULATION = json.dumps({
+    'prefetch': [{'where': {'and': [SAME_SITE, {'selector_matches': '.rail a, .glist a'}]}, 'eagerness': 'eager'}],
+    'prerender': [{'where': SAME_SITE, 'eagerness': 'moderate'}],
+})
 
 
 async def speculation(request: web.Request):
