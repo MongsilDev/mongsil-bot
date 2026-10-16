@@ -96,7 +96,7 @@ for (const scope of document.querySelectorAll('[data-scope]')) {
 
   const refresh = () => {
     const n = chosen().length;
-    count.textContent = n ? `고른 채널 ${n}개` : '채널을 골라주세요';
+    count.textContent = n ? `선택한 채널 ${n}개` : '채널을 선택해주세요';
     save.disabled = !n || (mode() === saved.mode && chosen().join() === saved.channels);
   };
 
@@ -118,7 +118,7 @@ for (const scope of document.querySelectorAll('[data-scope]')) {
       picker.hidden = mode() === 'all';
       refresh();
       if (mode() === 'all' || chosen().length) commit();
-      else showState(scope, '채널을 고른 뒤 저장해주세요.', 'hint');
+      else showState(scope, '채널을 선택한 뒤 저장해주세요.', 'hint');
     });
   }
   for (const box of boxes) {

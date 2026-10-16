@@ -37,7 +37,7 @@ def scope_text(guild_id: int, prefix: str) -> str:
     if mode == 'all' or not channels:
         return "모든 채널"
     where = ", ".join(f"<#{c}>" for c in channels[:3]) + (f" 외 {len(channels) - 3}개" if len(channels) > 3 else "")
-    return f"{where}만" if mode == 'only' else f"{where} 빼고"
+    return f"{where}만" if mode == 'only' else f"{where} 제외"
 
 
 class SettingsView(CooldownLayoutView):

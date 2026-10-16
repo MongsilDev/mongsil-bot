@@ -185,7 +185,7 @@ class ERClient(commands.Bot):
         await app_emojis.sync_characters(self)
 
     async def command_channel_check(self, interaction: discord.Interaction) -> bool:
-        """서버가 고른 채널 밖의 명령을 막음. 서버 관리 권한이 있으면 어디서나 씀"""
+        """서버가 지정한 채널 밖의 명령을 막음. 서버 관리 권한이 있으면 어디서나 씀"""
         if interaction.type is not discord.InteractionType.application_command or interaction.guild_id is None:
             return True
         channel = interaction.channel

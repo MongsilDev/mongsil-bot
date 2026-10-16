@@ -674,10 +674,10 @@ def alert_rows(guild: discord.Guild) -> list[dict]:
         if guild.unavailable:
             pass
         elif cid and not isinstance(channel, discord.TextChannel):
-            problem = "고른 채널이 삭제됨. 다른 채널을 골라주세요."
+            problem = "알림 채널이 삭제됨. 다른 채널을 선택해주세요."
         elif channel and not channel.permissions_for(guild.me).view_channel:
             # 11월 16일부터 볼 수 없는 채널은 이름이 가려져 이름을 쓰지 않음
-            problem = "몽실봇이 고른 채널을 볼 수 없음. 채널 권한을 준 뒤 새로고침해주세요."
+            problem = "몽실봇이 알림 채널을 볼 수 없음. 채널 권한을 준 뒤 새로고침해주세요."
         elif channel and (missing := channel_ok(channel, key == 'alert_cut')):
             problem = f"#{channel.name} 채널에 몽실봇의 {', '.join(missing)} 권한 없음. 권한을 준 뒤 새로고침해주세요."
         rows.append({'key': key, 'name': name, 'desc': desc, 'channel': cid, 'problem': problem})
@@ -832,11 +832,11 @@ async def save_setting(request: web.Request):
         if mode not in modes:
             raise web.HTTPBadRequest()
         if mode != 'all' and not ids:
-            return refuse("채널을 하나 이상 골라주세요.", 400)
+            return refuse("채널을 하나 이상 선택해주세요.", 400)
         changes = [(mode_key, mode), (list_key, ids)]
         subject = '이모지 확대' if key == 'zoom_scope' else '명령어'
         names = channel_names(guild, ids)
-        text = f"{subject} 채널: " + {'all': "모든 채널", 'only': f"{names}만", 'except': f"{names} 빼고"}[mode]
+        text = f"{subject} 채널: " + {'all': "모든 채널", 'only': f"{names}만", 'except': f"{names} 제외"}[mode]
     elif key == 'invite_days':
         days = as_int(value)
         if days not in INVITE_DAYS:
@@ -853,9 +853,9 @@ async def save_setting(request: web.Request):
         if cid:
             channel = guild.get_channel(cid)
             if not isinstance(channel, discord.TextChannel) or not channel.permissions_for(guild.me).view_channel:
-                return refuse("고를 수 없는 채널입니다. 새로고침한 뒤 다시 골라주세요.", 400)
+                return refuse("선택할 수 없는 채널입니다. 새로고침한 뒤 다시 선택해주세요.", 400)
             if missing := channel_ok(channel, key == 'alert_cut'):
-                return refuse(f"몽실봇에 #{channel.name} 채널의 {', '.join(missing)} 권한이 없습니다. 권한을 준 뒤 다시 골라주세요.")
+                return refuse(f"몽실봇에 #{channel.name} 채널의 {', '.join(missing)} 권한이 없습니다. 권한을 준 뒤 다시 선택해주세요.")
             text = f"{name} 알림: #{channel.name}"
         else:
             text = f"{name} 알림: 끔"
