@@ -543,7 +543,7 @@ async def index(request: web.Request):
         previews=previews.previews,
         live=live,
         stamp=stamp,
-        invite=invite_url(),
+        invite='/invite',
     )
 
 
@@ -566,7 +566,7 @@ async def servers(request: web.Request):
                         zoom_on=gid not in disabled)
             joined.append(item)
         else:
-            item['invite'] = invite_url(gid)
+            item['invite'] = f'/invite?guild={gid}'
             others.append(item)
     # 멤버 많은 서버가 위로, 같으면 이름순
     joined.sort(key=lambda g: -(g['members'] or 0))
@@ -953,6 +953,12 @@ async def health(request: web.Request):
                              status=200 if ok else 503)
 
 
+async def invite(request: web.Request):
+    """봇 추가 링크. ?guild=서버ID면 그 서버를 미리 고름"""
+    gid = request.query.get('guild', '')
+    raise web.HTTPFound(invite_url(int(gid) if gid.isdigit() else None))
+
+
 def redirect_to(path: str, permanent: bool = True):
     async def handler(request: web.Request):
         raise (web.HTTPMovedPermanently if permanent else web.HTTPFound)(path)
@@ -1011,6 +1017,7 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
     app.router.add_get('/preview/{key}.png', preview_image)
     app.router.add_get('/terms', document('terms.html'))
     app.router.add_get('/privacy', document('privacy.html'))
+    app.router.add_get('/invite', invite)
     app.router.add_get('/support', redirect_to(config.support_server, permanent=False))
     app.router.add_get('/discord', redirect_to(config.support_server, permanent=False))
     app.router.add_get('/tos', redirect_to('/terms'))
