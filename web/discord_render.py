@@ -80,6 +80,14 @@ def _media(url: str, files: dict) -> str:
     return url
 
 
+def _size(url: str, files: dict) -> str:
+    """PNG 머리의 가로세로. 자리를 미리 잡아 그림이 늦게 떠도 화면이 밀리지 않음"""
+    data = files.get(url.removeprefix('attachment://'), b'')
+    if data[:8] != b'\x89PNG\r\n\x1a\n':
+        return ''
+    return f' width="{int.from_bytes(data[16:20], "big")}" height="{int.from_bytes(data[20:24], "big")}"'
+
+
 def _item(item, files: dict) -> str:
     if isinstance(item, ui.TextDisplay):
         return f'<div class="dc-text">{markdown(item.content)}</div>'
@@ -100,7 +108,8 @@ def _item(item, files: dict) -> str:
         return '<div class="dc-row">' + ''.join(_button(b) for b in item.children if isinstance(b, ui.Button)) + '</div>'
     if isinstance(item, ui.MediaGallery):
         return '<div class="dc-gallery">' + ''.join(
-            f'<img src="{html.escape(_media(m.media.url, files))}" alt="" loading="lazy" decoding="async">' for m in item.items) + '</div>'
+            f'<img src="{html.escape(_media(m.media.url, files))}" alt=""{_size(m.media.url, files)} loading="lazy" decoding="async">'
+            for m in item.items) + '</div>'
     if isinstance(item, ui.Container):
         accent = f' style="--accent:#{item.accent_colour.value:06x}"' if item.accent_colour else ''
         return f'<div class="dc-container"{accent}>' + ''.join(_item(c, files) for c in item.children) + '</div>'

@@ -29,7 +29,7 @@
     <div class="cmd-panel" role="tabpanel" id="panel-{{ loop.index }}" aria-labelledby="tab-{{ loop.index }}"{% if c.name != selected %} hidden{% endif %}>
       <p class="cmd-desc">{{ c.description }}</p>
       {% if previews[c.name] %}
-      {{ message(c.name, previews[c.name], avatar, stamp) }}
+      {{ message(c.name, previews[c.name], avatar, stamp, c.name == selected) }}
       {% else %}
       <p class="empty">미리보기 준비 중</p>
       {% endif %}

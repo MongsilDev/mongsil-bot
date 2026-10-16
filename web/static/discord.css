@@ -115,7 +115,7 @@
 }
 
 .dc-small {
-  color: #949ba4;
+  color: #a3a9b3;
   font-size: 13px;
 }
 
@@ -225,6 +225,7 @@
 .dc-gallery img {
   display: block;
   width: 100%;
+  height: auto;
   border-radius: 8px;
 }
 
