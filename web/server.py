@@ -2,6 +2,7 @@
 웹 대시보드. 봇 프로세스 안에서 aiohttp로 돌아 봇 상태와 설정 캐시를 그대로 공유
 """
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -36,6 +37,7 @@ SERVICE_START = datetime(2023, 6, 15, tzinfo=KST)
 ADMINISTRATOR = 1 << 3
 MANAGE_GUILD = 1 << 5
 
+# HTTPS에서는 __Host- 접두사로 하위 도메인이 쿠키를 심지 못하게 함. 이름은 start_dashboard에서 정함
 SESSION_COOKIE = 'mb_session'
 STATE_COOKIE = 'mb_state'
 SESSION_TTL = 7 * 86400
@@ -43,6 +45,8 @@ GUILDS_TTL = 60
 GUILD_INFO_TTL = 300
 # 이 시간 안의 캐시는 바로 쓰고 뒤에서 새로 받음
 STALE_TTL = 600
+# 디스코드 API 오류 때 화면에 대신 쓰는 캐시의 최대 나이. 설정 저장은 따로 권한을 다시 확인함
+FALLBACK_TTL = 3600
 
 VERIFICATION = {'none': '없음', 'low': '낮음', 'medium': '중간', 'high': '높음', 'highest': '매우 높음'}
 LOCALES = {'ko': '한국어', 'en-US': '영어', 'en-GB': '영어', 'ja': '일본어', 'zh-CN': '중국어 간체', 'zh-TW': '중국어 번체',
@@ -68,6 +72,7 @@ http: aiohttp.ClientSession = None
 guild_cache: dict[str, tuple[float, list]] = {}
 guild_info_cache: dict[int, tuple[float, dict]] = {}
 refreshing: set = set()
+background: set = set()
 
 env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(ROOT / 'templates'),
@@ -121,8 +126,9 @@ env.globals['static_version'] = str(int(max(f.stat().st_mtime for f in (ROOT / '
 
 def render(request: web.Request, name: str, status: int = 200, **context) -> web.Response:
     session = request.get('session')
+    public = {k: session[k] for k in ('user_id', 'username', 'avatar', 'csrf')} if session else None
     html = env.get_template(name).render(
-        session=session,
+        session=public,
         is_owner=bool(session) and session['user_id'] in owner_ids(),
         path=request.path,
         rail=context.pop('rail', None),
@@ -262,15 +268,12 @@ def usage_summary(cmd_rows, zoom_rows, now: int) -> dict:
 
 # ---------- 세션 ----------
 
-@web.middleware
-async def session_middleware(request: web.Request, handler):
-    sid = request.cookies.get(SESSION_COOKIE)
-    request['session'] = None
-    if sid:
-        row = db.execute("SELECT * FROM sessions WHERE id = ? AND expires > ?", (sid, int(time.time()))).fetchone()
-        if row:
-            request['session'] = dict(row)
-    response = await handler(request)
+def session_key(sid: str) -> str:
+    """DB에는 세션 값의 해시만 저장"""
+    return hashlib.sha256(sid.encode()).hexdigest()
+
+
+def secure_headers(request: web.Request, response) -> None:
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
     response.headers.setdefault('Referrer-Policy', 'same-origin')
     response.headers.setdefault('X-Frame-Options', 'DENY')
@@ -284,6 +287,32 @@ async def session_middleware(request: web.Request, handler):
         "default-src 'self'; img-src 'self' https: data:; "
         "style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; form-action 'self'",
     )
+
+
+@web.middleware
+async def session_middleware(request: web.Request, handler):
+    sid = request.cookies.get(SESSION_COOKIE)
+    request['session'] = None
+    if sid:
+        row = db.execute("SELECT * FROM sessions WHERE id = ? AND expires > ?", (session_key(sid), int(time.time()))).fetchone()
+        if row:
+            request['session'] = dict(row)
+    try:
+        response = await handler(request)
+    except web.HTTPException as e:
+        secure_headers(request, e)
+        raise
+    secure_headers(request, response)
+    return response
+
+
+@web.middleware
+async def ready_middleware(request: web.Request, handler):
+    """재시작 직후 서버 목록이 비어 있는 동안 틀린 화면 대신 잠시 기다리게 함"""
+    if client.is_ready() or request.path.startswith(('/static/', '/health')):
+        return await handler(request)
+    response = error_page(request, 503, "몽실봇이 다시 켜지는 중", "몇 초 뒤 새로고침해주세요.")
+    response.headers['Retry-After'] = '5'
     return response
 
 
@@ -312,7 +341,7 @@ def require_login(request: web.Request):
 
 def check_csrf(request: web.Request, token: str | None):
     session = request['session']
-    if not session or not token or not secrets.compare_digest(token, session['csrf']):
+    if not session or not token or not secrets.compare_digest(token.encode(), session['csrf'].encode()):
         raise web.HTTPForbidden(text='CSRF')
 
 
@@ -328,7 +357,10 @@ async def fetch_guilds(session: dict) -> list[dict]:
             raise SessionExpired()
         r.raise_for_status()
         guilds = await r.json()
-    guild_cache[session['id']] = (time.time(), guilds)
+    now = time.time()
+    for key in [k for k, (ts, _) in guild_cache.items() if now - ts > FALLBACK_TTL]:
+        del guild_cache[key]
+    guild_cache[session['id']] = (now, guilds)
     return guilds
 
 
@@ -341,11 +373,13 @@ def refresh_later(key, coro_fn) -> None:
         try:
             await coro_fn()
         except Exception as e:
-            logger.warning(f"대시보드 캐시 갱신 실패: {key} {type(e).__name__}: {e}")
+            logger.warning(f"대시보드 캐시 갱신 실패: {key[0]} {type(e).__name__}: {e}")
         finally:
             refreshing.discard(key)
     refreshing.add(key)
-    asyncio.create_task(run())
+    task = asyncio.create_task(run())
+    background.add(task)
+    task.add_done_callback(background.discard)
 
 
 async def user_guilds(request: web.Request) -> list[dict]:
@@ -356,14 +390,15 @@ async def user_guilds(request: web.Request) -> list[dict]:
     if cached and age < GUILDS_TTL:
         return cached[1]
     if cached and age < STALE_TTL:
-        refresh_later(('guilds', session['id']), lambda: fetch_guilds(session))
+        refresh_later(('guilds', session['user_id']), lambda: fetch_guilds(session))
         return cached[1]
     try:
         return await fetch_guilds(session)
     except SessionExpired:
         raise web.HTTPFound('/login?' + urlencode({'next': request.path}))
-    except aiohttp.ClientResponseError as e:
-        if e.status == 429 and cached:
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        if cached and age < FALLBACK_TTL:
+            logger.warning(f"서버 목록 갱신 실패, 캐시 사용: {type(e).__name__}")
             return cached[1]
         raise
 
@@ -412,7 +447,7 @@ async def callback(request: web.Request):
     state, _, nxt = saved.partition('|')
     if 'error' in request.query:
         raise web.HTTPFound('/')
-    if not state or not secrets.compare_digest(state, request.query.get('state', '')) or 'code' not in request.query:
+    if not state or not secrets.compare_digest(state.encode(), request.query.get('state', '').encode()) or 'code' not in request.query:
         return error_page(request, 400, "로그인하지 못했습니다", "처음 화면에서 다시 로그인해주세요.")
 
     data = {
@@ -431,29 +466,39 @@ async def callback(request: web.Request):
         r.raise_for_status()
         user = await r.json()
 
+    if not re.fullmatch(r'/(servers(/\d+)?|admin)?', nxt):
+        nxt = '/servers'
     sid = secrets.token_urlsafe(32)
     expires = int(time.time()) + min(SESSION_TTL, int(token.get('expires_in', SESSION_TTL)))
     db.execute("DELETE FROM sessions WHERE expires < ?", (int(time.time()),))
     db.execute(
         "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (sid, int(user['id']), user.get('global_name') or user['username'], user.get('avatar'),
+        (session_key(sid), int(user['id']), user.get('global_name') or user['username'], user.get('avatar'),
          token['access_token'], secrets.token_urlsafe(24), expires),
     )
     logger.info(f"대시보드 로그인: {user['username']} ({user['id']})")
 
     response = web.HTTPFound(nxt or '/servers')
     response.set_cookie(SESSION_COOKIE, sid, max_age=expires - int(time.time()), **cookie_opts())
-    response.del_cookie(STATE_COOKIE, path='/')
+    response.del_cookie(STATE_COOKIE, **cookie_opts())
     raise response
 
 
 async def logout(request: web.Request):
     form = await request.post()
     check_csrf(request, form.get('csrf'))
-    db.execute("DELETE FROM sessions WHERE id = ?", (request['session']['id'],))
-    guild_cache.pop(request['session']['id'], None)
+    session = request['session']
+    db.execute("DELETE FROM sessions WHERE id = ?", (session['id'],))
+    guild_cache.pop(session['id'], None)
+    try:
+        auth = aiohttp.BasicAuth(str(client.application_id), client_secret)
+        async with http.post(f"{API}/oauth2/token/revoke", data={'token': session['token'], 'token_type_hint': 'access_token'}, auth=auth) as r:
+            if r.status != 200:
+                logger.warning(f"로그인 토큰 철회 실패: {r.status}")
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        logger.warning(f"로그인 토큰 철회 실패: {type(e).__name__}")
     response = web.HTTPFound('/')
-    response.del_cookie(SESSION_COOKIE, path='/')
+    response.del_cookie(SESSION_COOKIE, **cookie_opts())
     raise response
 
 
@@ -528,6 +573,20 @@ async def servers(request: web.Request):
     return render(request, 'servers.html', joined=joined, others=others, rail=joined)
 
 
+async def verify_manager(request: web.Request, guild: discord.Guild) -> None:
+    """설정 저장 직전에 봇 토큰으로 권한을 다시 확인. 서버 목록 캐시가 늦게 갱신돼도 권한을 잃은 유저는 막힘"""
+    user_id = request['session']['user_id']
+    if guild.owner_id == user_id:
+        return
+    try:
+        member = await guild.fetch_member(user_id)
+    except discord.NotFound:
+        raise web.HTTPForbidden(text='권한 없음')
+    perms = member.guild_permissions
+    if not (perms.administrator or perms.manage_guild):
+        raise web.HTTPForbidden(text='권한 없음')
+
+
 async def managed_guild(request: web.Request) -> discord.Guild:
     require_login(request)
     try:
@@ -552,9 +611,10 @@ async def fetch_counts(guild: discord.Guild) -> dict:
         return member.display_name
 
     extra = {}
-    for key, result in zip(('online', 'owner'), await asyncio.gather(online(), owner(), return_exceptions=True)):
+    results = await asyncio.gather(asyncio.wait_for(online(), 3), asyncio.wait_for(owner(), 3), return_exceptions=True)
+    for key, result in zip(('online', 'owner'), results):
         if isinstance(result, Exception):
-            logger.warning(f"서버 {key} 조회 실패: {guild.id} {result}")
+            logger.warning(f"서버 {key} 조회 실패: {guild.id} {type(result).__name__} {result}")
         else:
             extra[key] = result
     guild_info_cache[guild.id] = (time.time(), extra)
@@ -608,7 +668,9 @@ def alert_rows(guild: discord.Guild) -> list[dict]:
         cid = guild_settings.get(guild.id, key)
         channel = guild.get_channel(cid) if cid else None
         problem = None
-        if cid and not isinstance(channel, discord.TextChannel):
+        if guild.unavailable:
+            pass
+        elif cid and not isinstance(channel, discord.TextChannel):
             problem = "고른 채널이 삭제됨. 다른 채널을 골라주세요."
         elif channel and not channel.permissions_for(guild.me).view_channel:
             # 11월 16일부터 볼 수 없는 채널은 이름이 가려져 이름을 쓰지 않음
@@ -699,7 +761,13 @@ async def server_detail(request: web.Request):
 async def toggle_zoom(request: web.Request):
     guild = await managed_guild(request)
     check_csrf(request, request.headers.get('X-CSRF-Token'))
-    body = await request.json()
+    try:
+        body = await request.json()
+    except ValueError:
+        raise web.HTTPBadRequest()
+    if not isinstance(body, dict):
+        raise web.HTTPBadRequest()
+    await verify_manager(request, guild)
     enable = bool(body.get('enabled'))
 
     disabled = set(load_disabled_servers())
@@ -736,6 +804,9 @@ async def save_setting(request: web.Request):
         body = await request.json()
     except ValueError:
         raise web.HTTPBadRequest()
+    if not isinstance(body, dict):
+        raise web.HTTPBadRequest()
+    await verify_manager(request, guild)
     key, value = body.get('key'), body.get('value')
 
     def refuse(message: str, status: int = 409):
@@ -749,6 +820,8 @@ async def save_setting(request: web.Request):
 
     changes: list[tuple[str, object]] = []
     if key in SCOPES:
+        if not isinstance(value, dict) or not isinstance(value.get('channels', []), list):
+            raise web.HTTPBadRequest()
         mode_key, list_key, modes = SCOPES[key]
         mode = (value or {}).get('mode')
         valid = {c['id'] for g in channel_groups(guild, SCOPE_TYPES) for c in g['channels']}
@@ -872,6 +945,14 @@ def document(name: str):
     return handler
 
 
+async def health(request: web.Request):
+    """외부 감시용. 프로세스가 살아 있어도 디스코드 연결이 끊기면 503"""
+    latency = client.latency
+    ok = client.is_ready() and not client.is_closed() and latency == latency and latency < 10
+    return web.json_response({'ok': ok, 'latency_ms': round(latency * 1000) if latency == latency and latency != float('inf') else None},
+                             status=200 if ok else 503)
+
+
 def redirect_to(path: str):
     async def handler(request: web.Request):
         raise web.HTTPMovedPermanently(path)
@@ -913,7 +994,10 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
         headers={'User-Agent': f'DiscordBot ({base_url}, 1.0)'},
     )
 
-    app = web.Application(middlewares=[session_middleware, error_middleware])
+    global SESSION_COOKIE, STATE_COOKIE
+    if base_url.startswith('https'):
+        SESSION_COOKIE, STATE_COOKIE = '__Host-mb_session', '__Host-mb_state'
+    app = web.Application(middlewares=[session_middleware, ready_middleware, error_middleware])
     app.router.add_get('/', index)
     app.router.add_get('/login', login)
     app.router.add_get('/auth/callback', callback)
@@ -930,6 +1014,7 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
     app.router.add_get('/tos', redirect_to('/terms'))
     app.router.add_get('/privacy-policy', redirect_to('/privacy'))
     app.router.add_get('/speculation.json', speculation)
+    app.router.add_get('/health', health)
     app.router.add_static('/static', ROOT / 'static')
     app.on_cleanup.append(lambda _: http.close())
     refresh = asyncio.create_task(previews.refresh_loop(client))
@@ -938,7 +1023,7 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
         refresh.cancel()
     app.on_cleanup.append(stop_refresh)
 
-    runner = web.AppRunner(app, access_log=None)
+    runner = web.AppRunner(app, access_log=None, shutdown_timeout=5)
     await runner.setup()
     port = int(os.getenv('DASHBOARD_PORT', '8095'))
     await web.TCPSite(runner, os.getenv('DASHBOARD_HOST', '0.0.0.0'), port).start()

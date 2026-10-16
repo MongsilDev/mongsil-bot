@@ -12,7 +12,7 @@ from .logging_config import get_logger
 logger = get_logger('errors')
 
 # aiohttp 예외 문자열에는 요청 URL이 쿼리까지 통째로 들어온다(Steam key= 등).
-_SECRET_QS = re.compile(r"(key|apikey|api_key)=[^&\s'\"]+", re.IGNORECASE)
+_SECRET_QS = re.compile(r"(key|apikey|api_key|code|state|token|access_token)=[^&\s'\"]+", re.IGNORECASE)
 
 
 def redact_secrets(text) -> str:

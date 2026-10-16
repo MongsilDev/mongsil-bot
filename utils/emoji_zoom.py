@@ -2,6 +2,8 @@
 이모지 확대 기능 모듈
 """
 import asyncio
+
+import aiohttp
 import discord
 import json
 import os
@@ -212,8 +214,8 @@ async def _delete_original(message: discord.Message) -> bool:
         return True
     except (discord.Forbidden, discord.NotFound):
         return False  # 메시지 관리 권한이 없으면 원본과 확대본이 함께 남는다
-    except discord.HTTPException as e:
-        logger.warning(f"원본 이모지 삭제 실패 (채널 {message.channel.id}): {e}")
+    except (discord.HTTPException, aiohttp.ClientError, OSError, asyncio.TimeoutError) as e:
+        logger.warning(f"원본 이모지 삭제 실패 (채널 {message.channel.id}): {type(e).__name__} {e}")
         return False
 
 
@@ -249,6 +251,13 @@ async def process_emoji_zoom(message: discord.Message) -> None:
         if not emoji:
             return
     except (ValueError, AttributeError):
+        return
+
+    # 이미지나 외부 이모지가 막힌 유저가 확대로 우회하지 못하게 함
+    perms = message.channel.permissions_for(message.author)
+    if not perms.embed_links:
+        return
+    if not perms.use_external_emojis and message.guild.get_emoji(emoji.id) is None:
         return
 
     webhook = await get_or_create_webhook(hook_channel)

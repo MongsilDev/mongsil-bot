@@ -29,7 +29,9 @@ class ERClient(commands.Bot):
             intents.message_content = True
             intents.presences = False
 
-        super().__init__(command_prefix="!", intents=intents, activity=discord.Game(name="이터널 리턴"))
+        # 게임 닉네임이나 공식 사이트 제목에 섞인 멘션이 울리지 않게 기본값을 막음
+        super().__init__(command_prefix="!", intents=intents, activity=discord.Game(name="이터널 리턴"),
+                         allowed_mentions=discord.AllowedMentions.none())
 
         # data 디렉토리 생성
         os.makedirs("data", exist_ok=True)
@@ -171,6 +173,10 @@ class ERClient(commands.Bot):
     @tasks.loop(hours=24)
     async def prune_records(self):
         prune()
+
+    @prune_records.before_loop
+    async def _before_prune_records(self):
+        await self.wait_until_ready()
 
     @tasks.loop(hours=24)
     async def refresh_names(self):

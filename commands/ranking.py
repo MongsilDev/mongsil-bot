@@ -1,4 +1,5 @@
 import asyncio
+import time
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
@@ -63,8 +64,22 @@ def format_user_text(u: RankUser, highlight: bool = False) -> str:
 GUILD_RANKS = 20
 
 
+_guild_ranking_cache: Dict[tuple, tuple] = {}
+
+
 async def guild_ranking(client: ERClient, guild: discord.Guild, season_id: int) -> List[tuple]:
-    """/계정으로 등록한 이 서버 멤버의 RP 순. (표시 이름, 닉네임, RP, 티어, 순위 문구)"""
+    """/계정으로 등록한 이 서버 멤버의 RP 순. 버튼 반복에 대비해 서버별 5분 캐시"""
+    key = (guild.id, season_id)
+    cached = _guild_ranking_cache.get(key)
+    if cached and time.monotonic() - cached[0] < 300:
+        return cached[1]
+    rows = await _guild_ranking(client, guild, season_id)
+    _guild_ranking_cache[key] = (time.monotonic(), rows)
+    return rows
+
+
+async def _guild_ranking(client: ERClient, guild: discord.Guild, season_id: int) -> List[tuple]:
+    """(표시 이름, 닉네임, RP, 티어, 순위 문구)"""
     registered = accounts.all_accounts()
     members = {}
     for i in range(0, len(registered), 100):

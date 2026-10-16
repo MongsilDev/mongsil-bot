@@ -1,17 +1,17 @@
 # Discord 봇 라이브러리
-discord.py>=2.3.0
+discord.py==2.7.1
 
 # 비동기 HTTP 클라이언트 (API 요청 및 로깅 로깅용)
-aiohttp>=3.9.0
+aiohttp==3.14.4
 
 # 환경 변수 관리
-python-dotenv>=1.0.0
+python-dotenv==1.2.4
 
 # 장애 추적
-sentry-sdk>=2.0.0
+sentry-sdk==2.71.0
 
 # 웹 대시보드 템플릿
-jinja2>=3.1.0
+jinja2==3.1.6
 
 # 명령어 카드 차트 이미지
-Pillow>=10.0.0
+Pillow==12.3.0
