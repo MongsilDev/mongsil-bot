@@ -149,15 +149,17 @@ def _hourly(games: List[GameStats], dates: List[datetime.date]) -> List[List[int
 
 
 def _longest_session(games: List[GameStats]) -> Optional[Tuple[datetime, int]]:
+    """게임 사이 대기 시간은 빼고 세션 안 플레이 시간만 합함. 일별 합계와 같은 기준"""
     best = None
     first = end = None
+    played = 0
     for game in sorted(games, key=lambda g: g.start):
         if first is None or game.start - end > SESSION_GAP:
-            first = game.start
+            first, played = game.start, 0
         end = max(end or game.start, game.start + timedelta(seconds=game.play_time))
-        length = int((end - first).total_seconds())
-        if best is None or length > best[1]:
-            best = (first, length)
+        played += game.play_time
+        if best is None or played > best[1]:
+            best = (first, played)
     return best
 
 
@@ -186,19 +188,13 @@ def calculate_play_time_stats(games: List[GameStats], dates: List[datetime.date]
     )
 
 def format_duration(seconds: int) -> str:
-    """초 단위 시간을 사용자 친화적인 형식으로 변환합니다."""
+    """분은 반올림. 히트맵 일별 합계와 같은 기준"""
     if seconds < 60:
         return f"{seconds}초"
-    elif seconds < 3600:
-        minutes = seconds // 60
+    hours, minutes = divmod(round(seconds / 60), 60)
+    if not hours:
         return f"{minutes}분"
-    else:
-        hours, remainder = divmod(seconds, 3600)
-        minutes = remainder // 60
-        if minutes > 0:
-            return f"{hours}시간 {minutes}분"
-        else:
-            return f"{hours}시간"
+    return f"{hours}시간 {minutes}분" if minutes else f"{hours}시간"
 
 
 def _short(seconds: int) -> str:
@@ -216,10 +212,14 @@ def create_playtime_layout(stats: PlayTimeStats) -> ui.LayoutView:
     sub = [f"{stats.games_played}게임"]
     if stats.previous_seconds is not None:
         diff = stats.total_seconds - stats.previous_seconds
-        sign = '+' if diff >= 0 else '-'
-        sub.insert(0, f"이전 7일보다 **{sign}{format_duration(abs(diff)) if diff else '0분'}**")
+        if abs(diff) < 60:
+            sub.insert(0, "이전 7일과 같음")
+        else:
+            sub.insert(0, f"이전 7일보다 **{format_duration(abs(diff))}** {'많음' if diff > 0 else '적음'}")
+    # 히트맵의 일별 분을 더한 값이라 합계가 1분 어긋나지 않음
+    shown_total = sum(round(v / 60) for v in stats.daily_stats.values()) * 60
     children = [ui.TextDisplay(
-        f"### {stats.nickname}\n# {format_duration(stats.total_seconds)}\n-# 최근 7일 | " + " | ".join(sub))]
+        f"### {stats.nickname}\n# {format_duration(shown_total)}\n-# 최근 7일 | " + " | ".join(sub))]
 
     labels = [f"{d.month}/{d.day} {WEEKDAYS[d.weekday()]}" for d in dates]
     totals = [_short(stats.daily_stats[d]) for d in dates]
@@ -227,13 +227,17 @@ def create_playtime_layout(stats: PlayTimeStats) -> ui.LayoutView:
     url = visual.attach(view, 'playtime.png', chart)
     children.append(ui.MediaGallery(discord.MediaGalleryItem(url)))
 
-    lines = [f"하루 평균 **{format_duration(stats.total_seconds // 7)}**"]
+    now = datetime.now(KST)
+    # 오늘은 지난 시간만큼만 셈
+    days = 6 + (now.hour * 3600 + now.minute * 60) / 86400
+    lines = [f"하루 평균 **{format_duration(int(stats.total_seconds / days))}**"]
     if stats.games_played:
         lines[0] += f" | 게임당 **{format_duration(stats.total_seconds // stats.games_played)}**"
     if stats.longest and stats.longest[1] >= 1800:
         start, length = stats.longest
         lines.append(f"최장 연속 **{format_duration(length)}** {start.month}/{start.day}")
-    lines.append("-# " + " | ".join(f"{name} {count}게임" for name, count in stats.mode_counts.items()))
+    if len(stats.mode_counts) > 1:
+        lines.append("-# " + " | ".join(f"{name} {count}게임" for name, count in stats.mode_counts.items()))
     children.append(ui.TextDisplay("\n".join(lines)))
 
     view.add_item(ui.Container(*children, accent_colour=visual.colour('playtime')))
@@ -268,7 +272,9 @@ async def get_playtime_info(client: ERClient, nickname: str, user_id: Optional[s
 
     # 지난 7일 비교용으로 14일치를 읽되, 페이지 한도에 걸리면 비교는 생략
     games, complete = await get_user_games(client, user_id, previous_start)
-    previous = [g for g in games if g.date < dates[-1]]
+    # 이번 7일은 오늘 지금까지라 이전 7일도 같은 시각에서 끊음
+    cutoff = datetime.now(KST) - timedelta(days=7)
+    previous = [g for g in games if g.date < dates[-1] and g.start < cutoff]
     if not any(g.date >= dates[-1] for g in games):
         return None
 
