@@ -910,7 +910,7 @@ async def admin(request: web.Request):
         if g is None:
             last = db.execute("SELECT name FROM guild_events WHERE guild_id = ? AND name IS NOT NULL ORDER BY ts DESC LIMIT 1",
                               (gid,)).fetchone()
-        top_guilds.append({'id': gid, 'name': g.name if g else (last[0] if last else str(gid)), 'icon': guild_icon(gid, g.icon and g.icon.key) if g else None,
+        top_guilds.append({'id': gid, 'name': g.name if g else (last[0] if last else '이름을 모르는 서버'), 'icon': guild_icon(gid, g.icon and g.icon.key) if g else None,
                            'members': g.member_count if g else None, 'count': count, 'zooms': zoom_by_guild.get(gid, 0),
                            'bar': round(count / by_guild.most_common(1)[0][1] * 100, 1), 'gone': g is None})
 
