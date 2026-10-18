@@ -13,7 +13,7 @@ from utils import accounts, app_emojis, visual
 from utils.emojis import EMOJIS
 from utils.config import config
 from utils.errors import APIError, InvalidUidError, NotFoundError, handle_errors, validate_nickname
-from utils.layouts import create_error_layout, CooldownLayoutView, sent_message
+from utils.layouts import create_error_layout, CooldownLayoutView, mark_shown, sent_message
 
 KST = ZoneInfo('Asia/Seoul')
 
@@ -113,7 +113,7 @@ async def account_view(client: ERClient, user_id: int) -> ui.LayoutView:
     view.add_item(ui.Container(
         top,
         ui.Separator(),
-        ui.TextDisplay(f"-# 내 계정 | {day.month}/{day.day} 등록"),
+        ui.TextDisplay(f"-# 내 계정 | {day:%Y.%m.%d} 등록"),
         ui.ActionRow(dakgg, change, remove),
         accent_colour=visual.tier_colour(icon) if icon else visual.colour('info'),
     ))
@@ -178,7 +178,7 @@ async def with_account(client: ERClient, owner: Optional[int], nickname: str, ui
         except InvalidUidError:
             pass
         else:
-            accounts.save(owner, fresh, nickname)
+            accounts.relink(owner, fresh)
             return result
     raise NotFoundError(f"등록 계정 조회 실패: {nickname}", f"등록한 '{nickname}' 계정을 조회할 수 없습니다.\n{REREGISTER}")
 
@@ -219,6 +219,7 @@ class Account(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
         card = await account_view(self.client, interaction.user.id)
         card.message = await interaction.followup.send(view=card, ephemeral=True, wait=True)
+        mark_shown(interaction)
 
 
 async def setup(client: ERClient):

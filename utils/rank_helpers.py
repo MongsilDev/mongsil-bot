@@ -1,7 +1,11 @@
 """
 랭크 관련 공통 헬퍼 함수 모듈
 """
+import asyncio
 from typing import Optional, Dict, List, Tuple
+
+import aiohttp
+
 from client import ERClient
 from utils.config import config
 from utils.errors import APIError, InvalidUidError, NotFoundError
@@ -17,12 +21,12 @@ SERVER_NAMES = {10: "아시아1", 12: "북미", 13: "유럽", 14: "남미", 17: 
 
 
 def overall_place(stats: Dict) -> str:
-    """서버 순위가 없을 때 쓰는 통합 순위 표기. 1000등 안은 등수, 그 밖은 상위 비율"""
+    """서버 순위가 없을 때 쓰는 통합 순위 표기. 1000위 안은 순위, 그 밖은 상위 비율"""
     rank, size = int(stats.get('rank', 0)), int(stats.get('rankSize', 0))
     if not rank:
         return ""
     if rank <= 1000 or not size:
-        return f"통합 {rank:,}등"
+        return f"통합 {rank:,}위"
     return f"상위 {max(rank / size * 100, 0.01):.2f}%"
 
 
@@ -31,7 +35,7 @@ def tier_and_place(stats: Dict, user_rank: Optional[Dict]) -> Tuple[str, str]:
     server_rank = int(user_rank.get('serverRank', 0)) if user_rank else 0
     tier = TierSystem.get_tier(int(stats.get('mmr', 0)), server_rank or int(stats.get('rank', 0)))
     if server_rank and server_rank <= 1000:
-        return tier, f"{SERVER_NAMES.get(user_rank.get('serverCode'), '서버')} {server_rank:,}등"
+        return tier, f"{SERVER_NAMES.get(user_rank.get('serverCode'), '서버')} {server_rank:,}위"
     return tier, overall_place(stats)
 
 
@@ -129,6 +133,9 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
             error_msg = data.get('message') if data else 'No response'
             logger.warning(f"랭킹 API 오류: {error_msg}")
             return None
+    except (aiohttp.ClientError, OSError, asyncio.TimeoutError) as e:
+        logger.warning(f"랭킹 API 네트워크 오류: {type(e).__name__}: {e}")
+        return None
     except Exception as e:
         logger.error(f"랭킹 API 실패: {e}", exc_info=True)
         return None

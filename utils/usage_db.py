@@ -69,9 +69,12 @@ def prune() -> None:
     """보관 기간이 지난 기록과 만료된 로그인 세션 삭제"""
     now = int(time.time())
     try:
+        removed = 0
         for table in ('command_log', 'zoom_log', 'guild_events', 'settings_log'):
-            db.execute(f"DELETE FROM {table} WHERE ts < ?", (now - KEEP_SECONDS,))
+            removed += db.execute(f"DELETE FROM {table} WHERE ts < ?", (now - KEEP_SECONDS,)).rowcount
         db.execute("DELETE FROM sessions WHERE expires < ?", (now,))
+        if removed:
+            logger.info(f"보관 기간 지난 기록 {removed}건 삭제")
     except sqlite3.Error as e:
         logger.warning(f"오래된 기록 삭제 실패: {e}")
 

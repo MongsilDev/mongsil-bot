@@ -1,8 +1,10 @@
 """
 에러 처리 유틸리티
 """
+import asyncio
 import re
 
+import aiohttp
 import discord
 from typing import Optional, Callable
 from functools import wraps
@@ -94,8 +96,8 @@ async def _send_error(interaction: discord.Interaction, error_text: str):
                 await interaction.followup.send(view=layout, ephemeral=True)
     except discord.NotFound:
         logger.debug("에러 응답 전송 생략: 만료된 인터랙션")
-    except discord.HTTPException as e:
-        logger.warning(f"에러 응답 전송 실패: {e}")
+    except (discord.HTTPException, aiohttp.ClientError, OSError, asyncio.TimeoutError) as e:
+        logger.warning(f"에러 응답 전송 실패: {type(e).__name__}: {e}")
 
 
 def handle_errors(
@@ -131,6 +133,9 @@ def handle_errors(
                 # 10062는 응답 기한이 지난 인터랙션이라 답할 곳이 없음
                 if isinstance(e, discord.NotFound) and e.code == 10062:
                     logger.warning(f"만료된 인터랙션 {func.__name__}: {e}")
+                    # 사용자에게는 응답 없음으로 보인 실패라 오류로 기록
+                    if interaction := _find_interaction(args):
+                        interaction.extras['status'] = 'error'
                     return None
                 if log_error:
                     logger.error(f"Unexpected error in {func.__name__}: {e}", exc_info=True)
@@ -162,6 +167,6 @@ def validate_nickname(nickname: str) -> str:
     for char in forbidden_chars:
         if char in nickname:
             raise ValidationError(f"닉네임에 사용할 수 없는 문자가 포함되어 있습니다: {char}",
-                                f"닉네임에 특수 문자 '{char}'는 쓸 수 없습니다.\n영문, 한글, 숫자만 입력해주세요.")
+                                f"닉네임에 '{char}' 문자는 쓸 수 없습니다.")
 
     return nickname

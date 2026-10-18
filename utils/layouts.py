@@ -3,6 +3,7 @@ LayoutView 기반 공통 레이아웃 유틸리티
 discord.py 2.7+ Components V2 사용
 """
 import asyncio
+import aiohttp
 import logging
 import time
 import discord
@@ -76,7 +77,7 @@ class CooldownLayoutView(ui.LayoutView):
         if changed:
             try:
                 await self.message.edit(view=self)
-            except discord.HTTPException:
+            except (discord.HTTPException, aiohttp.ClientError, OSError):
                 pass
 
 

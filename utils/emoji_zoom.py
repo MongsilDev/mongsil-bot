@@ -292,10 +292,11 @@ async def process_emoji_zoom(message: discord.Message) -> None:
             if not webhook:
                 raise discord.ClientException("웹훅 재생성 실패")
             await send_zoom(webhook)
-        except (discord.HTTPException, discord.ClientException) as e:
+        except (discord.HTTPException, discord.ClientException, aiohttp.ClientError, OSError, asyncio.TimeoutError) as e:
             logger.warning(f"확대 이모지 재전송 실패 (채널 {message.channel.id}): {e}")
             sent = False
-    except discord.HTTPException as e:
+    # 네트워크 오류도 잡아야 원본만 지워진 경우 아래에서 대신 보냄
+    except (discord.HTTPException, aiohttp.ClientError, OSError, asyncio.TimeoutError) as e:
         logger.warning(f"확대 이모지 전송 실패 (채널 {message.channel.id}): {e}")
         sent = False
 

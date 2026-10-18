@@ -48,6 +48,14 @@ def save(user_id: int, uid: str, nickname: str) -> bool:
         return False
 
 
+def relink(user_id: int, uid: str) -> None:
+    """계정 번호만 바뀐 경우. 등록 시각은 그대로 둠"""
+    try:
+        db.execute("UPDATE accounts SET uid = ? WHERE user_id = ?", (uid, user_id))
+    except sqlite3.Error as e:
+        logger.warning(f"계정 번호 갱신 실패: {e}")
+
+
 def rename(user_id: int, nickname: str) -> None:
     """게임 안에서 닉네임을 바꾼 경우 조회 결과로 갱신"""
     try:
