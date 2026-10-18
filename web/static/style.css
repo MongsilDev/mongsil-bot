@@ -593,6 +593,23 @@ img {
   margin-top: 88px;
 }
 
+/* 칸이 조건부라 있는 칸 수만큼 나눔 */
+.board .score {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--faint);
+  font-size: 14px;
+}
+
 .score {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -863,6 +880,11 @@ a.grow:hover {
 
 .guild-head.has-banner {
   flex-wrap: wrap;
+}
+
+.guild-head > div {
+  flex: 1;
+  min-width: 0;
 }
 
 .guild-banner {
@@ -1308,6 +1330,12 @@ a.grow:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
+}
+
+.pick-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pick:hover {
@@ -1952,7 +1980,24 @@ a.grow:hover {
   }
 
   .seg span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
     padding: 6px 8px;
+  }
+
+  .board .score {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .board .score-cell:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .foot span {
+    flex-basis: 100%;
   }
 
   .shell {
