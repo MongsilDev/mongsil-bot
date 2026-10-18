@@ -40,7 +40,7 @@
   <div>
     <h1>{{ guild.name }}</h1>
     <p class="guild-facts">
-      멤버 {{ num(guild.members, '명') }}{% if info.online is not none %}, <i class="dot" aria-hidden="true"></i>온라인 {{ num(info.online, '명') }}{% endif %}{% if info.boost_tier %}, 부스트 {{ info.boost_tier }}레벨{% endif %}
+      멤버 {{ num(guild.members, '명') }}{% if info.online is not none %}, <i class="dot" aria-hidden="true"></i>온라인 {{ num(info.online, '명') }}{% endif %}
     </p>
   </div>
 </header>
@@ -142,7 +142,7 @@
       {{ stat('이모지 확대', usage.zooms) }}
       <div class="stat">
         <dt>오늘 명령어</dt>
-        <dd><span class="stat-value">{{ num(usage.today.value, '회') }}</span><span class="stat-note">어제 {{ usage.today.yesterday|number }}회</span></dd>
+        <dd><span class="stat-value">{{ num(usage.today.value, '회') }}</span><span class="stat-note">어제 이 시각 {{ usage.today.same_time|number }}회, 하루 {{ usage.today.yesterday|number }}회</span></dd>
       </div>
     </dl>
 
@@ -179,16 +179,12 @@
   <section class="info" aria-labelledby="info-title">
     <h2 id="info-title">서버 정보</h2>
     <dl class="facts">
-      {% if info.owner %}<div><dt>소유자</dt><dd>{{ info.owner }}</dd></div>{% endif %}
-      {% if guild.joined_at %}<div><dt>몽실봇 추가</dt><dd>{{ guild.joined_at|numdate }}</dd></div>{% endif %}
+      <div><dt>소유자</dt><dd>{{ info.owner or '-' }}</dd></div>
       <div><dt>만든 날</dt><dd>{{ info.created|numdate }}</dd></div>
-      <div><dt>채널</dt><dd>텍스트 {{ info.text }}, 음성 {{ info.voice }}</dd></div>
-      <div><dt>역할</dt><dd>{{ info.roles|number }}개</dd></div>
+      <div><dt>몽실봇 추가</dt><dd>{{ guild.joined_at|numdate if guild.joined_at else '-' }}</dd></div>
+      <div><dt>부스트</dt><dd>{% if info.boosts %}{{ info.boosts }}개, {{ info.boost_tier }}레벨{% else %}없음{% endif %}</dd></div>
       <div><dt>이모지</dt><dd>{{ info.emojis }} / {{ info.emoji_limit }}</dd></div>
-      <div><dt>스티커</dt><dd>{{ info.stickers }} / {{ info.sticker_limit }}</dd></div>
-      <div><dt>보안 수준</dt><dd>{{ info.verification }}</dd></div>
-      <div><dt>기본 언어</dt><dd>{{ info.locale }}</dd></div>
-      {% if info.features %}<div><dt>기능</dt><dd>{{ info.features|join(', ') }}</dd></div>{% endif %}
+      <div><dt>/계정 등록 멤버</dt><dd>{% if info.registered is not none %}{{ info.registered }}명{% else %}-{% endif %}</dd></div>
     </dl>
   </section>
 </div>

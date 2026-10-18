@@ -19,7 +19,7 @@ import jinja2
 from aiohttp import web
 
 from commands.alerts import channel_ok, hour_label
-from utils import guild_settings
+from utils import accounts, guild_settings
 from utils.config import config
 from utils.emoji_zoom import load_disabled_servers, save_disabled_servers, schedule_webhook_removal
 from utils.logging_config import get_logger
@@ -48,10 +48,6 @@ STALE_TTL = 600
 # 디스코드 API 오류 때 화면에 대신 쓰는 캐시의 최대 나이. 설정 저장은 따로 권한을 다시 확인함
 FALLBACK_TTL = 3600
 
-VERIFICATION = {'none': '없음', 'low': '낮음', 'medium': '중간', 'high': '높음', 'highest': '매우 높음'}
-LOCALES = {'ko': '한국어', 'en-US': '영어', 'en-GB': '영어', 'ja': '일본어', 'zh-CN': '중국어 간체', 'zh-TW': '중국어 번체',
-           'ru': '러시아어', 'de': '독일어', 'fr': '프랑스어', 'es-ES': '스페인어', 'pt-BR': '포르투갈어', 'vi': '베트남어', 'th': '태국어'}
-FEATURES = {'COMMUNITY': '커뮤니티', 'PARTNERED': '파트너', 'VERIFIED': '인증됨', 'DISCOVERABLE': '서버 찾기'}
 
 # 봇에서 자주 쓰는 순서, 목록에 없는 명령은 맨 뒤
 COMMAND_ORDER = ['랭크', '랭킹', '이터컷', '플탐', '시즌', '동접', '계정', '강아지', '고양이', '설정', '정보']
@@ -256,7 +252,8 @@ def usage_summary(cmd_rows, zoom_rows, now: int) -> dict:
         'users': {'value': len(users), 'delta': delta(len(users), len(old_users), cmd_full), 'since': cmd_since},
         'zooms': {'value': len(zcur), 'delta': delta(len(zcur), len(zold), zoom_full), 'since': zoom_since},
         'today': {'value': sum(1 for r in cur if r['ts'] >= today),
-                  'yesterday': sum(1 for r in cur if yesterday <= r['ts'] < today)},
+                  'yesterday': sum(1 for r in cur if yesterday <= r['ts'] < today),
+                  'same_time': sum(1 for r in cur if yesterday <= r['ts'] < now - 86400)},
         'cmd_chart': daily_series(cur),
         'zoom_chart': daily_series(zcur),
         'cmd_since': datetime.fromtimestamp(cmd_first, KST) if cmd_first and cmd_first > since else None,
@@ -613,9 +610,17 @@ async def fetch_counts(guild: discord.Guild) -> dict:
         member = guild.get_member(guild.owner_id) or await guild.fetch_member(guild.owner_id)
         return member.display_name
 
+    async def registered():
+        ids = [r[0] for r in accounts.all_accounts()]
+        found = 0
+        for i in range(0, len(ids), 100):
+            found += len(await guild.query_members(user_ids=ids[i:i + 100], cache=False))
+        return found
+
     extra = {}
-    results = await asyncio.gather(asyncio.wait_for(online(), 3), asyncio.wait_for(owner(), 3), return_exceptions=True)
-    for key, result in zip(('online', 'owner'), results):
+    results = await asyncio.gather(asyncio.wait_for(online(), 3), asyncio.wait_for(owner(), 3),
+                                   asyncio.wait_for(registered(), 3), return_exceptions=True)
+    for key, result in zip(('online', 'owner', 'registered'), results):
         if isinstance(result, Exception):
             logger.warning(f"서버 {key} 조회 실패: {guild.id} {type(result).__name__} {result}")
         else:
@@ -625,7 +630,7 @@ async def fetch_counts(guild: discord.Guild) -> dict:
 
 
 async def guild_counts(guild: discord.Guild) -> dict:
-    """온라인 수와 소유자 이름. 게이트웨이 캐시에 없어 REST로 받고 5분이 지나면 뒤에서 새로 받음"""
+    """온라인 수, 소유자 이름, /계정 등록 멤버 수. 게이트웨이 캐시에 없어 따로 받고 5분이 지나면 뒤에서 새로 받음"""
     cached = guild_info_cache.get(guild.id)
     if cached:
         if time.time() - cached[0] >= GUILD_INFO_TTL:
@@ -703,22 +708,14 @@ async def server_detail(request: web.Request):
     perms = guild.me.guild_permissions
     info = {
         'banner': guild.banner.with_size(1024).url if guild.banner else None,
-        'description': guild.description,
-        'features': [FEATURES[f] for f in FEATURES if f in guild.features],
         'online': extra.get('online'),
         'owner': extra.get('owner'),
+        'registered': extra.get('registered'),
         'boost_tier': guild.premium_tier,
         'boosts': guild.premium_subscription_count or 0,
-        'text': len(guild.text_channels) + len(guild.forums),
-        'voice': len(guild.voice_channels) + len(guild.stage_channels),
-        'roles': max(len(guild.roles) - 1, 0),
         'emojis': len(guild.emojis),
         'emoji_limit': guild.emoji_limit,
-        'stickers': len(guild.stickers),
-        'sticker_limit': guild.sticker_limit,
         'created': guild.created_at.astimezone(KST),
-        'verification': VERIFICATION.get(guild.verification_level.name, guild.verification_level.name),
-        'locale': LOCALES.get(str(guild.preferred_locale), str(guild.preferred_locale)),
     }
     permissions = [
         ('채널 보기', perms.view_channel, '메시지 확인', True),
@@ -899,8 +896,9 @@ async def admin(request: web.Request):
         # 화면 표시 시각은 10월부터 일부 명령만 기록돼 표본이 충분할 때만 씀
         source = shown if len(shown) >= 20 else [r['ms'] for r in mine if r['ms'] is not None]
         failed = sum(1 for r in mine if r['status'] == 'error')
+        # 표본이 20개 안 되면 느린 5%가 사실상 최댓값이라 비움
         item.update(errors=failed, error_rate=failed / len(mine) * 100,
-                    median=percentile(source, 0.5), p95=percentile(source, 0.95),
+                    median=percentile(source, 0.5), p95=percentile(source, 0.95) if len(source) >= 20 else None,
                     basis='표시' if source is shown else '처리')
         commands.append(item)
 
