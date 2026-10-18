@@ -22,7 +22,7 @@
   <div class="score-cell">
     <dt>{{ label }}</dt>
     <dd class="score-value">{{ num(item.value, unit) }}</dd>
-    <dd class="stat-note">{% if item.delta %}<span class="delta delta-{{ item.delta.dir }}">{{ item.delta.text }}</span> 지난 30일보다{% elif item.since %}{{ item.since|mdate }}부터 기록{% endif %}</dd>
+    <dd class="stat-note">{% if item.delta %}지난 30일보다 <span class="delta delta-{{ item.delta.dir }}">{{ item.delta.text }}</span>{% elif item.since %}{{ item.since|mdate }}부터 기록{% endif %}</dd>
   </div>
   {% endfor %}
   <div class="score-cell{% if error_rate >= 3 %} is-alert{% endif %}">
@@ -75,7 +75,7 @@
         {{ guild_icon(g, 32) }}
         <span class="rank-text">
           <span class="rank-name">{{ g.name }}</span>
-          <span class="rank-meta">{% if g.gone %}나간 서버{% else %}멤버 {{ g.members|number }}명{% endif %}{% if g.zooms %}, 확대 {{ g.zooms|number }}회{% endif %}</span>
+          <span class="rank-meta">{% if g.gone %}나간 서버{% else %}멤버 {{ g.members|number }}명{% endif %}{% if g.zooms %}, 이모지 확대 {{ g.zooms|number }}회{% endif %}</span>
         </span>
         <span class="rank-value"><b>{{ g.count|number }}</b><span class="bar-track"><i style="width:{{ g.bar }}%"></i></span></span>
       </li>

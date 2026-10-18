@@ -162,6 +162,6 @@ def validate_nickname(nickname: str) -> str:
     for char in forbidden_chars:
         if char in nickname:
             raise ValidationError(f"닉네임에 사용할 수 없는 문자가 포함되어 있습니다: {char}",
-                                f"닉네임에 특수문자 '{char}'는 쓸 수 없습니다.\n영문, 한글, 숫자만 입력해주세요.")
+                                f"닉네임에 특수 문자 '{char}'는 쓸 수 없습니다.\n영문, 한글, 숫자만 입력해주세요.")
 
     return nickname

@@ -159,7 +159,7 @@ class OptimizedAPIClient:
                     raise
                 except Exception as e:
                     logger.error(f"예상치 못한 오류: {type(e).__name__}: {redact_secrets(e)}")
-                    raise BotError(f"예상치 못한 오류: {type(e).__name__}: {redact_secrets(e)}", "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.") from None
+                    raise BotError(f"예상치 못한 오류: {type(e).__name__}: {redact_secrets(e)}", "오류가 발생했습니다. 잠시 후 다시 시도해주세요.") from None
 
             await asyncio.sleep(retry_after)
     

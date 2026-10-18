@@ -679,12 +679,12 @@ def alert_rows(guild: discord.Guild) -> list[dict]:
         if guild.unavailable:
             pass
         elif cid and not isinstance(channel, discord.TextChannel):
-            problem = "알림 채널이 삭제됨. 다른 채널을 선택해주세요."
+            problem = "알림 채널이 삭제됐습니다. 다른 채널을 선택해주세요."
         elif channel and not channel.permissions_for(guild.me).view_channel:
             # 11월 16일부터 볼 수 없는 채널은 이름이 가려져 이름을 쓰지 않음
-            problem = "몽실봇이 알림 채널을 볼 수 없음. 채널 권한을 준 뒤 새로고침해주세요."
+            problem = "몽실봇이 알림 채널을 볼 수 없습니다. 채널 권한을 준 뒤 새로고침해주세요."
         elif channel and (missing := channel_ok(channel, key == 'alert_cut')):
-            problem = f"#{channel.name} 채널에 몽실봇의 {', '.join(missing)} 권한 없음. 권한을 준 뒤 새로고침해주세요."
+            problem = f"#{channel.name} 채널에 몽실봇의 {', '.join(missing)} 권한이 없습니다. 권한을 준 뒤 새로고침해주세요."
         rows.append({'key': key, 'name': name, 'desc': desc, 'channel': cid, 'problem': problem})
     return rows
 
@@ -775,7 +775,7 @@ async def toggle_zoom(request: web.Request):
         if not guild.me.guild_permissions.manage_webhooks:
             return web.json_response(
                 {'enabled': False,
-                 'error': "봇에 웹후크 관리 권한이 없어 켤 수 없습니다. 몽실봇 역할에 웹후크 관리 권한을 준 뒤 다시 시도해주세요."},
+                 'error': "몽실봇에 웹후크 관리 권한이 없어 켤 수 없습니다. 몽실봇 역할에 웹후크 관리 권한을 준 뒤 다시 시도해주세요."},
                 status=409,
             )
         disabled.discard(guild.id)

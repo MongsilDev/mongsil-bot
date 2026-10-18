@@ -33,7 +33,7 @@ async def account_summary(client: ERClient, user_id: int, uid: str, nickname: st
 
     season = await get_ranked_season()
     if not season:
-        return "전적 조회 실패, 잠시 후 다시 시도해주세요.", None
+        return "전적을 조회하지 못했습니다. 잠시 후 다시 시도해주세요.", None
     season_id, season_name = season
 
     async def load(u):
@@ -46,7 +46,7 @@ async def account_summary(client: ERClient, user_id: int, uid: str, nickname: st
             return f"-# {season_name} 랭크 기록 없음", None
         return "등록한 계정을 조회할 수 없습니다.\n게임에서 닉네임을 바꿨다면 닉네임 변경으로 다시 등록해주세요.", None
     except APIError:
-        return "전적 조회 실패, 잠시 후 다시 시도해주세요.", None
+        return "전적을 조회하지 못했습니다. 잠시 후 다시 시도해주세요.", None
 
     if user_rank and user_rank.get('nickname'):
         accounts.rename(user_id, user_rank['nickname'])

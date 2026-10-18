@@ -93,8 +93,8 @@ async def disable_emoji_zoom_and_notify(guild_id: int, channel: discord.TextChan
     try:
         from utils.layouts import create_error_layout
         layout = create_error_layout(
-            "봇에 웹후크 관리 권한이 없어 이모지 확대를 껐습니다.\n몽실봇 역할에 웹후크 관리 권한을 준 뒤 `/설정`에서 다시 켜주세요.",
-            title="이모지 확대 비활성화",
+            "몽실봇에 웹후크 관리 권한이 없어 이모지 확대를 껐습니다.\n몽실봇 역할에 웹후크 관리 권한을 준 뒤 `/설정`에서 다시 켜주세요.",
+            title="이모지 확대 꺼짐",
         )
         await channel.send(view=layout)
     except Exception as e:
@@ -113,11 +113,11 @@ async def _pick_webhook(channel) -> Optional[discord.Webhook]:
     for extra in owned:
         if extra.id != keep.id:
             try:
-                await extra.delete(reason="이모지 확대 중복 웹훅 정리")
+                await extra.delete(reason="이모지 확대 중복 웹후크 정리")
             except discord.HTTPException as e:
                 logger.warning(f"중복 웹훅 삭제 실패 (채널 {channel.id}): {e}")
     if keep.name != WEBHOOK_NAME:
-        keep = await keep.edit(name=WEBHOOK_NAME, reason="이모지 확대 웹훅 이름 통일")
+        keep = await keep.edit(name=WEBHOOK_NAME, reason="이모지 확대 웹후크 이름 통일")
     return keep
 
 

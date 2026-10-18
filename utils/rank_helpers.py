@@ -68,7 +68,7 @@ async def fetch_user_stats_solo(
             stats_list = data.get('userStats', [])
             if not stats_list:
                 # uid까지 찾힌 유저라 닉네임 문제는 아니다
-                raise NotFoundError("유저 통계 없음", "이번 시즌 랭크 게임을 한 판 이상 한 유저만 조회할 수 있습니다.")
+                raise NotFoundError("유저 통계 없음", "이번 시즌 랭크 게임 기록이 있는 유저만 조회할 수 있습니다.")
 
             # 랭크 솔로 모드 통계 찾기 (matchingMode=3, matchingTeamMode=3)
             for stats in stats_list:

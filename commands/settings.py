@@ -54,7 +54,7 @@ class SettingsView(CooldownLayoutView):
 
         container = ui.Container(ui.TextDisplay("### 서버 설정"), accent_colour=visual.colour('info'))
         zooms = usage_db.zoom_count(gid)
-        zoom_note = [scope_text(gid, 'zoom')] + ([f"최근 30일 {zooms:,}회 확대"] if zooms else [])
+        zoom_note = [scope_text(gid, 'zoom')] + ([f"최근 30일 이모지 확대 {zooms:,}회"] if zooms else [])
         container.add_item(ui.Section(
             ui.TextDisplay(f"**이모지 확대** {EMOJIS['on'] if is_enabled else EMOJIS['off']} {'켜짐' if is_enabled else '꺼짐'}\n"
                            f"-# {' | '.join(zoom_note)}"),
@@ -101,7 +101,7 @@ class SettingsView(CooldownLayoutView):
             return False
 
         if not interaction.permissions.manage_guild:
-            await self.refuse(interaction, "서버 관리 권한이 있는 유저만 설정을 바꿀 수 있습니다.")
+            await self.refuse(interaction, "서버 관리 권한이 있는 멤버만 설정을 바꿀 수 있습니다.")
             return False
 
         if custom_id == "toggle_emoji":
@@ -124,7 +124,7 @@ class SettingsView(CooldownLayoutView):
             disabled_servers.add(self.guild_id)
         else:
             if not interaction.guild.me.guild_permissions.manage_webhooks:
-                await self.refuse(interaction, "봇에 웹후크 관리 권한이 없어 이모지 확대를 켤 수 없습니다.\n"
+                await self.refuse(interaction, "몽실봇에 웹후크 관리 권한이 없어 이모지 확대를 켤 수 없습니다.\n"
                                                "몽실봇 역할에 웹후크 관리 권한을 준 뒤 다시 시도해주세요.")
                 return None
             disabled_servers.discard(self.guild_id)
@@ -168,7 +168,7 @@ class Settings(commands.Cog):
         # 서버 연동 설정에서 명령 권한을 넓혀도 설정 카드는 관리자에게만
         if not interaction.permissions.manage_guild:
             await interaction.response.send_message(
-                view=create_error_layout("서버 관리 권한이 있는 유저만 쓸 수 있습니다."), ephemeral=True)
+                view=create_error_layout("서버 관리 권한이 있는 멤버만 쓸 수 있습니다."), ephemeral=True)
             return
         view = SettingsView(interaction.guild_id, interaction.channel_id)
         view.message = await sent_message(interaction, await interaction.response.send_message(view=view, ephemeral=True))
