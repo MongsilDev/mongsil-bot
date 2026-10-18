@@ -53,9 +53,9 @@ def record_ranks(season_id: int, top_ranks: List[dict]) -> None:
 
 
 def ranks_day_ago(season_id: int) -> Optional[Dict[str, int]]:
-    """24시간 전에 가장 가까운 20시간 이상 지난 기록"""
+    """24시간 전에 가장 가까운 20~28시간 전 기록. 봇이 멈춰 그 사이 기록이 없으면 None"""
     now = time.time()
-    old = [r for r in _load()['ranks'] if r[1] == season_id and now - r[0] >= 20 * 3600]
+    old = [r for r in _load()['ranks'] if r[1] == season_id and 20 * 3600 <= now - r[0] <= 28 * 3600]
     if not old:
         return None
     return min(old, key=lambda r: abs(now - r[0] - 86400))[2]

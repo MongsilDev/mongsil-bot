@@ -54,10 +54,10 @@ class SettingsView(CooldownLayoutView):
 
         container = ui.Container(ui.TextDisplay("### 서버 설정"), accent_colour=visual.colour('info'))
         zooms = usage_db.zoom_count(gid)
-        zoom_note = [scope_text(gid, 'zoom')] + ([f"최근 30일 이모지 확대 {zooms:,}회"] if zooms else [])
+        zoom_note = ([scope_text(gid, 'zoom')] if is_enabled else []) + ([f"최근 30일 {zooms:,}회"] if zooms else [])
         container.add_item(ui.Section(
-            ui.TextDisplay(f"**이모지 확대** {EMOJIS['on'] if is_enabled else EMOJIS['off']} {'켜짐' if is_enabled else '꺼짐'}\n"
-                           f"-# {' | '.join(zoom_note)}"),
+            ui.TextDisplay(f"**이모지 확대** {'켜짐' if is_enabled else '꺼짐'}"
+                           + (f"\n-# {' | '.join(zoom_note)}" if zoom_note else "")),
             accessory=ui.Button(style=discord.ButtonStyle.danger if is_enabled else discord.ButtonStyle.success,
                                 label="끄기" if is_enabled else "켜기", custom_id="toggle_emoji")))
         days = guild_settings.get(gid, 'invite_days')
@@ -71,7 +71,7 @@ class SettingsView(CooldownLayoutView):
             current = guild_settings.get(gid, key)
             where = f"<#{current}>" if current else "꺼짐"
             if key == 'alert_cut' and current:
-                where += f" 매일 {hour_label(guild_settings.get(gid, 'cut_hour'))}"
+                where += f" {hour_label(guild_settings.get(gid, 'cut_hour'))}"
             here = bool(current) and current == self.channel_id
             button = ui.Button(style=discord.ButtonStyle.secondary,
                                label="끄기" if here else "이 채널로 받기", custom_id=f"alert:{key}")

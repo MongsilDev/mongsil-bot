@@ -209,6 +209,9 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
             hi_pt = max(range(len(pts)), key=lambda i: pts[i][1])
             lo_pt = min(range(len(pts)), key=lambda i: pts[i][1] if pts[i][1] > 0 else float('inf'))
             for i, col in ((hi_pt, rgb), (lo_pt, SUBTEXT)):
+                # 끝점과 값이 같으면 끝점 표시로 충분
+                if pts[i][1] == pts[-1][1]:
+                    continue
                 x, y = line[i]
                 d.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=col, outline=BG, width=2 * s)
             x, y = line[hi_pt]
@@ -383,8 +386,9 @@ def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequen
         d.text((x, (cy - bar - 15) * s), label, font=small, fill=SUBTEXT, anchor='mb')
 
     y = (cy + bar + 10) * s
-    start_text = f'{start.month}/{start.day} {start.hour}시 시작'
-    end_text = f'{end.month}/{end.day} {end.hour}시 종료'
+    ampm = lambda t: f"{'오전' if t.hour < 12 else '오후'} {t.hour % 12 or 12}시"
+    start_text = f'{start.month}/{start.day} {ampm(start)} 시작'
+    end_text = f'{end.month}/{end.day} {ampm(end)} 종료'
     d.text((left * s, y), start_text, font=small, fill=SUBTEXT, anchor='lt')
     d.text((right * s, y), end_text, font=small, fill=SUBTEXT, anchor='rt')
     if running:
@@ -435,6 +439,9 @@ def rp_histogram(values: Sequence[int], cuts: Sequence[Tuple[int, str, int]], st
             d.rectangle([x0, (base - h) * s, x0 + (slot - 2) * s, base * s], fill=col)
             base -= h
     for rp, name, c in cuts:
+        # 컷이 분포의 최저값이면 선이 세로축에 겹쳐 색으로만 구분
+        if rp <= lo:
+            continue
         x = x_of(rp)
         for y in range(top - 6, bottom, 6):
             d.line([(x, y * s), (x, (y + 3) * s)], fill=_hex(c), width=2 * s)

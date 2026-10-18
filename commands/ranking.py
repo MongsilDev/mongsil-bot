@@ -50,7 +50,10 @@ def format_user_text(u: RankUser, highlight: bool = False) -> str:
     """개별 유저 텍스트를 포맷합니다."""
     face = app_emojis.character(u.top_character) if u.top_character else ""
     line = f"`{u.rank:>3}` {face + ' ' if face else ''}**{u.nickname}**  {u.mmr:,} RP"
-    detail = [part for part in (format_change(u.change),) if part]
+    # 변동은 첫 줄 끝에 둬 둘째 줄 시작 위치를 맞춤
+    if change := format_change(u.change):
+        line += f"  {change}"
+    detail = []
     # games 0은 통계 조회 실패
     if u.games > 0:
         detail += [f"{u.games}게임", f"승률 {u.wins / u.games * 100:.0f}%", f"평균 {u.avg_rank:.1f}등"]
@@ -136,7 +139,7 @@ class PaginationView(CooldownLayoutView):
         users = self.page_cache.get(self.current_page, [])
 
         start = (self.current_page - 1) * RANKS_PER_PAGE + 1
-        sub = [self.season_name, f"{start}~{start + RANKS_PER_PAGE - 1}위"]
+        sub = [self.season_name, f"{start}~{start + (len(users) or RANKS_PER_PAGE) - 1}위"]
         if any(u.change is not None for u in users):
             sub.append("변동은 24시간 전 기준")
         header = f"### {SERVER_NAMES[RANKING_SERVER]} 랭킹\n-# " + " | ".join(sub)
@@ -162,6 +165,8 @@ class PaginationView(CooldownLayoutView):
             detail = " | ".join(part for part in (discord.utils.escape_markdown(member), place) if part)
             lines.append(f"`{i:>2}` {icon + ' ' if icon else ''}**{nickname}**  {mmr:,} RP\n-# {detail}")
         sub = [self.season_name, f"등록 멤버 {len(rows)}명"]
+        if len(rows) > GUILD_RANKS:
+            sub.append(f"상위 {GUILD_RANKS}명")
         self.add_item(ui.Container(
             ui.TextDisplay(f"### {discord.utils.escape_markdown(self.guild_name)} 순위\n-# " + " | ".join(sub)),
             ui.Separator(),

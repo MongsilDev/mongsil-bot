@@ -537,7 +537,7 @@ async def index(request: web.Request):
         avatar=client.user.display_avatar.with_size(128).url if client.user else None,
         guild_count=len(client.guilds),
         user_count=sum(g.member_count or 0 for g in client.guilds),
-        days=(datetime.now(KST) - SERVICE_START).days,
+        days=(datetime.now(KST).date() - SERVICE_START.date()).days + 1,
         commands=commands,
         selected=commands[0]['name'] if commands else None,
         previews=previews.previews,

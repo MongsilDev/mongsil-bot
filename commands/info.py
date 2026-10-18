@@ -1,5 +1,4 @@
 import os
-import platform
 import sqlite3
 import subprocess
 import time
@@ -19,8 +18,8 @@ from utils.layouts import mark_shown
 from utils.emojis import EMOJIS, PING_EMOJIS
 from utils import usage_db, visual
 
-SERVICE_START = datetime(2023, 6, 15)
 KST = ZoneInfo('Asia/Seoul')
+SERVICE_START = datetime(2023, 6, 15, tzinfo=KST)
 
 
 UPDATES_CHANNEL = "https://discord.com/channels/1173385068450951269/1173385069507924033"
@@ -91,20 +90,21 @@ def guild_block(guild: discord.Guild) -> Optional[ui.Item]:
     joined = guild.me.joined_at if guild.me else None
     if joined:
         joined = joined.astimezone(KST)
-        lines[-1] += f" | 봇 추가 {joined.year}/{joined.month}/{joined.day}"
+        lines[-1] += f" | 몽실봇 추가 {joined:%Y.%m.%d}"
     usage = guild_usage(guild.id)
     if usage:
         top = ", ".join(f"/{name}" for name, _ in usage[:3])
         lines.append(f"최근 30일 명령어 **{sum(n for _, n in usage):,}**회 | {top}")
     zoom = "꺼짐" if guild.id in load_disabled_servers() else "켜짐"
     zooms = usage_db.zoom_count(guild.id)
-    lines.append(f"이모지 확대 {zoom}" + (f" | 30일 **{zooms:,}**회" if zooms else ""))
+    lines.append(f"이모지 확대 {zoom}" + (f" | 최근 30일 **{zooms:,}**회" if zooms else ""))
     return ui.TextDisplay("\n".join(lines))
 
 
 def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = None) -> ui.LayoutView:
     """봇 정보 LayoutView를 생성합니다. guild가 있으면 그 서버 정보도 함께"""
-    days_since_start = (datetime.now() - SERVICE_START).days
+    # 시작일이 1일째
+    days_since_start = (datetime.now(KST).date() - SERVICE_START.date()).days + 1
 
     latency = client.latency
     # 첫 하트비트 전에는 nan
@@ -138,10 +138,8 @@ def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = No
     children = [top, ui.Separator(), ui.TextDisplay("\n".join(lines))]
     if guild:
         children += [ui.Separator(), guild_block(guild)]
-    footer = [f"discord.py {discord.__version__}", f"Python {platform.python_version()}"]
     if LAST_UPDATE:
-        footer.insert(0, f"마지막 업데이트 {LAST_UPDATE.month}/{LAST_UPDATE.day}")
-    children.append(ui.TextDisplay("-# " + " | ".join(footer)))
+        children.append(ui.TextDisplay(f"-# 마지막 업데이트 {LAST_UPDATE.month}/{LAST_UPDATE.day}"))
 
     view = ui.LayoutView(timeout=None)
     view.add_item(ui.Container(*children, accent_colour=visual.colour('info')))

@@ -192,11 +192,11 @@ def create_concurrent_layout(current_count: int) -> ui.LayoutView:
     now = datetime.now(timezone.utc)
     view = ui.LayoutView(timeout=None)
 
-    sub = f"<t:{int(now.timestamp())}:t> 기준"
+    head = f"### 이터널 리턴 동시 접속자\n# {current_count:,}명"
     yesterday = concurrent_data.count_at(now - timedelta(hours=24))
     if yesterday:
-        sub += f" | 어제 이 시각보다 **{(current_count - yesterday) / yesterday * 100:+.1f}%**"
-    children = [ui.TextDisplay(f"### 이터널 리턴 동시 접속자\n# {current_count:,}명\n-# {sub}")]
+        head += f"\n-# 어제 이 시각보다 **{(current_count - yesterday) / yesterday * 100:+.1f}%**"
+    children = [ui.TextDisplay(head)]
 
     points = concurrent_data.series(hours=24 * 7, bucket_minutes=60) + [(now, current_count)]
     span = (points[-1][0] - points[0][0]).total_seconds() / 3600

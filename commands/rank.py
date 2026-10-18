@@ -34,7 +34,8 @@ def next_goal(tier: str, mmr: int, cuts: Tuple[Optional[int], Optional[int]]) ->
         target, label = eternity_cut, "이터니티 컷"
         floor = demigod_cut or TierSystem.RANKED_GATE
     elif tier == "미스릴":
-        target, label = demigod_cut or TierSystem.RANKED_GATE, "데미갓 컷"
+        # 컷을 모르면 데미갓 최소 조건 RP를 목표로 씀
+        target, label = (demigod_cut, "데미갓 컷") if demigod_cut else (TierSystem.RANKED_GATE, "데미갓 최소 RP")
         floor = TierSystem.TIERS["미스릴"]["base"]
     else:
         step = TierSystem.next_rp_tier(tier)

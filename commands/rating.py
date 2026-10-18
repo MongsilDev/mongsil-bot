@@ -57,7 +57,8 @@ def cut_rp(user: Optional[Dict]) -> Optional[int]:
 
 def _day_ago(history, index: int) -> Optional[int]:
     now = time.time()
-    old = [h for h in history if now - h[0] >= 20 * 3600 and h[index]]
+    # 봇이 멈춰 기록이 비면 며칠 전 값과 비교하지 않게 28시간까지만
+    old = [h for h in history if 20 * 3600 <= now - h[0] <= 28 * 3600 and h[index]]
     return min(old, key=lambda h: abs(now - h[0] - 86400))[index] if old else None
 
 
@@ -75,7 +76,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
     view = RatingView(client, season_id) if client and season_id else ui.LayoutView()
 
     def cut_block(tier: str, icon: str, rank: int, rp: Optional[int], index: int) -> str:
-        head = f"{app_emojis.tier(icon)} {tier} {rank:,}등".strip()
+        head = f"{app_emojis.tier(icon)} {tier} {rank:,}위".strip()
         if not rp:
             return f"{head} 정보 없음"
         text = f"{head} **{rp:,}** RP"
@@ -102,7 +103,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
         if chart:
             children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'cut_spread.png', chart))))
         by_rank = {r['rank']: int(r['mmr']) for r in ranked}
-        facts = [f"{rank}등 {by_rank[rank]:,}" for rank in (1, 100, 500) if rank in by_rank]
+        facts = [f"{rank}위 {by_rank[rank]:,} RP" for rank in (1, 100, 500) if rank in by_rank]
         if eternity:
             chasing = sum(1 for r in ranked if r['rank'] > 300 and int(r['mmr']) >= eternity - 50)
             facts.append(f"이터니티 컷까지 50 RP 이내 {chasing}명")
@@ -119,11 +120,6 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
         if chart:
             url = visual.attach(view, 'cut.png', chart)
             children.append(ui.MediaGallery(discord.MediaGalleryItem(url)))
-
-    footnote = f"<t:{int(datetime.now(timezone.utc).timestamp())}:t> 기준"
-    if eternity and demigod:
-        footnote = f"컷 차이 {eternity - demigod:,} RP | {footnote}"
-    children.append(ui.TextDisplay(f"-# {footnote}"))
 
     view.add_item(ui.Container(*children, accent_colour=visual.colour('cut')))
     if isinstance(view, RatingView):
@@ -220,7 +216,7 @@ class Rating(commands.Cog):
         await self.client.wait_until_ready()
 
     @app_commands.command(name="이터컷", description="이터니티와 데미갓 컷")
-    @handle_errors(user_message="레이팅 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="이터컷을 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     async def rating_command(self, interaction: discord.Interaction):
         """현재 시즌의 이터니티/데미갓 컷을 확인합니다."""
         async def build():
