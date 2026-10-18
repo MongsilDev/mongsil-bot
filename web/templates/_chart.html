@@ -16,6 +16,7 @@
       {% endfor %}
     </div>
     <div class="tip" hidden><strong></strong><span></span></div>
+    {% if not chart.total %}<p class="chart-empty">기록 없음</p>{% endif %}
   </div>
   <div class="xaxis">
     <span>{{ chart.series[0].short }}</span>
@@ -41,19 +42,19 @@
   </div>
   {% if avatar %}<img class="dc-avatar" src="{{ avatar }}" alt="" width="40" height="40" loading="lazy">{% else %}<span></span>{% endif %}
   <div class="dc-main">
-    <div class="dc-head"><span class="dc-name">몽실봇</span><span class="dc-app">앱</span>{% if stamp %}<span class="dc-stamp">오늘 {{ stamp }}</span>{% endif %}</div>
+    <div class="dc-head"><span class="dc-name">몽실봇</span><span class="dc-app">앱</span>{% if stamp %}<span class="dc-stamp">{{ stamp }}</span>{% endif %}</div>
     <div class="dc-body">{{ (p.html|replace(' loading="lazy"', '') if eager else p.html)|safe }}</div>
   </div>
 </div>
 {% endmacro %}
 
-{# 점수판 한 칸. 지난 기간 대비가 있으면 같이 #}
+{# 점수판 한 칸. 이전 기간 대비가 있으면 같이 #}
 {% macro stat(label, item, unit='회') %}
 <div class="stat">
   <dt>{{ label }}</dt>
   <dd>
     <span class="stat-value">{{ num(item.value, unit) }}</span>
-    {% if item.delta %}<span class="delta delta-{{ item.delta.dir }}">지난 30일보다 {{ item.delta.text }}</span>
+    {% if item.delta %}<span class="delta delta-{{ item.delta.dir }}">이전 30일보다 {{ item.delta.text }}</span>
     {% elif item.since %}<span class="stat-note">{{ item.since|mdate }}부터 기록</span>{% endif %}
   </dd>
 </div>

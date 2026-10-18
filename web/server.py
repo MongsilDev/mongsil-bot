@@ -113,7 +113,13 @@ env.filters['duration'] = duration
 env.filters['date'] = lambda d: f"{d.year}년 {d.month}월 {d.day}일"
 env.filters['numdate'] = lambda d: d.strftime('%Y.%m.%d')
 env.filters['mdate'] = lambda d: f"{d.month}월 {d.day}일" if d.year == datetime.now(KST).year else f"{d.year}년 {d.month}월 {d.day}일"
-env.filters['shortdate'] = lambda d: f"{d.month}월 {d.day}일 {d:%H:%M}"
+def shortdate(d: datetime) -> str:
+    """기록은 1년 보관이라 올해가 아니면 연도를 붙임"""
+    year = f"{d.year}년 " if d.year != datetime.now(KST).year else ''
+    return f"{year}{d.month}월 {d.day}일 {d:%H:%M}"
+
+
+env.filters['shortdate'] = shortdate
 env.globals['session_avatar'] = lambda s: avatar_url(s['user_id'], s['avatar'])
 env.globals['support_server'] = '/support'
 env.globals['bot_avatar'] = lambda size: client.user.display_avatar.with_size(size).url if client.user else '/favicon.ico'
@@ -233,20 +239,24 @@ def percentile(values: list[int], q: float) -> int | None:
     return values[min(len(values) - 1, int(len(values) * q))]
 
 
-def usage_summary(cmd_rows, zoom_rows, now: int) -> dict:
-    """30일 사용량 타일과 차트. 행은 60일치를 받아 앞 30일과 비교"""
-    since, prev = now - 30 * 86400, now - 60 * 86400
+def usage_summary(cmd_rows, zoom_rows, now: int, start: int | None = None) -> dict:
+    """30일 사용량 타일과 차트. 행은 60일치를 받아 앞 30일과 비교. start는 그 서버에 몽실봇이 들어온 시각"""
+    # 차트 막대와 같은 범위가 되게 29일 전 0시부터
+    since, prev = day_start(29), day_start(59)
     cur = [r for r in cmd_rows if r['ts'] >= since]
     old = [r for r in cmd_rows if prev <= r['ts'] < since]
     zcur = [r for r in zoom_rows if r['ts'] >= since]
     zold = [r for r in zoom_rows if prev <= r['ts'] < since]
     cmd_first, zoom_first = first_ts('command_log'), first_ts('zoom_log')
+    if start:
+        cmd_first, zoom_first = max(cmd_first or start, start), max(zoom_first or start, start)
     cmd_full = bool(cmd_first) and cmd_first <= prev
     zoom_full = bool(zoom_first) and zoom_first <= prev
     today, yesterday = day_start(), day_start(1)
     users, old_users = {r['user_id'] for r in cur}, {r['user_id'] for r in old}
-    cmd_since = datetime.fromtimestamp(cmd_first or now, KST) if not cmd_full else None
-    zoom_since = datetime.fromtimestamp(zoom_first or now, KST) if not zoom_full else None
+    # 30일이 다 차지 않았을 때만 기록 시작일을 붙임. 다 찼는데 비교만 못 하면 날짜는 의미 없음
+    cmd_since = datetime.fromtimestamp(cmd_first, KST) if cmd_first and cmd_first > since else None
+    zoom_since = datetime.fromtimestamp(zoom_first or now, KST) if not zoom_first or zoom_first > since else None
     return {
         'commands': {'value': len(cur), 'delta': delta(len(cur), len(old), cmd_full), 'since': cmd_since},
         'users': {'value': len(users), 'delta': delta(len(users), len(old_users), cmd_full), 'since': cmd_since},
@@ -256,8 +266,8 @@ def usage_summary(cmd_rows, zoom_rows, now: int) -> dict:
                   'same_time': sum(1 for r in cur if yesterday <= r['ts'] < now - 86400)},
         'cmd_chart': daily_series(cur),
         'zoom_chart': daily_series(zcur),
-        'cmd_since': datetime.fromtimestamp(cmd_first, KST) if cmd_first and cmd_first > since else None,
-        'zoom_since': datetime.fromtimestamp(zoom_first or now, KST) if not zoom_first or zoom_first > since else None,
+        'cmd_since': cmd_since,
+        'zoom_since': zoom_since,
         'rows': cur,
         'zoom_rows': zcur,
     }
@@ -316,11 +326,34 @@ async def ready_middleware(request: web.Request, handler):
     return response
 
 
+def wants_json(request: web.Request) -> bool:
+    """설정 저장은 app.js의 fetch라 오류도 JSON으로 돌려줘야 화면에 원인이 나옴"""
+    return request.method == 'POST' and 'X-CSRF-Token' in request.headers
+
+
 @web.middleware
 async def error_middleware(request: web.Request, handler):
     try:
         return await handler(request)
+    except web.HTTPUnauthorized:
+        if wants_json(request):
+            return web.json_response({'error': "로그인이 만료됐습니다. 새로고침한 뒤 다시 로그인해주세요."}, status=401)
+        raise web.HTTPFound('/login?' + urlencode({'next': request.path}))
+    except web.HTTPForbidden as e:
+        if e.text == 'CSRF':
+            title, message = "페이지가 오래됐습니다", "새로고침한 뒤 다시 시도해주세요."
+        else:
+            title, message = "권한이 없습니다", "이 서버를 관리할 권한이 없습니다. 서버 관리 권한을 확인해주세요."
+        if wants_json(request):
+            return web.json_response({'error': f"{title}. {message}"}, status=403)
+        return error_page(request, 403, title, message)
+    except web.HTTPBadRequest:
+        if wants_json(request):
+            return web.json_response({'error': "잘못된 요청입니다. 새로고침한 뒤 다시 시도해주세요."}, status=400)
+        return error_page(request, 400, "잘못된 요청입니다", "주소를 확인해주세요.")
     except web.HTTPNotFound:
+        if wants_json(request):
+            return web.json_response({'error': "서버를 찾을 수 없습니다. 새로고침한 뒤 다시 시도해주세요."}, status=404)
         return error_page(request, 404, "페이지를 찾을 수 없습니다", "주소를 확인해주세요.")
     except web.HTTPException:
         raise
@@ -335,7 +368,8 @@ def cookie_opts() -> dict:
 
 def require_login(request: web.Request):
     if not request['session']:
-        raise web.HTTPFound('/login?' + urlencode({'next': request.path}))
+        # POST는 error_middleware가 JSON 안내로, GET은 로그인으로 보냄
+        raise web.HTTPUnauthorized()
     return request['session']
 
 
@@ -530,7 +564,8 @@ async def index(request: web.Request):
     stamp = None
     if previews.updated_at:
         t = datetime.fromtimestamp(previews.updated_at, KST)
-        stamp = f"{'오전' if t.hour < 12 else '오후'} {t.hour % 12 or 12}:{t.minute:02d}"
+        day = '오늘' if t.date() == now.date() else '어제'
+        stamp = f"{day} {'오전' if t.hour < 12 else '오후'} {t.hour % 12 or 12}:{t.minute:02d}"
 
     return render(
         request, 'index.html',
@@ -666,7 +701,7 @@ def channel_names(guild: discord.Guild, ids) -> str:
 def change_entry(row) -> dict:
     who = row['user_name'] or '몽실봇'
     when = datetime.fromtimestamp(row['ts'], KST)
-    return {'text': row['text'], 'meta': f"{who}, {SOURCES.get(row['source'], row['source'])}, {when.month}월 {when.day}일 {when:%H:%M}",
+    return {'text': row['text'], 'meta': f"{who}, {SOURCES.get(row['source'], row['source'])}, {shortdate(when)}",
             'bot': row['source'] == 'bot'}
 
 
@@ -685,7 +720,9 @@ def alert_rows(guild: discord.Guild) -> list[dict]:
             problem = "몽실봇이 알림 채널을 볼 수 없습니다. 채널 권한을 준 뒤 새로고침해주세요."
         elif channel and (missing := channel_ok(channel, key == 'alert_cut')):
             problem = f"#{channel.name} 채널에 몽실봇의 {', '.join(missing)} 권한이 없습니다. 권한을 준 뒤 새로고침해주세요."
-        rows.append({'key': key, 'name': name, 'desc': desc, 'channel': cid, 'problem': problem})
+        # 삭제됐거나 볼 수 없는 채널은 고르기 목록에 없어 따로 표시
+        missing = bool(cid) and not (isinstance(channel, discord.TextChannel) and channel.permissions_for(guild.me).view_channel)
+        rows.append({'key': key, 'name': name, 'desc': desc, 'channel': cid, 'problem': problem, 'missing': missing})
     return rows
 
 
@@ -713,7 +750,9 @@ async def server_detail(request: web.Request):
         'registered': extra.get('registered'),
         'boost_tier': guild.premium_tier,
         'boosts': guild.premium_subscription_count or 0,
-        'emojis': len(guild.emojis),
+        # emoji_limit은 일반과 움직이는 이모지 각각의 한도
+        'emojis': sum(1 for e in guild.emojis if not e.animated),
+        'animated': sum(1 for e in guild.emojis if e.animated),
         'emoji_limit': guild.emoji_limit,
         'created': guild.created_at.astimezone(KST),
     }
@@ -727,7 +766,8 @@ async def server_detail(request: web.Request):
                           (guild.id, now - 60 * 86400)).fetchall()
     zoom_rows = db.execute("SELECT ts, user_id FROM zoom_log WHERE guild_id = ? AND ts >= ?",
                            (guild.id, now - 60 * 86400)).fetchall()
-    usage = usage_summary(cmd_rows, zoom_rows, now)
+    joined = guild.me.joined_at if guild.me else None
+    usage = usage_summary(cmd_rows, zoom_rows, now, int(joined.timestamp()) if joined else None)
 
     return render(
         request, 'server.html',
@@ -896,9 +936,10 @@ async def admin(request: web.Request):
         # 화면 표시 시각은 10월부터 일부 명령만 기록돼 표본이 충분할 때만 씀
         source = shown if len(shown) >= 20 else [r['ms'] for r in mine if r['ms'] is not None]
         failed = sum(1 for r in mine if r['status'] == 'error')
-        # 표본이 20개 안 되면 느린 5%가 사실상 최댓값이라 비움
-        item.update(errors=failed, error_rate=failed / len(mine) * 100,
-                    median=percentile(source, 0.5), p95=percentile(source, 0.95) if len(source) >= 20 else None,
+        counted = sum(1 for r in mine if r['status'] != 'down')
+        # 표본이 100개 안 되면 느린 5%가 상위 몇 개 값이라 비움
+        item.update(errors=failed, error_rate=failed / counted * 100 if counted else 0,
+                    median=percentile(source, 0.5), p95=percentile(source, 0.95) if len(source) >= 100 else None,
                     basis='표시' if source is shown else '처리')
         commands.append(item)
 
@@ -930,7 +971,8 @@ async def admin(request: web.Request):
         leaves=leaves,
         usage=usage,
         errors=errors,
-        error_rate=errors / len(rows) * 100 if rows else 0,
+        # 점검 중 실패는 분모에서도 뺌
+        error_rate=errors / (len(rows) - down) * 100 if len(rows) > down else 0,
         down=down,
         uptime=client.uptime,
         stamp=f"{stamp:%H:%M}",

@@ -17,7 +17,7 @@
         {% for c in g.channels %}
         <label class="pick" data-name="{{ c.name|lower }}">
           <input type="checkbox" value="{{ c.id }}"{% if c.id in chosen %} checked{% endif %}>
-          <span class="ch ch-{{ c.kind }}" aria-hidden="true"></span>{{ c.name }}
+          <span class="ch ch-{{ c.kind }}" aria-hidden="true"></span><span class="pick-name">{{ c.name }}</span>
         </label>
         {% endfor %}
       </div>
@@ -40,7 +40,7 @@
   <div>
     <h1>{{ guild.name }}</h1>
     <p class="guild-facts">
-      멤버 {{ num(guild.members, '명') }}{% if info.online is not none %}, <i class="dot" aria-hidden="true"></i>온라인 {{ num(info.online, '명') }}{% endif %}
+      {% if guild.members is not none %}멤버 {{ num(guild.members, '명') }}{% endif %}{% if info.online is not none %}, <i class="dot" aria-hidden="true"></i>온라인 {{ num(info.online, '명') }}{% endif %}
     </p>
   </div>
 </header>
@@ -111,6 +111,7 @@
         <div class="controls">
           <select class="select" data-key="{{ a.key }}" aria-labelledby="{{ a.key }}-label">
             <option value="0">끔</option>
+            {% if a.missing %}<option value="{{ a.channel }}" selected disabled>알 수 없는 채널</option>{% endif %}
             {% for g in alert_channels %}
             {% if g.name %}<optgroup label="{{ g.name }}">{% endif %}
             {% for c in g.channels %}
@@ -183,7 +184,7 @@
       <div><dt>만든 날</dt><dd>{{ info.created|numdate }}</dd></div>
       <div><dt>몽실봇 추가</dt><dd>{{ guild.joined_at|numdate if guild.joined_at else '-' }}</dd></div>
       <div><dt>부스트</dt><dd>{% if info.boosts %}{{ info.boosts }}개, {{ info.boost_tier }}레벨{% else %}없음{% endif %}</dd></div>
-      <div><dt>이모지</dt><dd>{{ info.emojis }} / {{ info.emoji_limit }}</dd></div>
+      <div><dt>이모지</dt><dd>일반 {{ info.emojis }} / {{ info.emoji_limit }}<br>움직이는 {{ info.animated }} / {{ info.emoji_limit }}</dd></div>
       <div><dt>/계정 등록 멤버</dt><dd>{% if info.registered is not none %}{{ info.registered }}명{% else %}-{% endif %}</dd></div>
     </dl>
   </section>

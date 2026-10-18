@@ -108,6 +108,11 @@ for (const scope of document.querySelectorAll('[data-scope]')) {
       saved = { mode: mode(), channels: chosen().join() };
       showState(scope, '저장됨');
     } catch (e) {
+      // 화면이 저장된 값과 다르게 남지 않게 되돌림
+      const keep = saved.channels.split(',');
+      for (const r of radios) r.checked = r.value === saved.mode;
+      for (const b of boxes) b.checked = keep.includes(b.value);
+      picker.hidden = saved.mode === 'all';
       showState(scope, failText(e), 'error');
     }
     refresh();
@@ -118,7 +123,7 @@ for (const scope of document.querySelectorAll('[data-scope]')) {
       picker.hidden = mode() === 'all';
       refresh();
       if (mode() === 'all' || chosen().length) commit();
-      else showState(scope, '채널을 선택한 뒤 저장해주세요.', 'hint');
+      else showState(scope, '');
     });
   }
   for (const box of boxes) {

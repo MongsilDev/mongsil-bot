@@ -16,7 +16,7 @@
 <section class="block" aria-labelledby="joined-title">
   <div class="sec-head">
     <h2 id="joined-title">몽실봇이 있는 서버</h2>
-    <p class="sec-meta">멤버 많은 순</p>
+    <p class="sec-meta">멤버 많은 순, 횟수는 최근 30일</p>
   </div>
   <ul class="glist">
     <li class="glist-head" aria-hidden="true"><span></span><span>명령어</span><span>이모지 확대</span><span></span></li>
@@ -25,7 +25,7 @@
       <a class="grow" href="/servers/{{ g.id }}">
         <span class="grow-name">
           {{ guild_icon(g, 40) }}
-          <span><b>{{ g.name }}</b><small>멤버 {{ g.members|number }}명</small></span>
+          <span><b>{{ g.name }}</b>{% if g.members is not none %}<small>멤버 {{ g.members|number }}명</small>{% endif %}</span>
         </span>
         <span class="grow-stat"><span class="label">명령어 </span>{{ num(g.usage, '회') }}</span>
         <span class="grow-stat">{% if g.zoom_on %}<span class="label">이모지 확대 </span>{{ num(g.zooms, '회') }}{% else %}<span class="off">이모지 확대 꺼짐</span>{% endif %}</span>
@@ -56,5 +56,6 @@
 <p class="empty" id="filter-empty" hidden>검색 결과 없음</p>
 {% if not joined and not others %}
 <p class="empty">관리 권한이 있는 서버 없음</p>
+<a class="btn btn-small btn-discord" href="/invite">몽실봇 추가</a>
 {% endif %}
 {% endblock %}
