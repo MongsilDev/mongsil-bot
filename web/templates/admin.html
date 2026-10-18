@@ -16,7 +16,7 @@
   <div class="score-cell">
     <dt>오늘 명령어</dt>
     <dd class="score-value">{{ num(usage.today.value, '회') }}</dd>
-    <dd class="stat-note">어제 {{ usage.today.yesterday|number }}회</dd>
+    <dd class="stat-note">어제 이 시각 {{ usage.today.same_time|number }}회, 하루 {{ usage.today.yesterday|number }}회</dd>
   </div>
   {% for label, item, unit in [('30일 명령어', usage.commands, '회'), ('30일 사용자', usage.users, '명'), ('30일 이모지 확대', usage.zooms, '회')] %}
   <div class="score-cell">
@@ -28,7 +28,7 @@
   <div class="score-cell{% if error_rate >= 3 %} is-alert{% endif %}">
     <dt>오류율</dt>
     <dd class="score-value"><span class="n">{{ '%.1f'|format(error_rate) }}</span><span class="u">%</span></dd>
-    <dd class="stat-note">오류 {{ errors|number }}회{% if down %}, 게임 점검 {{ down|number }}회 별도{% endif %}</dd>
+    <dd class="stat-note">오류 {{ errors|number }}회{% if down %}, 점검 중 실패 {{ down|number }}회 제외{% endif %}</dd>
   </div>
 </dl>
 

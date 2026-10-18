@@ -642,6 +642,7 @@ img {
 .stat-note {
   color: var(--faint);
   font-size: 13px;
+  text-wrap: pretty;
 }
 
 .spark {
@@ -2040,6 +2041,19 @@ a.grow:hover {
 
   .board {
     margin-top: 56px;
+  }
+
+  .col-share {
+    width: auto;
+  }
+
+  .share {
+    display: block;
+    text-align: right;
+  }
+
+  .share .bar-track {
+    display: none;
   }
 
   .score,
