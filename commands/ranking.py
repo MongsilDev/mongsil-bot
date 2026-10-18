@@ -86,7 +86,8 @@ async def _guild_ranking(client: ERClient, guild: discord.Guild, season_id: int)
     registered = accounts.all_accounts()
     members = {}
     for i in range(0, len(registered), 100):
-        found = await guild.query_members(user_ids=[r[0] for r in registered[i:i + 100]], cache=False)
+        # 기본 limit이 5라 100명씩 받으려면 지정해야 함
+        found = await guild.query_members(user_ids=[r[0] for r in registered[i:i + 100]], limit=100, cache=False)
         members.update({m.id: m.display_name for m in found})
     limit = asyncio.Semaphore(5)
 

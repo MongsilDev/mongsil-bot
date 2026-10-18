@@ -585,7 +585,7 @@ async def index(request: web.Request):
 async def servers(request: web.Request):
     require_login(request)
     guilds = [g for g in await user_guilds(request) if can_manage(g)]
-    since = int(time.time()) - 30 * 86400
+    since = day_start(29)
     usage = dict(db.execute(
         "SELECT guild_id, COUNT(*) FROM command_log WHERE ts >= ? GROUP BY guild_id", (since,)).fetchall())
     zooms = dict(db.execute(
@@ -649,7 +649,7 @@ async def fetch_counts(guild: discord.Guild) -> dict:
         ids = [r[0] for r in accounts.all_accounts()]
         found = 0
         for i in range(0, len(ids), 100):
-            found += len(await guild.query_members(user_ids=ids[i:i + 100], cache=False))
+            found += len(await guild.query_members(user_ids=ids[i:i + 100], limit=100, cache=False))
         return found
 
     extra = {}
