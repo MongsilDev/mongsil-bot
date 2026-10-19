@@ -243,72 +243,89 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
 
 def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]],
                    bands: Sequence[Tuple[datetime, float, datetime, float, float, float, int]],
-                   *, legend: Sequence[str] = (), width: int = 720, height: int = 280) -> Optional[bytes]:
-    """기록 선과 그 뒤 예상 범위. bands는 (시작 시각, 시작 값, 끝 시각, 낮은 값, 가운데, 높은 값, 색)"""
+                   *, legend: Sequence[str] = (), width: int = 720, height: int = 300) -> Optional[bytes]:
+    """기록 선과 그 끝에서 시즌 종료까지 이어지는 예상 범위. bands는 (시작 시각, 시작 값, 끝 시각, 낮은 값, 가운데, 높은 값, 색)"""
     series = [([(t, v) for t, v in pts if v is not None], accent) for pts, accent in series]
     series = [(pts, accent) for pts, accent in series if len(pts) >= 2]
     if not series or not bands:
         return None
-    img, d = _canvas(width, height)
     s = SCALE
-    left, right, top, bottom = 56 * s, (width - 96) * s, 34 * s, (height - 30) * s
+    img = Image.new('RGBA', (width * s, height * s), BG + (255,))
+    over = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    d, o = ImageDraw.Draw(img), ImageDraw.Draw(over)
+    left, right, top, bottom = 52 * s, (width - 112) * s, 44 * s, (height - 34) * s
     t0 = min(pts[0][0] for pts, _ in series)
     t1 = max(b[2] for b in bands)
+    now = max(b[0] for b in bands)
     span = max((t1 - t0).total_seconds(), 1)
-    values = [v for pts, _ in series for _, v in pts] + [x for b in bands for x in (b[1], b[3], b[5])]
+    values = [v for pts, _ in series for _, v in pts] + [x for b in bands for x in (b[3], b[5])]
     lo, hi = min(values), max(values)
-    ticks = _ticks(lo - (hi - lo) * 0.06, hi + (hi - lo) * 0.06)
+    ticks = _ticks(lo - (hi - lo) * 0.1, hi + (hi - lo) * 0.1, 4)
     lo, hi = ticks[0], ticks[-1]
 
     def xy(t: datetime, v: float) -> Tuple[float, float]:
         return (left + (t - t0).total_seconds() / span * (right - left),
                 bottom - (v - lo) / (hi - lo) * (bottom - top))
 
-    small = font(11)
+    small, bold = font(11), font(11, bold=True)
     for v in ticks:
         y = xy(t0, v)[1]
-        d.line([(left, y), (right, y)], fill=GRID, width=s)
-        d.text((left - 8 * s, y), f'{v:,.0f}', font=small, fill=SUBTEXT, anchor='rm')
-    days = max(1, round(span / 86400))
-    step = max(1, math.ceil(days / 7))
-    day = (t0.astimezone(KST) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    while day < t1 - timedelta(days=step / 2):
-        d.text((xy(day, lo)[0], bottom + 8 * s), f'{day.month}/{day.day}', font=small, fill=SUBTEXT, anchor='mt')
-        day += timedelta(days=step)
+        d.line([(left, y), (right, y)], fill=_mix(BG, GRID, 0.6), width=s)
+        d.text((left - 10 * s, y), f'{v:,.0f}', font=small, fill=SUBTEXT, anchor='rm')
+
+    x_now, x_end = xy(now, lo)[0], xy(t1, lo)[0]
+    for x in (x_now, x_end):
+        for y in range(int(top - 6 * s), int(bottom), 7 * s):
+            d.line([(x, y), (x, y + 3 * s)], fill=_mix(BG, SUBTEXT, 0.55), width=s)
     end = t1.astimezone(KST)
-    x_end = xy(t1, lo)[0]
-    for y in range(int(top), int(bottom), 8 * s):
-        d.line([(x_end, y), (x_end, y + 4 * s)], fill=SUBTEXT, width=s)
-    d.text((x_end, bottom + 8 * s), f'{end.month}/{end.day} 종료', font=font(11, bold=True), fill=TEXT, anchor='mt')
+    d.text((x_now, bottom + 10 * s), '오늘', font=bold, fill=TEXT, anchor='mt')
+    d.text((x_end, bottom + 10 * s), f'{end.month}/{end.day} 종료', font=bold, fill=TEXT, anchor='mt')
+    day = (t0.astimezone(KST) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    while day < t1:
+        x = xy(day, lo)[0]
+        if min(abs(x - x_now), abs(x - x_end)) > 44 * s:
+            d.text((x, bottom + 10 * s), f'{day.month}/{day.day}', font=small, fill=SUBTEXT, anchor='mt')
+        day += timedelta(days=7)
 
     for start_t, start_v, end_t, b_lo, b_mid, b_hi, accent in bands:
         rgb = _hex(accent)
-        layer = Image.new('RGB', img.size, _mix(BG, rgb, 0.22))
-        mask = Image.new('L', img.size, 0)
-        ImageDraw.Draw(mask).polygon([xy(start_t, start_v), xy(end_t, b_hi), xy(end_t, b_lo)], fill=255)
-        img.paste(layer, (0, 0), mask)
+        o.polygon([xy(start_t, start_v), xy(end_t, b_hi), xy(end_t, b_lo)], fill=rgb + (56,))
+    img = Image.alpha_composite(img, over)
+    d = ImageDraw.Draw(img)
+
+    labels = []
+    for start_t, start_v, end_t, b_lo, b_mid, b_hi, accent in bands:
+        rgb = _hex(accent)
         a, b = xy(start_t, start_v), xy(end_t, b_mid)
         length = math.dist(a, b)
-        for i in range(0, int(length), 12 * s):
-            f0, f1 = i / length, min(i + 7 * s, length) / length
+        for i in range(0, int(length), 10 * s):
+            f0, f1 = i / length, min(i + 5 * s, length) / length
             d.line([(a[0] + (b[0] - a[0]) * f0, a[1] + (b[1] - a[1]) * f0),
                     (a[0] + (b[0] - a[0]) * f1, a[1] + (b[1] - a[1]) * f1)], fill=rgb, width=2 * s)
-        d.ellipse([a[0] - 4 * s, a[1] - 4 * s, a[0] + 4 * s, a[1] + 4 * s], fill=rgb)
-        label = f'{b_lo:,.0f}~{b_hi:,.0f}'
-        d.text((b[0] + 8 * s, b[1]), label, font=font(12, bold=True), fill=rgb, anchor='lm')
-
+        labels.append([b[1], f'{b_lo:,.0f}~{b_hi:,.0f}', rgb])
     for pts, accent in series:
         rgb = _hex(accent)
-        line = [xy(t, v) for t, v in pts]
-        d.line(_smooth(line), fill=rgb, width=3 * s, joint='curve')
-        x, y = line[-1]
-        d.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=(255, 255, 255), outline=rgb, width=3 * s)
-    x = left + 10 * s
+        d.line(_smooth([xy(t, v) for t, v in pts]), fill=rgb, width=3 * s, joint='curve')
+        x, y = xy(*pts[-1])
+        d.ellipse([x - 6 * s, y - 6 * s, x + 6 * s, y + 6 * s], fill=(255, 255, 255), outline=rgb, width=3 * s)
+
+    labels.sort()
+    for i in range(1, len(labels)):
+        labels[i][0] = max(labels[i][0], labels[i - 1][0] + 30 * s)
+    label_font = font(12, bold=True)
+    for y, text, rgb in labels:
+        w = d.textlength(text, font=label_font)
+        x = x_end + 10 * s
+        d.rounded_rectangle([x, y - 12 * s, x + w + 16 * s, y + 12 * s], radius=12 * s, fill=_mix(BG, rgb, 0.24))
+        d.text((x + 8 * s, y), text, font=label_font, fill=_mix(rgb, (255, 255, 255), 0.35), anchor='lm')
+
+    x = left
     for label, (_, accent) in zip(legend, series):
-        d.ellipse([x, 10 * s, x + 10 * s, 20 * s], fill=_hex(accent))
-        d.text((x + 16 * s, 15 * s), label, font=font(12, bold=True), fill=TEXT, anchor='lm')
-        x += (30 + len(label) * 13) * s
-    return _png(img)
+        d.rounded_rectangle([x, 14 * s, x + 14 * s, 18 * s], radius=2 * s, fill=_hex(accent))
+        d.text((x + 20 * s, 16 * s), label, font=font(12, bold=True), fill=TEXT, anchor='lm')
+        x += (34 + len(label) * 13) * s
+    d.text((right + 112 * s - 16 * s, 16 * s), '점선은 시즌 종료 예상', font=small, fill=SUBTEXT, anchor='rm')
+    return _png(img.convert('RGB'))
 
 
 def heatmap(grid: Sequence[Sequence[float]], row_labels: Sequence[str], accent: int,

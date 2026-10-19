@@ -176,13 +176,14 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
 def _outlook_chart(history, tiers, season_end: datetime, now: datetime) -> Optional[bytes]:
     """최근 14일 하루 컷과 시즌 종료까지 예상 범위. 예상이 하나도 없으면 None"""
     bands, series, names = [], [], []
-    for tier, icon, _, _, official, _, start, span in tiers:
-        if not span:
+    for tier, icon, _, rp, official, _, start, span in tiers:
+        if not span or not rp:
             continue
         colour = visual.TIER_COLOURS[icon]
         low, mid, high = (max(round(v), TierSystem.RANKED_GATE) for v in span)
-        bands.append((now, start, season_end, low, mid, high, colour))
-        days = rank_history.daily(history, official)[-14:]
+        # 휴면 계정은 종료 전에 RP가 깎여 빠지므로 순위표 컷이 휴면 제외 예상으로 모인다고 보고 지금 컷에서 이음
+        bands.append((now, rp, season_end, low, mid, high, colour))
+        days = [p for p in rank_history.daily(history, official)[-14:] if p[0] < now] + [(now, rp)]
         series.append((days, colour))
         names.append(tier)
     return visual.forecast_chart(series, bands, legend=names) if bands else None
