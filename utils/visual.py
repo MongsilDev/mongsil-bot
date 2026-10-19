@@ -244,9 +244,9 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
 def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]],
                    bands: Sequence[Tuple[datetime, float, Sequence[Tuple[datetime, float, float, float]], int]],
                    *, refs: Sequence[Sequence[Tuple[datetime, float]]] = (), legend: Sequence[str] = (),
-                   width: int = 560, height: int = 290) -> Optional[bytes]:
+                   width: int = 640, height: int = 320) -> Optional[bytes]:
     """기록 선과 그 끝에서 시즌 종료까지 이어지는 예상 범위. bands는 (시작 시각, 시작 값, 날마다 (시각, 가운데, 낮은 값, 높은 값), 색).
-    refs는 흐린 회색 참고 선. 기록이 한 점뿐인 선은 점만 찍음"""
+    종료 예상 값은 위쪽 범례에 적어 시간축이 가로를 거의 다 씀. refs는 흐린 회색 참고 선. 기록이 한 점뿐인 선은 점만 찍음"""
     series = [([(t, v) for t, v in pts if v is not None], accent) for pts, accent in series]
     series = [(pts, accent) for pts, accent in series if pts]
     refs = [[(t, v) for t, v in pts if v is not None] for pts in refs]
@@ -258,7 +258,7 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
     over = Image.new('RGBA', img.size, (0, 0, 0, 0))
     d, o = ImageDraw.Draw(img), ImageDraw.Draw(over)
     # 휴대폰에서 이미지가 절반쯤으로 줄어 글자를 크게
-    left, right, top, bottom = 50 * s, (width - 118) * s, 50 * s, (height - 36) * s
+    left, right, top, bottom = 50 * s, (width - 16) * s, 62 * s, (height - 36) * s
     t0 = min([pts[0][0] for pts, _ in series] + [pts[0][0] for pts in refs])
     t1 = max(b[2][-1][0] for b in bands)
     now = max(b[0] for b in bands)
@@ -285,11 +285,11 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
             d.line([(x, y), (x, y + 3 * s)], fill=_mix(BG, SUBTEXT, 0.55), width=s)
     end = t1.astimezone(KST)
     d.text((x_now, bottom + 10 * s), '오늘', font=bold, fill=TEXT, anchor='mt')
-    d.text((x_end, bottom + 10 * s), f'{end.month}/{end.day} 종료', font=bold, fill=TEXT, anchor='mt')
+    d.text((x_end, bottom + 10 * s), f'{end.month}/{end.day} 종료', font=bold, fill=TEXT, anchor='rt')
     day = (t0.astimezone(KST) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     while day < t1:
         x = xy(day, lo)[0]
-        if min(abs(x - x_now), abs(x - x_end)) > 48 * s:
+        if abs(x - x_now) > 48 * s and x_end - x > 90 * s:
             d.text((x, bottom + 10 * s), f'{day.month}/{day.day}', font=small, fill=SUBTEXT, anchor='mt')
         day += timedelta(days=7)
 
@@ -319,7 +319,8 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
                             (p0[0] + (p1[0] - p0[0]) * f1, p0[1] + (p1[1] - p0[1]) * f1)], fill=rgb, width=2 * s)
                 at += step
             walked += length
-        labels.append([b[1], f'{round(b_mid, -1):,.0f}', f'{round(b_lo, -1):,.0f}~{round(b_hi, -1):,.0f}', rgb])
+        labels.append((f'{round(b_mid, -1):,.0f}', f'{round(b_lo, -1):,.0f}~{round(b_hi, -1):,.0f}', rgb))
+        d.ellipse([b[0] - 4 * s, b[1] - 4 * s, b[0] + 4 * s, b[1] + 4 * s], fill=rgb)
     ref_colour = _mix(BG, SUBTEXT, 0.7)
     for pts in refs:
         d.line(_smooth([xy(t, v) for t, v in pts]), fill=ref_colour, width=2 * s, joint='curve')
@@ -332,28 +333,18 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
         d.text((x, y - 11 * s), f'{pts[-1][1]:,.0f}', font=font(16, bold=True), fill=TEXT, anchor='mb',
                stroke_width=3 * s, stroke_fill=BG)
 
-    labels.sort()
-    for i in range(1, len(labels)):
-        labels[i][0] = max(labels[i][0], labels[i - 1][0] + 54 * s)
-    mid_font, range_font = font(18, bold=True), font(13)
-    for y, mid, span, rgb in labels:
-        w = max(d.textlength(mid, font=mid_font), d.textlength(span, font=range_font))
-        x = x_end + 10 * s
-        d.rounded_rectangle([x, y - 24 * s, x + w + 16 * s, y + 24 * s], radius=10 * s, fill=_mix(BG, rgb, 0.24))
-        tint = _mix(rgb, (255, 255, 255), 0.35)
-        d.text((x + 8 * s, y - 9 * s), mid, font=mid_font, fill=tint, anchor='lm')
-        d.text((x + 8 * s, y + 12 * s), span, font=range_font, fill=_mix(tint, BG, 0.2), anchor='lm')
-
     x = left
-    for label, (_, accent) in zip(legend, series):
-        d.rounded_rectangle([x, 16 * s, x + 14 * s, 20 * s], radius=2 * s, fill=_hex(accent))
-        label_font = font(14, bold=True)
-        d.text((x + 20 * s, 18 * s), label, font=label_font, fill=TEXT, anchor='lm')
-        x += 20 * s + d.textlength(label, font=label_font) + 18 * s
+    name_font, mid_font, range_font = font(14, bold=True), font(17, bold=True), font(13)
+    for label, (mid, span, rgb) in zip(legend, labels):
+        d.rounded_rectangle([x, 22 * s, x + 14 * s, 26 * s], radius=2 * s, fill=rgb)
+        x += 20 * s
+        for text, f, colour in ((f'{label} 종료', name_font, TEXT), (mid, mid_font, _mix(rgb, (255, 255, 255), 0.35)), (span, range_font, SUBTEXT)):
+            d.text((x, 24 * s), text, font=f, fill=colour, anchor='lm')
+            x += d.textlength(text, font=f) + 8 * s
+        x += 16 * s
     if refs:
         d.rounded_rectangle([x, 15 * s, x + 14 * s, 17 * s], radius=1 * s, fill=ref_colour)
         d.text((x + 20 * s, 16 * s), '순위표 컷', font=font(12), fill=SUBTEXT, anchor='lm')
-    d.text(((x_now + x_end) / 2, top - 12 * s), '예상', font=bold, fill=SUBTEXT, anchor='mb')
     return _png(img.convert('RGB'))
 
 
@@ -518,15 +509,17 @@ def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequen
 
 
 def rp_histogram(values: Sequence[int], cuts: Sequence[Tuple[int, str, int]], step: int = 50,
-                 width: int = 720, height: int = 220) -> Optional[bytes]:
-    """상위권 RP 분포 막대. cuts는 (컷 RP, 이름, 색), 각 유저를 자기 구간 색으로 쌓음"""
+                 width: int = 640, height: int = 260) -> Optional[bytes]:
+    """상위권 RP 분포 막대. cuts는 (컷 RP, 이름, 색), 각 유저를 자기 구간 색으로 쌓음.
+    상위 20명 위쪽 꼬리는 마지막 막대에 합쳐 컷 주변을 넓게 보임"""
     if not values:
         return None
     img, d = _canvas(width, height)
     s = SCALE
-    left, right, top, bottom = 44, width - 16, 30, height - 30
-    lo = min(values)
-    hi = lo + ((max(values) - lo) // step + 1) * step
+    left, right, top, bottom = 48, width - 16, 40, height - 34
+    lo = min(values) // step * step
+    cap = sorted(values, reverse=True)[min(19, len(values) - 1)]
+    hi = lo + ((cap - lo) // step + 1) * step
     ordered = sorted(cuts, key=lambda c: -c[0])
     other = _mix(BG, (255, 255, 255), 0.25)
     bins: List[Dict[Tuple[int, int, int], int]] = [dict() for _ in range((hi - lo) // step)]
@@ -540,7 +533,7 @@ def rp_histogram(values: Sequence[int], cuts: Sequence[Tuple[int, str, int]], st
     def x_of(rp: float) -> float:
         return (left + (rp - lo) / (hi - lo) * (right - left)) * s
 
-    small, bold = font(11), font(12, bold=True)
+    small, bold = font(13), font(15, bold=True)
     for count in _ticks(0, peak, 3):
         if count <= peak:
             y = (bottom - count / peak * (bottom - top)) * s
@@ -561,11 +554,15 @@ def rp_histogram(values: Sequence[int], cuts: Sequence[Tuple[int, str, int]], st
         x = x_of(rp)
         for y in range(top - 6, bottom, 6):
             d.line([(x, y * s), (x, (y + 3) * s)], fill=_hex(c), width=2 * s)
-        d.text((x + 6 * s, (top - 8) * s), f'{name} {rp:,}', font=bold, fill=_hex(c), anchor='lm')
-    ticks = _ticks(lo, hi, 5)
-    for tick in ticks:
+        d.text((x + 6 * s, (top - 12) * s), f'{name} {rp:,}', font=bold, fill=_hex(c), anchor='lm')
+    clipped = max(values) >= hi
+    if clipped:
+        d.text((right * s, (bottom + 8) * s), f'{hi - step:,}+', font=small, fill=SUBTEXT, anchor='rt')
+    for tick in _ticks(lo, hi, 4):
         if lo < tick <= hi:
             x = x_of(tick)
+            if clipped and x > (right - 70) * s:
+                continue
             anchor = 'rt' if x > (right - 24) * s else 'mt'
             d.text((x, (bottom + 8) * s), f'{tick:,.0f}', font=small, fill=SUBTEXT, anchor=anchor)
     return _png(img)
