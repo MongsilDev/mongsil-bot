@@ -1938,15 +1938,16 @@ a.grow:hover {
   }
 
   .doc .doc-table td {
-    display: grid;
-    grid-template-columns: 72px minmax(0, 1fr);
-    gap: 10px;
-    padding: 3px 0;
+    display: block;
+    position: relative;
+    padding: 3px 0 3px 82px;
     border: 0;
   }
 
   .doc .doc-table td::before {
     content: attr(data-label);
+    position: absolute;
+    left: 0;
     color: var(--faint);
     font-size: 13px;
   }
