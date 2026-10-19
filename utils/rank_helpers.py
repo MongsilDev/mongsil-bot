@@ -128,6 +128,7 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
             top_ranks = data.get('topRanks', [])
             logger.debug(f"랭킹 데이터 {len(top_ranks)}명 조회 완료")
             rank_history.record_ranks(season_id, top_ranks[:100])
+            rank_history.record_players(season_id, top_ranks)
             return top_ranks
         else:
             error_msg = data.get('message') if data else 'No response'

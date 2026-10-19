@@ -1,5 +1,6 @@
 """
-아시아1 상위 순위와 이터컷의 시간별 기록. /랭킹 순위 변동과 /이터컷 추이용
+아시아1 상위 순위와 이터컷의 시간별 기록. /랭킹 순위 변동과 /이터컷 추이용.
+players는 상위 1000명의 마지막 RP 변화 시각으로, 휴면 계정 판별용
 """
 import json
 import os
@@ -13,7 +14,8 @@ logger = get_logger('순위기록')
 PATH = 'data/rank_history.json'
 INTERVAL = 3600
 KEEP_RANKS = 49 * 3600
-KEEP_CUTS = 15 * 86400
+KEEP_CUTS = 120 * 86400
+KEEP_PLAYERS = 14 * 86400
 
 _state: Optional[dict] = None
 
@@ -28,6 +30,7 @@ def _load() -> dict:
             _state = {}
         _state.setdefault('ranks', [])
         _state.setdefault('cuts', [])
+        _state.setdefault('players', {})
     return _state
 
 
@@ -76,3 +79,30 @@ def record_cuts(season_id: int, eternity: Optional[int], demigod: Optional[int])
 
 def cut_history(season_id: int) -> List[Tuple[float, Optional[int], Optional[int]]]:
     return [(c[0], c[2], c[3]) for c in _load()['cuts'] if c[1] == season_id]
+
+
+def record_players(season_id: int, top_ranks: List[dict]) -> None:
+    """닉네임별 [RP, 마지막 변화, 처음 본 시각, 마지막으로 본 시각]. 닉네임을 바꾸면 새 계정으로 보임"""
+    state = _load()
+    now = time.time()
+    book = state['players']
+    if book.get('season') != season_id:
+        book = state['players'] = {'season': season_id, 'at': 0, 'list': {}}
+    if now - book['at'] < INTERVAL:
+        return
+    players = book['list']
+    for r in top_ranks:
+        name, mmr = r.get('nickname'), r.get('mmr')
+        if not name or mmr is None:
+            continue
+        old = players.get(name)
+        if old is None:
+            players[name] = [int(mmr), now, now, now]
+        else:
+            if old[0] != int(mmr):
+                old[0], old[1] = int(mmr), now
+            old[3] = now
+    for name in [n for n, p in players.items() if now - p[3] > KEEP_PLAYERS]:
+        del players[name]
+    book['at'] = now
+    _save()
