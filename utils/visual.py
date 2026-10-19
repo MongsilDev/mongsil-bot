@@ -303,12 +303,21 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
     for start_t, start_v, future, accent in bands:
         rgb = _hex(accent)
         end_t, b_mid, b_lo, b_hi = future[-1]
-        a, b = xy(start_t, start_v), xy(end_t, b_mid)
-        length = math.dist(a, b)
-        for i in range(0, int(length), 10 * s):
-            f0, f1 = i / length, min(i + 5 * s, length) / length
-            d.line([(a[0] + (b[0] - a[0]) * f0, a[1] + (b[1] - a[1]) * f0),
-                    (a[0] + (b[0] - a[0]) * f1, a[1] + (b[1] - a[1]) * f1)], fill=rgb, width=2 * s)
+        path = [xy(start_t, start_v)] + [xy(t, mid) for t, mid, _, _ in future]
+        b = path[-1]
+        walked = 0.0
+        for p0, p1 in zip(path, path[1:]):
+            length = math.dist(p0, p1)
+            at = 0.0
+            while at < length:
+                phase = (walked + at) % (10 * s)
+                step = min((5 * s - phase) if phase < 5 * s else (10 * s - phase), length - at)
+                if phase < 5 * s:
+                    f0, f1 = at / length, (at + step) / length
+                    d.line([(p0[0] + (p1[0] - p0[0]) * f0, p0[1] + (p1[1] - p0[1]) * f0),
+                            (p0[0] + (p1[0] - p0[0]) * f1, p0[1] + (p1[1] - p0[1]) * f1)], fill=rgb, width=2 * s)
+                at += step
+            walked += length
         labels.append([b[1], f'{round(b_mid, -1):,.0f}', f'{round(b_lo, -1):,.0f}~{round(b_hi, -1):,.0f}', rgb])
     ref_colour = _mix(BG, SUBTEXT, 0.7)
     for pts in refs:

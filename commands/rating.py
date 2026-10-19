@@ -119,7 +119,8 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
         start = max(found[0], TierSystem.RANKED_GATE) if found else rp
         outlook = None
         if start and season_end:
-            outlook = rank_history.forecast(rank_history.at_nine(history, official), start, now, season_end)
+            outlook = rank_history.forecast(rank_history.at_nine(history, official), start, now, season_end,
+                                            rank_history.SURGE[place])
         tiers.append((tier, icon, place, rp, official, found, start, outlook))
     view = RatingView(client, season_id, ranked, *(t[6] for t in tiers)) if client and season_id else ui.LayoutView()
 
@@ -152,7 +153,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
     if any(t[5] for t in tiers):
         notes.append("휴면 강등 반영")
     if chart:
-        notes.append("높은 값은 막판 급등 포함")
+        notes.append("막판 급등 반영")
     if notes:
         children.append(ui.TextDisplay("-# " + " | ".join(notes)))
     if not chart:

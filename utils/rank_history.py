@@ -25,9 +25,13 @@ GRACE = 12
 PATCH_ANCHOR = datetime(2026, 8, 13).date()
 # 휴면 강등은 메테오라이트 4 아래로 내려가지 않음
 DECAY_FLOOR = 6400
-DAMP = 0.95
-# 시즌 11 300위가 마지막 5일에 직전 추세보다 220점 더 올랐음. 시즌 12 하루 게임 수가 0.87배라 줄임
-END_RUSH = 190
+# 시즌 12 09-01~10-19 오전 9시 컷 백테스트로 고른 감쇠 추세 계수
+ALPHA, BETA, DAMP = 0.5, 0.2, 0.95
+# 막판 급등. 시즌 11 마지막 8일에 직전 7일 추세보다 300위 204, 1000위 162 더 올랐고 하루 상승은 2.9배, 2.7배.
+# 앞 값은 그 초과분에 시즌 12 하루 게임 수 비율 0.87을 곱한 것
+SURGE = {300: (177, 2.9), 1000: (141, 2.7)}
+# 종료 7일 전부터 종료일까지 날마다 급등분의 누적 비율. 시즌 11 두 컷 평균
+SURGE_SHAPE = (0.06, 0.18, 0.20, 0.24, 0.34, 0.41, 0.56, 1.0)
 KST = timezone(timedelta(hours=9))
 # players 항목 순서
 MMR, CHANGED, FIRST, SEEN, LAST_GAME, CHECKED, UID = range(7)
@@ -97,7 +101,8 @@ def record_cuts(season_id: int, eternity: Optional[int], demigod: Optional[int],
 
 
 def cut_history(season_id: int) -> List[tuple]:
-    """(시각, 이터니티, 데미갓, 휴면 강등 이터니티, 휴면 강등 데미갓). 휴면 강등 값은 10-19 16시부터 기록, 10-05~10-19 오전 9시 값은 게임 기록으로 복원"""
+    """(시각, 이터니티, 데미갓, 휴면 강등 이터니티, 휴면 강등 데미갓). 시즌 12는 10-04 16시부터 기록.
+    그 전 09-01~10-04 오전 9시 순위표 값과 10-05~10-19 오전 9시 휴면 강등 값은 게임 기록으로 복원"""
     return [(c[0], c[2], c[3], *(c[4:6] + [None] * (6 - len(c)))) for c in _load()['cuts'] if c[1] == season_id]
 
 
@@ -252,32 +257,37 @@ def _theil_sen(values: List[float]) -> float:
 
 
 def forecast(points: List[Tuple[datetime, float]], start: float, now: datetime, end: datetime,
-             min_days: int = 7, z: float = 1.2816) -> Optional[dict]:
+             surge: Tuple[float, float] = (0, 1), min_days: int = 7) -> Optional[dict]:
     """오전 9시 값의 감쇠 추세(Holt, 날마다 기울기 0.95배)로 start에서 시즌 종료까지 날마다 오전 9시 값을 예상.
-    시즌 12 재구성 49일 백테스트에서 직선 추세보다 7일 뒤 오차가 40에서 9로 줄었음.
-    범위는 한 걸음 예측 잔차로 잡은 80% 구간이라 멀수록 넓어짐. 높은 값에는 마지막 5일 급등분을 더함.
+    가운데 값의 막판 급등은 시즌 11 초과분을 그대로 더한 값과 시즌 12 추세에 배율을 곱한 값의 평균.
+    범위는 백테스트 80% 오차(24일 뒤 약 67)라 멀수록 넓어지고, 낮은 값은 급등 없이, 높은 값은 초과분 그대로.
     반환은 날마다 (시각, 가운데, 낮은 값, 높은 값)"""
     if len(points) < min_days or end <= now:
         return None
     values = [v for _, v in points]
-    level, trend, residuals = values[0], _theil_sen(values[:7]), []
+    level, trend = values[0], _theil_sen(values[:7])
     for v in values[1:]:
-        residuals.append(v - (level + DAMP * trend))
         last = level
-        level = 0.3 * v + 0.7 * (level + DAMP * trend)
-        trend = 0.1 * (level - last) + 0.9 * DAMP * trend
-    sigma = math.sqrt(statistics.fmean(r * r for r in residuals[-14:]))
-    n = len(residuals[-14:])
-    future = []
+        level = ALPHA * v + (1 - ALPHA) * (level + DAMP * trend)
+        trend = BETA * (level - last) + (1 - BETA) * DAMP * trend
+    days = []
     day = now.astimezone(KST).replace(hour=9, minute=0, second=0, microsecond=0)
     if day <= now:
         day += timedelta(days=1)
     while day <= end:
         h = (day - now).total_seconds() / 86400
-        mid = start + trend * sum(DAMP ** k for k in range(1, math.ceil(h) + 1)) * h / math.ceil(h)
-        half = z * sigma * math.sqrt(h + h * h / n)
-        rush = END_RUSH * max(0.0, 1 - (end - day).total_seconds() / (5 * 86400))
-        # 컷은 시즌 내내 내려간 적이 거의 없어 낮은 값은 지금 값까지만
-        future.append((day, mid, max(mid - half, start), mid + half + rush))
+        days.append((day, h, trend * sum(DAMP ** k for k in range(1, math.ceil(h) + 1)) * h / math.ceil(h)))
         day += timedelta(days=1)
-    return {'future': future} if future else None
+    if not days:
+        return None
+    extra, ratio = surge
+    late = days[-1][2] - (days[-9][2] if len(days) > 8 else 0)
+    middle = (extra + (ratio - 1) * max(late, 0)) / 2
+    future = []
+    for day, h, gain in days:
+        left = round((end - day).total_seconds() / 86400)
+        share = SURGE_SHAPE[len(SURGE_SHAPE) - 1 - left] if left < len(SURGE_SHAPE) else 0
+        half = 6.2 * h ** 0.75
+        # 컷은 시즌 내내 내려간 적이 거의 없어 낮은 값은 지금 값까지만
+        future.append((day, start + gain + share * middle, max(start + gain - half, start), start + gain + half + share * extra))
+    return {'future': future}
