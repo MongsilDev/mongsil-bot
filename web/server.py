@@ -344,10 +344,12 @@ async def error_middleware(request: web.Request, handler):
     except web.HTTPForbidden as e:
         if e.text == 'CSRF':
             title, message = "페이지가 오래됐습니다", "새로고침한 뒤 다시 시도해주세요."
+            detail = f"{title}. {message}"
         else:
             title, message = "권한이 없습니다", "이 서버를 관리할 권한이 없습니다. 서버 관리 권한을 확인해주세요."
+            detail = message
         if wants_json(request):
-            return web.json_response({'error': f"{title}. {message}"}, status=403)
+            return web.json_response({'error': detail}, status=403)
         return error_page(request, 403, title, message)
     except web.HTTPBadRequest:
         if wants_json(request):
