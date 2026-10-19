@@ -244,7 +244,7 @@ class CompareModal(ui.Modal, title="내 RP와 비교"):
         await compare(self.client, self.season_id, interaction, self.nickname.value)
 
 
-@handle_errors(user_message="RP를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+@handle_errors(user_message="RP를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
 async def compare(client: ERClient, season_id: int, interaction: discord.Interaction,
                   name: str, user_id: Optional[str] = None, owner: Optional[int] = None):
     name = name if user_id else validate_nickname(name)
@@ -345,20 +345,20 @@ class Rating(commands.Cog):
         await self.client.wait_until_ready()
 
     @app_commands.command(name="이터컷", description="이터니티와 데미갓 컷")
-    @handle_errors(user_message="이터컷을 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="이터컷을 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def rating_command(self, interaction: discord.Interaction):
         """현재 시즌의 이터니티/데미갓 컷을 확인합니다."""
         async def build():
             season = await get_ranked_season()
             if not season:
-                raise ServiceDownError("현재 시즌 조회 실패", "현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
+                raise ServiceDownError("현재 시즌 조회 실패", "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
             season_id, season_name = season
 
             (rank_300, rank_1000), season_info, top = await asyncio.gather(
                 fetch_rating_info(self.client, season_id), get_season_info(), fetch_ranking_data(self.client, season_id))
             if not rank_300 and not rank_1000:
                 raise ServiceDownError(f"{season_name} 이터컷 조회 실패",
-                                       f"{season_name} 이터컷을 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
+                                       f"{season_name} 이터컷을 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
             return create_rating_layout(rank_300, rank_1000, season_name, season_id,
                                         season_end_for(season_info, season_id), self.client, top)
 

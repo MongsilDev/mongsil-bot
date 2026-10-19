@@ -129,7 +129,7 @@ class SettingsView(CooldownLayoutView):
                 return None
             disabled_servers.discard(self.guild_id)
         if not save_disabled_servers(disabled_servers):
-            await self.refuse(interaction, "설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.")
+            await self.refuse(interaction, "설정을 저장하지 못했습니다.\n잠시 후 다시 시도해주세요.")
             return None
         if current_enabled:
             schedule_webhook_removal(interaction.guild)
@@ -146,11 +146,11 @@ class SettingsView(CooldownLayoutView):
                 return None
             missing = channel_ok(channel, key == 'alert_cut')
             if missing:
-                await self.refuse(interaction, f"몽실봇에 이 채널의 {', '.join(missing)} 권한이 없습니다. 권한을 준 뒤 다시 시도해주세요.")
+                await self.refuse(interaction, f"몽실봇에 이 채널의 {', '.join(missing)} 권한이 없습니다.\n권한을 준 뒤 다시 시도해주세요.")
                 return None
             value, text = channel.id, f"{name} 알림: #{channel.name}"
         if not guild_settings.put(self.guild_id, key, value):
-            await self.refuse(interaction, "설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.")
+            await self.refuse(interaction, "설정을 저장하지 못했습니다.\n잠시 후 다시 시도해주세요.")
             return None
         return text
 
@@ -162,13 +162,13 @@ class Settings(commands.Cog):
     @app_commands.command(name="설정", description="서버 설정")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
-    @handle_errors(user_message="설정을 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="설정을 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def settings_command(self, interaction: discord.Interaction):
         """서버의 봇 설정을 관리합니다."""
         # 서버 연동 설정에서 명령 권한을 넓혀도 설정 카드는 관리자에게만
         if not interaction.permissions.manage_guild:
             await interaction.response.send_message(
-                view=create_error_layout("서버 관리 권한이 있는 멤버만 쓸 수 있습니다."), ephemeral=True)
+                view=create_error_layout("/설정은 서버 관리 권한이 있는 멤버만 쓸 수 있습니다."), ephemeral=True)
             return
         view = SettingsView(interaction.guild_id, interaction.channel_id)
         view.message = await sent_message(interaction, await interaction.response.send_message(view=view, ephemeral=True))

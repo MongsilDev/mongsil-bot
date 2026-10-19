@@ -227,7 +227,7 @@ class Concurrent(commands.Cog):
         concurrent_data.save_to_file()
 
     @app_commands.command(name="동접", description="이터널 리턴 동시 접속자")
-    @handle_errors(user_message="동시 접속자 수를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="동시 접속자 수를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def concurrent_command(self, interaction: discord.Interaction):
         """현재 이터널 리턴의 동시 접속자 수를 확인합니다."""
         # 1분 수집값이 있으면 조회 없이 바로 응답해 디스코드 왕복 한 번을 줄임
@@ -242,7 +242,7 @@ class Concurrent(commands.Cog):
 
         # Steam API 키 확인
         if not config.steam_api_key:
-            layout = create_error_layout("지금은 동시 접속자 수를 조회할 수 없습니다. 지원 서버에 알려주세요.")
+            layout = create_error_layout("지금은 동시 접속자 수를 조회할 수 없습니다.\n지원 서버에 알려주세요.")
             layout.add_item(ui.ActionRow(ui.Button(
                 style=discord.ButtonStyle.link, label="지원 서버", url=config.support_server, emoji=EMOJIS['support'],
             )))
@@ -253,7 +253,7 @@ class Concurrent(commands.Cog):
         current_count = await get_current_player_count()
 
         if current_count is None:
-            layout = create_error_layout("동시 접속자 수를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
+            layout = create_error_layout("동시 접속자 수를 가져오지 못했습니다.\n잠시 후 다시 시도해주세요.")
             await interaction.followup.send(view=layout)
             return
 

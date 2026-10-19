@@ -106,7 +106,7 @@ async def _fetch_games(client, user_id: str, start_date: datetime.date,
             if data.get('message') in ('User Not Found', 'Unauthorized'):
                 client.api_client.uncache(url)
                 raise InvalidUidError(f"게임 기록 {data['message']}: {user_id}",
-                                      "유저 정보를 찾을 수 없습니다. 닉네임을 바꿨다면 새 닉네임으로 조회해주세요.")
+                                      "유저 정보를 찾을 수 없습니다.\n닉네임을 바꿨다면 새 닉네임으로 조회해주세요.")
             for game in data.get('userGames', data.get('games', [])):
                 try:
                     started = datetime.strptime(game['startDtm'], "%Y-%m-%dT%H:%M:%S.%f%z").astimezone(KST)
@@ -305,7 +305,7 @@ class Playtime(commands.Cog):
 
     @app_commands.command(name="플탐", description="최근 7일 플레이 타임")
     @app_commands.describe(닉네임="이터널 리턴 닉네임, 비우면 내 닉네임")
-    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def playtime(self, interaction: discord.Interaction,
                        닉네임: Optional[str] = None):
         """플레이어의 최근 7일 플레이 타임을 조회합니다."""
@@ -313,7 +313,7 @@ class Playtime(commands.Cog):
         if target:
             await self.show(interaction, *target)
 
-    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def show(self, interaction: discord.Interaction, nickname: str, uid: Optional[str], owner: Optional[int]):
         view, _ = await send_card(interaction, "플레이 타임 조회 중",
                                   lambda: account.with_account(self.client, owner, nickname, uid,

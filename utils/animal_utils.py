@@ -51,7 +51,7 @@ class AnimalView(CooldownLayoutView):
         photo = await take_photo(self.api_url, self.animal_name)
         if not photo:
             await interaction.followup.send(
-                view=create_error_layout(f"{self.animal_name} 사진을 가져오지 못했습니다. 잠시 후 다시 시도해주세요."),
+                view=create_error_layout(f"{self.animal_name} 사진을 가져오지 못했습니다.\n잠시 후 다시 시도해주세요."),
                 ephemeral=True)
             return
         self.build(*photo)
@@ -89,7 +89,7 @@ async def send_animal_photo(
     async def build():
         photo = await take_photo(api_url, animal_name)
         if not photo:
-            raise ServiceDownError(f"{animal_name} 사진 조회 실패", f"{animal_name} 사진을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
+            raise ServiceDownError(f"{animal_name} 사진 조회 실패", f"{animal_name} 사진을 가져오지 못했습니다.\n잠시 후 다시 시도해주세요.")
         return AnimalView(api_url, animal_name, *photo)
 
     view, message = await send_card(interaction, f"{animal_name} 사진 찾는 중", build)

@@ -218,12 +218,12 @@ class PaginationView(CooldownLayoutView):
                 self.guild_name = interaction.guild.name
             except Exception as e:
                 logger.error(f"서버 순위 조회 실패: {e}", exc_info=True)
-                await interaction.followup.send(view=create_error_layout("서버 순위를 불러오지 못했습니다. 잠시 후 다시 시도해주세요."), ephemeral=True)
+                await interaction.followup.send(view=create_error_layout("서버 순위를 불러오지 못했습니다.\n잠시 후 다시 시도해주세요."), ephemeral=True)
                 return
         if show and not self.guild_rows:
             self.guild_rows = None
             await interaction.followup.send(view=create_error_layout(
-                "이번 시즌 랭크 기록이 있는 등록 멤버가 없습니다. /계정으로 닉네임을 등록해주세요."), ephemeral=True)
+                "이번 시즌 랭크 기록이 있는 등록 멤버가 없습니다.\n/계정으로 닉네임을 등록해주세요."), ephemeral=True)
             return
         self.show_guild = show
         self.build_layout()
@@ -272,7 +272,7 @@ class PaginationView(CooldownLayoutView):
 
     async def _send_page_error(self, interaction: discord.Interaction):
         try:
-            layout = create_error_layout("랭킹 페이지를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.")
+            layout = create_error_layout("랭킹 페이지를 불러오지 못했습니다.\n잠시 후 다시 시도해주세요.")
             await interaction.followup.send(view=layout, ephemeral=True)
         except Exception:
             pass
@@ -285,7 +285,7 @@ class FindRankModal(ui.Modal, title="내 순위 찾기"):
         super().__init__()
         self.view = view
 
-    @handle_errors(user_message="순위를 찾는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="순위를 찾는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def on_submit(self, interaction: discord.Interaction):
         await self.view.find(interaction, self.nickname.value.strip())
 
@@ -361,16 +361,16 @@ class Ranking(commands.Cog):
         self.client = client
 
     @app_commands.command(name="랭킹", description="아시아1 상위 100명 순위")
-    @handle_errors(user_message="랭킹 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="랭킹 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def ranking_command(self, interaction: discord.Interaction):
         """랭킹을 보여줍니다."""
         async def build():
             season = await get_ranked_season()
             if not season:
-                raise ServiceDownError("현재 시즌 조회 실패", "현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
+                raise ServiceDownError("현재 시즌 조회 실패", "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
             season_id, season_name = season
 
-            unavailable = ServiceDownError("랭킹 조회 실패", "랭킹 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
+            unavailable = ServiceDownError("랭킹 조회 실패", "랭킹 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
             ranking_data = await fetch_ranking_data(self.client, season_id, use_cache=True)
             if not ranking_data:
                 raise unavailable

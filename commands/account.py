@@ -33,7 +33,7 @@ async def account_summary(client: ERClient, user_id: int, uid: str, nickname: st
 
     season = await get_ranked_season()
     if not season:
-        return "전적을 조회하지 못했습니다. 잠시 후 다시 시도해주세요.", None
+        return "전적을 조회하지 못했습니다.\n잠시 후 다시 시도해주세요.", None
     season_id, season_name = season
 
     async def load(u):
@@ -44,9 +44,9 @@ async def account_summary(client: ERClient, user_id: int, uid: str, nickname: st
     except NotFoundError as e:
         if e.message == "유저 통계 없음":
             return f"-# {season_name} 랭크 기록 없음", None
-        return "등록한 계정을 조회할 수 없습니다.\n게임에서 닉네임을 바꿨다면 닉네임 변경으로 다시 등록해주세요.", None
+        return "등록한 계정을 조회할 수 없습니다.\n게임에서 닉네임을 바꿨다면 닉네임 변경 버튼으로 다시 등록해주세요.", None
     except APIError:
-        return "전적을 조회하지 못했습니다. 잠시 후 다시 시도해주세요.", None
+        return "전적을 조회하지 못했습니다.\n잠시 후 다시 시도해주세요.", None
 
     if user_rank and user_rank.get('nickname'):
         accounts.rename(user_id, user_rank['nickname'])
@@ -140,7 +140,7 @@ class RegisterModal(ui.Modal, title="닉네임 등록"):
         self.client = client
         self.after = after
 
-    @handle_errors(user_message="닉네임을 등록하지 못했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="닉네임을 등록하지 못했습니다.\n잠시 후 다시 시도해주세요.")
     async def on_submit(self, interaction: discord.Interaction):
         name = validate_nickname(self.nickname.value)
         await interaction.response.defer()
@@ -153,7 +153,7 @@ class RegisterModal(ui.Modal, title="닉네임 등록"):
         name = current or name
         if not accounts.save(interaction.user.id, uid, name):
             await interaction.followup.send(
-                view=create_error_layout("닉네임을 저장하지 못했습니다. 잠시 후 다시 시도해주세요."), ephemeral=True)
+                view=create_error_layout("닉네임을 저장하지 못했습니다.\n잠시 후 다시 시도해주세요."), ephemeral=True)
             return
         card = await account_view(self.client, interaction.user.id)
         card.message = await interaction.edit_original_response(view=card)
@@ -191,7 +191,7 @@ async def check_account(client: ERClient, uid: str) -> Optional[str]:
         client.api_client.uncache(url)
         return None
     if data.get('code') not in (200, 404):
-        raise APIError(f"계정 확인 실패: {data.get('message')}", "닉네임을 확인하지 못했습니다. 잠시 후 다시 시도해주세요.")
+        raise APIError(f"계정 확인 실패: {data.get('message')}", "닉네임을 확인하지 못했습니다.\n잠시 후 다시 시도해주세요.")
     games = data.get('userGames') or []
     return games[0].get('nickname', '') if games else ''
 
@@ -214,7 +214,7 @@ class Account(commands.Cog):
         self.client = client
 
     @app_commands.command(name="계정", description="내 닉네임 등록")
-    @handle_errors(user_message="계정 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="계정 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def account_command(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=True)
         card = await account_view(self.client, interaction.user.id)

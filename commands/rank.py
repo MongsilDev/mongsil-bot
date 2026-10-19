@@ -164,7 +164,7 @@ class RankView(CooldownLayoutView):
         self.playtime_button = ui.Button(style=discord.ButtonStyle.secondary, label="플탐", emoji=EMOJIS['clock'])
         self.playtime_button.callback = self.show_playtime
 
-    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def show_playtime(self, interaction: discord.Interaction):
         from commands.playtime import build_playtime_view
         await send_card(interaction, "플레이 타임 조회 중", lambda: build_playtime_view(self.client, self.nickname, self.uid))
@@ -210,7 +210,7 @@ class Rank(commands.Cog):
 
     @app_commands.command(name="랭크", description="시즌 랭크 전적")
     @app_commands.describe(닉네임="이터널 리턴 닉네임, 비우면 내 닉네임")
-    @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def rank_command(self, interaction: discord.Interaction,
                            닉네임: Optional[str] = None):
         """유저의 랭크 정보를 조회합니다."""
@@ -218,7 +218,7 @@ class Rank(commands.Cog):
         if target:
             await self.show(interaction, *target)
 
-    @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def show(self, interaction: discord.Interaction, nickname: str, uid: Optional[str], owner: Optional[int]):
         view, message = await send_card(interaction, "랭크 조회 중",
                                         lambda: account.with_account(self.client, owner, nickname, uid,

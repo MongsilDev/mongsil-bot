@@ -123,7 +123,7 @@ async def send_card(interaction: discord.Interaction, loading: str, build):
         return None, message
     except Exception:
         logging.getLogger('mongsil-bot.layouts').error("카드 생성 실패", exc_info=True)
-        await message.edit(view=create_error_layout("조회 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."))
+        await message.edit(view=create_error_layout("조회 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요."))
         return None, message
     await message.edit(view=view, attachments=visual.files_of(view))
     mark_shown(interaction)

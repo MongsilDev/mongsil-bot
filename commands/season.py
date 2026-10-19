@@ -260,7 +260,7 @@ def expected_patches(known: Sequence[PatchNote], end: datetime) -> List[PatchNot
 def create_season_layout(season_info: Optional[SeasonInfo], patches: Sequence[PatchNote] = ()) -> ui.LayoutView:
     """시즌 정보 LayoutView를 생성합니다."""
     if not season_info:
-        return create_error_layout("현재 시즌 정보를 가져올 수 없습니다. 잠시 후 다시 시도해주세요.")
+        return create_error_layout("현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
 
     now = datetime.now(KST)
     start, end = season_info.start_date, season_info.end_date
@@ -294,7 +294,7 @@ class Season(commands.Cog):
         self.client = client
 
     @app_commands.command(name="시즌", description="현재 시즌 기간")
-    @handle_errors(user_message="시즌 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="시즌 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def season_command(self, interaction: discord.Interaction):
         """
         현재 시즌 정보를 보여줍니다.

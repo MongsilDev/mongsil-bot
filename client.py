@@ -77,7 +77,7 @@ class ERClient(commands.Bot):
         self.api_client.uncache(url, params=params)
         if not await self._nickname_search_alive():
             raise ServiceDownError("닉네임 검색 중단",
-                           "지금은 게임 점검이나 장애로 닉네임 검색이 되지 않습니다. 잠시 후 다시 시도해주세요.")
+                           "지금은 게임 점검이나 장애로 닉네임 검색이 되지 않습니다.\n잠시 후 다시 시도해주세요.")
         return None
 
     async def _nickname_search_alive(self) -> bool:
@@ -229,12 +229,12 @@ class ERClient(commands.Bot):
                        interaction.extras.get('status', 'ok'), int(ms), interaction.extras.get('shown_ms'))
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-        error_message = "명령어 실행 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+        error_message = "명령어 실행 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요."
 
         if isinstance(error, app_commands.CheckFailure):
             error_message = "이 명령어를 실행할 권한이 없습니다."
         elif isinstance(error, app_commands.CommandOnCooldown):
-            error_message = f"명령어를 너무 자주 사용했습니다. {math.ceil(error.retry_after)}초 후에 다시 시도해주세요."
+            error_message = f"명령어를 너무 자주 사용했습니다.\n{math.ceil(error.retry_after)}초 후에 다시 시도해주세요."
 
         # 권한/쿨다운은 예상된 유저 조건이라 WARNING (Sentry는 ERROR 이상만 수집)
         blocked = isinstance(error, (app_commands.CheckFailure, app_commands.CommandOnCooldown))

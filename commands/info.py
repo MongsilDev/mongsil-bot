@@ -180,7 +180,7 @@ class Info(commands.Cog):
         name="정보",
         description="봇 상태"
     )
-    @handle_errors(user_message="봇 정보를 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="봇 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def info_command(self, interaction: discord.Interaction):
         """봇의 정보를 표시합니다."""
         await interaction.response.send_message(view=create_bot_info_layout(self.client, interaction.guild))

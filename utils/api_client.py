@@ -133,7 +133,7 @@ class OptimizedAPIClient:
                             if attempt >= MAX_RETRIES:
                                 raise APIError(
                                     f"API Rate limit 초과 (최대 {MAX_RETRIES}회 재시도 후 실패)",
-                                    "API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요."
+                                    "API 요청 한도를 초과했습니다.\n잠시 후 다시 시도해주세요."
                                 )
                             # Retry-After는 HTTP-date 형식일 수 있어 int 실패 시 기본값 사용
                             try:
@@ -146,20 +146,20 @@ class OptimizedAPIClient:
                             logger.warning(f"API 요청 실패: {response.status}")
                             raise APIError(
                                 f"API 요청 실패: {response.status} - {error_text}",
-                                "API 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+                                "API 요청 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요."
                             )
                 except aiohttp.ClientError as e:
                     logger.warning(f"네트워크 오류: {redact_secrets(e)}")
-                    raise APIError(f"네트워크 오류: {redact_secrets(e)}", "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.") from None
+                    raise APIError(f"네트워크 오류: {redact_secrets(e)}", "네트워크 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.") from None
                 except asyncio.TimeoutError:
                     # str()이 빈 문자열이라 일반 분기로 가면 "예상치 못한 오류: "만 남는다
                     logger.warning(f"API 요청 시간 초과: {url}")
-                    raise APIError("요청 시간 초과", "응답이 늦어지고 있습니다. 잠시 후 다시 시도해주세요.") from None
+                    raise APIError("요청 시간 초과", "응답이 늦어지고 있습니다.\n잠시 후 다시 시도해주세요.") from None
                 except (APIError, BotError):
                     raise
                 except Exception as e:
                     logger.error(f"예상치 못한 오류: {type(e).__name__}: {redact_secrets(e)}")
-                    raise BotError(f"예상치 못한 오류: {type(e).__name__}: {redact_secrets(e)}", "오류가 발생했습니다. 잠시 후 다시 시도해주세요.") from None
+                    raise BotError(f"예상치 못한 오류: {type(e).__name__}: {redact_secrets(e)}", "오류가 발생했습니다.\n잠시 후 다시 시도해주세요.") from None
 
             await asyncio.sleep(retry_after)
     
