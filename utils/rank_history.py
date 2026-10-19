@@ -91,9 +91,11 @@ def record_cuts(season_id: int, eternity: Optional[int], demigod: Optional[int],
         return
     state = _load()
     now = time.time()
-    cuts = [c for c in state['cuts'] if c[1] == season_id and now - c[0] < KEEP_CUTS]
+    # 지난 시즌 기록도 KEEP_CUTS 동안 남김. 시즌이 끝난 뒤 최종 컷과 예측을 비교하는 데 씀
+    cuts = [c for c in state['cuts'] if now - c[0] < KEEP_CUTS]
+    mine = [c for c in cuts if c[1] == season_id]
     # 매시 정각 뒤 첫 조회에 기록. 4분마다 조회해서 매시 0~4분
-    if cuts and now // INTERVAL == cuts[-1][0] // INTERVAL:
+    if mine and now // INTERVAL == mine[-1][0] // INTERVAL:
         return
     cuts.append([now, season_id, eternity, demigod, active_eternity, active_demigod])
     state['cuts'] = cuts
