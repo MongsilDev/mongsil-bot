@@ -3,6 +3,7 @@
 players는 상위 1000명의 마지막 RP 변화와 마지막 랭크 게임 시각으로, 휴면 계정 판별용
 """
 import json
+import math
 import os
 import statistics
 import time
@@ -19,6 +20,11 @@ KEEP_RANKS = 49 * 3600
 KEEP_CUTS = 120 * 86400
 KEEP_PLAYERS = 14 * 86400
 DORMANT_DAYS = 7
+GRACE = 12
+# 정기 점검은 2026-08-13부터 격주 목요일
+PATCH_ANCHOR = datetime(2026, 8, 13).date()
+# 휴면 강등은 메테오라이트 4 아래로 내려가지 않음
+DECAY_FLOOR = 6400
 KST = timezone(timedelta(hours=9))
 # players 항목 순서
 MMR, CHANGED, FIRST, SEEN, LAST_GAME, CHECKED, UID = range(7)
@@ -129,6 +135,10 @@ def player_book(season_id: int) -> Dict[str, list]:
         return {}
     for p in book['list'].values():
         p.extend([None] * (UID + 1 - len(p)))
+        # 10-19까지는 8일 전까지만 봐서 NO_RECENT가 실제 마지막 게임을 모르는 값
+        if book.get('v') != 2 and p[LAST_GAME] == NO_RECENT:
+            p[LAST_GAME] = p[CHECKED] = None
+    book['v'] = 2
     return book['list']
 
 
@@ -149,58 +159,88 @@ def last_active(p: list) -> Optional[float]:
     return max(seen) if seen else None
 
 
-def is_dormant(p: list, now: float) -> Optional[bool]:
+def decay_ticks(last: float, until: float) -> int:
+    """마지막 랭크 게임 뒤 until까지 휴면 강등으로 100점씩 깎인 횟수. 시즌 12 게임 기록 398건으로 맞춘 규칙:
+    다음 오전 9시부터 하루가 비면 그다음 15시에 유예 1을 쓰고, 유예 12를 다 쓰면 100점. 격주 목요일 패치 날은 건너뜀"""
+    day = datetime.fromtimestamp(last, KST).replace(hour=9, minute=0, second=0, microsecond=0)
+    if day.timestamp() <= last:
+        day += timedelta(days=1)
+    empty = 0
+    while True:
+        day += timedelta(days=1)
+        if day.replace(hour=15).timestamp() >= until:
+            break
+        if not (day.weekday() == 3 and (day.date() - PATCH_ANCHOR).days % 14 == 0):
+            empty += 1
+    return max(0, empty - GRACE)
+
+
+def projected_rp(p: list, mmr: int, now: float, end: float) -> Optional[int]:
+    """7일 넘게 쉰 계정이 end까지 돌아오지 않으면 남을 RP. 이미 깎인 만큼은 mmr에 들어 있음. 활동 중이면 mmr"""
     at = last_active(p)
-    return None if at is None else now - at > DORMANT_DAYS * 86400
+    if at is None:
+        return None
+    if now - at <= DORMANT_DAYS * 86400:
+        return mmr
+    # 게임 기록 끝까지 랭크 게임이 없으면 유예를 다 쓴 것으로 봄
+    at = at if at > 0 else now - 60 * 86400
+    return max(mmr - 100 * (decay_ticks(at, end) - decay_ticks(at, now)), min(mmr, DECAY_FLOOR))
 
 
-def active_cut(season_id: int, top_ranks: List[dict], place: int) -> Optional[Tuple[int, int, bool]]:
-    """휴면 계정을 뺀 place번째 RP, 그 위에서 뺀 휴면 계정 수, 추정 여부. 판별 안 된 계정이 20명 넘으면 None.
-    그 이하는 조회 실패나 새로 들어온 계정이라 활동으로 봄.
-    목록이 1000위까지라 활동 계정이 place명이 안 되면 끝부분 순위당 RP 감소폭과 휴면 비율로 나머지를 추정"""
+def active_cut(season_id: int, top_ranks: List[dict], place: int, end: Optional[float] = None) -> Optional[Tuple[int, int, bool]]:
+    """7일 넘게 쉰 계정을 end(시즌 종료)까지 휴면 강등된 RP로 다시 줄 세운 place번째 RP, 그 위에서 내려간 휴면 계정 수, 추정 여부.
+    판별 안 된 계정이 20명 넘으면 None. 그 이하는 조회 실패나 새로 들어온 계정이라 활동으로 봄.
+    목록이 1000위까지라 1000위 밖에서 올라올 계정은 알 수 없음. 활동 계정이 place명이 안 되면 끝부분 순위당 RP 감소폭과 활동 비율로 나머지를 추정"""
     players = player_book(season_id)
     book = _load()['players']
     since = book.get('since') or min((p[FIRST] for p in players.values()), default=0)
     now = time.time()
+    end = end or now
     ranked = sorted((r for r in top_ranks if r.get('mmr')), key=lambda r: r.get('rank', 0))
-    active = dormant = unknown = 0
-    tail: List[bool] = []
+    if len(ranked) < 200:
+        return None
+    unknown = 0
+    scores: List[Tuple[int, int]] = []
     for r in ranked:
+        mmr = int(r['mmr'])
         p = players.get(r.get('nickname'))
-        state = is_dormant(p, now) if p else None
-        if state is None:
+        value = projected_rp(p, mmr, now, end) if p else None
+        if value is None:
             # 기록을 시작한 뒤 새로 들어온 계정은 올라왔거나 닉네임을 바꾼 것이라 활동으로 봄
             if p and p[FIRST] - since < 3600:
                 unknown += 1
                 if unknown > 20:
                     return None
-            state = False
-        tail.append(state)
-        if state:
-            dormant += 1
-            continue
-        active += 1
-        if active == place:
-            return int(r['mmr']), dormant, False
-    if len(ranked) < 200:
-        return None
+            value = mmr
+        scores.append((value, mmr))
+    last = int(ranked[-1]['mmr'])
+    # 1000위보다 낮아진 휴면 계정은 목록 밖 계정과 순서를 알 수 없어 줄에서 뺌
+    kept = sorted((v for v, _ in scores if v >= last), reverse=True)
+    dropped = lambda cut: sum(1 for v, mmr in scores if v < cut <= mmr)
+    if len(kept) >= place:
+        value = kept[place - 1]
+        return value, dropped(value), False
     window = ranked[-100:]
-    per_rank = (int(window[0]['mmr']) - int(window[-1]['mmr'])) / (len(window) - 1)
-    active_share = 1 - sum(tail[-100:]) / 100
+    per_rank = (int(window[0]['mmr']) - last) / (len(window) - 1)
+    active_share = sum(v >= last for v, _ in scores[-100:]) / 100
     if active_share <= 0:
         return None
-    beyond = (place - active) / active_share
-    return round(int(ranked[-1]['mmr']) - per_rank * beyond), dormant, True
+    value = round(last - per_rank * (place - len(kept)) / active_share)
+    return value, dropped(value), True
 
 
-def daily(history: List[tuple], index: int) -> List[Tuple[datetime, float]]:
-    """KST 날짜별 중앙값. 6건 미만인 날은 뺌"""
-    days: Dict[datetime, List[float]] = {}
+def at_nine(history: List[tuple], index: int) -> List[Tuple[datetime, float]]:
+    """날마다 KST 오전 9시에 가장 가까운 기록. 시즌이 오전 9시에 끝나서 같은 시각끼리 비교. 앞뒤 90분 안에 기록이 없는 날은 뺌"""
+    days: Dict[datetime, Tuple[float, float]] = {}
     for h in history:
-        if h[index]:
-            day = datetime.fromtimestamp(h[0], KST).replace(hour=12, minute=0, second=0, microsecond=0)
-            days.setdefault(day, []).append(h[index])
-    return [(d, statistics.median(v)) for d, v in sorted(days.items()) if len(v) >= 6]
+        if not h[index]:
+            continue
+        at = datetime.fromtimestamp(h[0], KST)
+        nine = at.replace(hour=9, minute=0, second=0, microsecond=0)
+        gap = abs((at - nine).total_seconds())
+        if gap <= 5400 and (nine not in days or gap < days[nine][0]):
+            days[nine] = (gap, h[index])
+    return [(d, v) for d, (_, v) in sorted(days.items())]
 
 
 def _pair_slopes(points: List[Tuple[datetime, float]]) -> List[float]:
@@ -212,16 +252,30 @@ def _theil_sen(points: List[Tuple[datetime, float]]) -> float:
     return statistics.median(_pair_slopes(points))
 
 
-def forecast(points: List[Tuple[datetime, float]], start: float, now: datetime,
-             end: datetime, min_days: int = 7) -> Optional[Tuple[float, float, float]]:
-    """start에서 시즌 종료까지 하루 추세를 이어 그린 (낮은 값, 가운데, 높은 값).
-    기울기 범위는 최근 14일 두 점 기울기의 가운데 절반과 최근 7일, 전체 추세를 합친 것.
-    하루 값 흔들림만큼 더 넓힘"""
+def forecast(points: List[Tuple[datetime, float]], start: float, now: datetime, end: datetime,
+             min_days: int = 7, z: float = 1.2816) -> Optional[dict]:
+    """최근 15일 오전 9시 값의 Theil-Sen 기울기로 start에서 시즌 종료까지 날마다 오전 9시 값을 예상.
+    범위는 하루 변화가 기울기에서 벗어난 정도로 잡은 80% 구간이라 멀수록 넓어짐.
+    반환은 기울기, 과거 추세선 두 점, 날마다 (시각, 가운데, 낮은 값, 높은 값)"""
     if len(points) < min_days or end <= now:
         return None
-    pairs = _pair_slopes(points[-14:])
-    slopes = [pairs[len(pairs) // 4], pairs[len(pairs) * 3 // 4], _theil_sen(points[-7:]), _theil_sen(points)]
-    mid = statistics.median(pairs)
-    noise = statistics.median(abs(points[i][1] - points[i - 1][1] - mid) for i in range(1, len(points)))
-    days = (end - now).total_seconds() / 86400
-    return (start + min(slopes) * days - noise, start + mid * days, start + max(slopes) * days + noise)
+    pts = points[-15:]
+    slope = _theil_sen(pts)
+    steps = [((b[1] - a[1]) / ((b[0] - a[0]).total_seconds() / 86400)) for a, b in zip(pts, pts[1:])]
+    sigma = math.sqrt(statistics.fmean((x - slope) ** 2 for x in steps))
+    n = len(steps)
+    base = pts[0][0]
+    days_of = lambda t: (t - base).total_seconds() / 86400
+    intercept = statistics.median(v - slope * days_of(t) for t, v in pts)
+    fit = [(t, intercept + slope * days_of(t)) for t in (pts[0][0], pts[-1][0])]
+    future = []
+    day = now.astimezone(KST).replace(hour=9, minute=0, second=0, microsecond=0)
+    if day <= now:
+        day += timedelta(days=1)
+    while day <= end:
+        h = (day - now).total_seconds() / 86400
+        half = z * sigma * math.sqrt(h + h * h / n)
+        mid = start + slope * h
+        future.append((day, mid, mid - half, mid + half))
+        day += timedelta(days=1)
+    return {'slope': slope, 'fit': fit, 'future': future} if future else None
