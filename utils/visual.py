@@ -244,7 +244,7 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
 def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]],
                    bands: Sequence[Tuple[datetime, float, Sequence[Tuple[datetime, float, float, float]], int]],
                    *, refs: Sequence[Sequence[Tuple[datetime, float]]] = (), legend: Sequence[str] = (),
-                   width: int = 720, height: int = 300) -> Optional[bytes]:
+                   width: int = 560, height: int = 290) -> Optional[bytes]:
     """기록 선과 그 끝에서 시즌 종료까지 이어지는 예상 범위. bands는 (시작 시각, 시작 값, 날마다 (시각, 가운데, 낮은 값, 높은 값), 색).
     refs는 흐린 회색 참고 선. 기록이 한 점뿐인 선은 점만 찍음"""
     series = [([(t, v) for t, v in pts if v is not None], accent) for pts, accent in series]
@@ -257,7 +257,8 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
     img = Image.new('RGBA', (width * s, height * s), BG + (255,))
     over = Image.new('RGBA', img.size, (0, 0, 0, 0))
     d, o = ImageDraw.Draw(img), ImageDraw.Draw(over)
-    left, right, top, bottom = 52 * s, (width - 112) * s, 44 * s, (height - 34) * s
+    # 휴대폰에서 이미지가 절반쯤으로 줄어 글자를 크게
+    left, right, top, bottom = 50 * s, (width - 118) * s, 50 * s, (height - 36) * s
     t0 = min([pts[0][0] for pts, _ in series] + [pts[0][0] for pts in refs])
     t1 = max(b[2][-1][0] for b in bands)
     now = max(b[0] for b in bands)
@@ -272,11 +273,11 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
         return (left + (t - t0).total_seconds() / span * (right - left),
                 bottom - (v - lo) / (hi - lo) * (bottom - top))
 
-    small, bold = font(11), font(11, bold=True)
+    small, bold = font(13), font(13, bold=True)
     for v in ticks:
         y = xy(t0, v)[1]
         d.line([(left, y), (right, y)], fill=_mix(BG, GRID, 0.6), width=s)
-        d.text((left - 10 * s, y), f'{v:,.0f}', font=small, fill=SUBTEXT, anchor='rm')
+        d.text((left - 8 * s, y), f'{v:,.0f}', font=small, fill=SUBTEXT, anchor='rm')
 
     x_now, x_end = xy(now, lo)[0], xy(t1, lo)[0]
     for x in (x_now, x_end):
@@ -288,7 +289,7 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
     day = (t0.astimezone(KST) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     while day < t1:
         x = xy(day, lo)[0]
-        if min(abs(x - x_now), abs(x - x_end)) > 44 * s:
+        if min(abs(x - x_now), abs(x - x_end)) > 48 * s:
             d.text((x, bottom + 10 * s), f'{day.month}/{day.day}', font=small, fill=SUBTEXT, anchor='mt')
         day += timedelta(days=7)
 
@@ -328,30 +329,31 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
             d.line(_smooth([xy(t, v) for t, v in pts]), fill=rgb, width=3 * s, joint='curve')
         x, y = xy(*pts[-1])
         d.ellipse([x - 6 * s, y - 6 * s, x + 6 * s, y + 6 * s], fill=(255, 255, 255), outline=rgb, width=3 * s)
-        d.text((x, y - 11 * s), f'{pts[-1][1]:,.0f}', font=font(12, bold=True), fill=TEXT, anchor='mb',
+        d.text((x, y - 11 * s), f'{pts[-1][1]:,.0f}', font=font(16, bold=True), fill=TEXT, anchor='mb',
                stroke_width=3 * s, stroke_fill=BG)
 
     labels.sort()
     for i in range(1, len(labels)):
-        labels[i][0] = max(labels[i][0], labels[i - 1][0] + 44 * s)
-    mid_font, range_font = font(13, bold=True), font(10)
+        labels[i][0] = max(labels[i][0], labels[i - 1][0] + 54 * s)
+    mid_font, range_font = font(18, bold=True), font(13)
     for y, mid, span, rgb in labels:
         w = max(d.textlength(mid, font=mid_font), d.textlength(span, font=range_font))
         x = x_end + 10 * s
-        d.rounded_rectangle([x, y - 19 * s, x + w + 16 * s, y + 19 * s], radius=10 * s, fill=_mix(BG, rgb, 0.24))
+        d.rounded_rectangle([x, y - 24 * s, x + w + 16 * s, y + 24 * s], radius=10 * s, fill=_mix(BG, rgb, 0.24))
         tint = _mix(rgb, (255, 255, 255), 0.35)
-        d.text((x + 8 * s, y - 7 * s), mid, font=mid_font, fill=tint, anchor='lm')
-        d.text((x + 8 * s, y + 9 * s), span, font=range_font, fill=_mix(tint, BG, 0.25), anchor='lm')
+        d.text((x + 8 * s, y - 9 * s), mid, font=mid_font, fill=tint, anchor='lm')
+        d.text((x + 8 * s, y + 12 * s), span, font=range_font, fill=_mix(tint, BG, 0.2), anchor='lm')
 
     x = left
     for label, (_, accent) in zip(legend, series):
-        d.rounded_rectangle([x, 14 * s, x + 14 * s, 18 * s], radius=2 * s, fill=_hex(accent))
-        d.text((x + 20 * s, 16 * s), label, font=font(12, bold=True), fill=TEXT, anchor='lm')
-        x += (34 + len(label) * 13) * s
+        d.rounded_rectangle([x, 16 * s, x + 14 * s, 20 * s], radius=2 * s, fill=_hex(accent))
+        label_font = font(14, bold=True)
+        d.text((x + 20 * s, 18 * s), label, font=label_font, fill=TEXT, anchor='lm')
+        x += 20 * s + d.textlength(label, font=label_font) + 18 * s
     if refs:
         d.rounded_rectangle([x, 15 * s, x + 14 * s, 17 * s], radius=1 * s, fill=ref_colour)
         d.text((x + 20 * s, 16 * s), '순위표 컷', font=font(12), fill=SUBTEXT, anchor='lm')
-    d.text((right + 112 * s - 16 * s, 16 * s), '점선은 시즌 종료 예상', font=small, fill=SUBTEXT, anchor='rm')
+    d.text(((x_now + x_end) / 2, top - 12 * s), '예상', font=bold, fill=SUBTEXT, anchor='mb')
     return _png(img.convert('RGB'))
 
 

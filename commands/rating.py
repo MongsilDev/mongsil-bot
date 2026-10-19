@@ -105,14 +105,9 @@ def season_end_for(season_info, season_id: int) -> Optional[datetime]:
     return season_info.end_date if season_info and season_info.number == season_id else None
 
 
-def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], season_name: str,
-                         season_id: Optional[int] = None, season_end: Optional[datetime] = None,
-                         client: Optional[ERClient] = None, top: Optional[List[Dict]] = None) -> ui.LayoutView:
-    """레이팅 정보 LayoutView를 생성합니다. top은 아시아1 상위 목록"""
-    eternity, demigod = cut_rp(rank_300), cut_rp(rank_1000)
-    history = rank_history.cut_history(season_id) if season_id else []
-    ranked = [r for r in top or [] if r.get('mmr')]
-    now = datetime.now(timezone.utc)
+def tier_cuts(season_id: Optional[int], ranked: List[Dict], history: List[tuple], season_end: Optional[datetime],
+              eternity: Optional[int], demigod: Optional[int], now: datetime) -> List[tuple]:
+    """티어마다 (이름, 아이콘, 순위, 순위표 컷, 기록 열, 휴면 강등 컷 결과, 표시 컷, 종료 예상)"""
     end = season_end.timestamp() if season_end else None
     tiers = []
     for tier, icon, place, rp, official in (('이터니티', '10', 300, eternity, 1), ('데미갓', '9', 1000, demigod, 2)):
@@ -123,6 +118,17 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
             outlook = rank_history.forecast(rank_history.at_nine(history, official), start, now, season_end,
                                             rank_history.SURGE[place])
         tiers.append((tier, icon, place, rp, official, found, start, outlook))
+    return tiers
+
+
+def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], season_name: str,
+                         season_id: Optional[int] = None, season_end: Optional[datetime] = None,
+                         client: Optional[ERClient] = None, top: Optional[List[Dict]] = None) -> ui.LayoutView:
+    """레이팅 정보 LayoutView를 생성합니다. top은 아시아1 상위 목록"""
+    history = rank_history.cut_history(season_id) if season_id else []
+    ranked = [r for r in top or [] if r.get('mmr')]
+    now = datetime.now(timezone.utc)
+    tiers = tier_cuts(season_id, ranked, history, season_end, cut_rp(rank_300), cut_rp(rank_1000), now)
     view = RatingView(client, season_id, ranked, *(t[6] for t in tiers)) if client and season_id else ui.LayoutView()
 
     def block(tier, icon, place, rp, official, found, start, outlook) -> str:
@@ -202,8 +208,8 @@ def spread_layout(ranked: List[Dict], eternity: Optional[int], demigod: Optional
     by_rank = {r['rank']: int(r['mmr']) for r in ranked}
     facts = [f"{rank}위 {by_rank[rank]:,} RP" for rank in (1, 100, 500) if rank in by_rank]
     if eternity:
-        chasing = sum(1 for r in ranked if r['rank'] > 300 and int(r['mmr']) >= eternity - 50)
-        facts.append(f"이터니티 컷까지 50 RP 이내 {chasing}명")
+        near = [int(r['mmr']) - eternity for r in ranked]
+        facts.append(f"이터니티 컷 위 50 RP 안 {sum(0 <= g < 50 for g in near)}명, 아래 50 RP 안 {sum(-50 <= g < 0 for g in near)}명")
     children.append(ui.TextDisplay("-# " + " | ".join(facts)))
     view.add_item(ui.Container(*children, accent_colour=visual.colour('cut')))
     return view
@@ -263,22 +269,30 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
 
     user_id, stats, user_rank = await account.with_account(client, owner, name, user_id, load)
     rank_300, rank_1000 = await fetch_rating_info(client, season_id)
-    top = await fetch_ranking_data(client, season_id) or []
+    ranked = [r for r in await fetch_ranking_data(client, season_id) or [] if r.get('mmr')]
     end = season_end_for(await get_season_info(), season_id)
     mmr = int(stats.get('mmr', 0))
     current = stats.get('nickname') or (user_rank or {}).get('nickname') or name
     mine = accounts.get(interaction.user.id)
     if mine and mine[0] == user_id:
         accounts.rename(interaction.user.id, current)
-    lines = [f"### {current}\n**{mmr:,}** RP"]
-    for tier, icon, official, place in (('이터니티', '10', cut_rp(rank_300), 300), ('데미갓', '9', cut_rp(rank_1000), 1000)):
-        if not official:
+    place = int((user_rank or {}).get('serverRank') or 0)
+    lines = [f"### {current}\n**{mmr:,}** RP" + (f" | {place:,}위" if place else "")]
+    board = [int(r['mmr']) for r in ranked]
+    tiers = tier_cuts(season_id, ranked, rank_history.cut_history(season_id), end,
+                      cut_rp(rank_300), cut_rp(rank_1000), datetime.now(timezone.utc))
+    for tier, icon, _, _, _, _, cut, outlook in tiers:
+        if not cut:
             continue
-        found = rank_history.active_cut(season_id, top, place, end and end.timestamp()) if top else None
-        cut = max(found[0], TierSystem.RANKED_GATE) if found else official
         gap = cut - mmr
-        state = f"컷까지 **{gap:,}** RP" if gap > 0 else f"컷보다 **{-gap:,}** RP 위"
-        lines.append(f"{app_emojis.tier(icon)} {tier} {state}".strip())
+        text = f"{app_emojis.tier(icon)} {tier} " + (f"컷까지 **{gap:,}** RP" if gap > 0 else f"컷보다 **{-gap:,}** RP 위")
+        # 순위표가 1000위까지라 그 아래 RP는 사이 인원을 셀 수 없음
+        if board and min(mmr, cut) >= min(board):
+            text += f", 사이 {sum(1 for v in board if min(mmr, cut) < v < max(mmr, cut)):,}명"
+        if outlook:
+            final = outlook['future'][-1][1]
+            text += f"\n-# 종료 예상 컷 {round(final, -1):,.0f}" + (f"까지 {round(final - mmr):,} RP" if final > mmr else f"보다 {round(mmr - final):,} RP 위")
+        lines.append(text.strip())
     if user_rank and user_rank.get('serverCode') not in (None, RANKING_SERVER):
         lines.append(f"-# 컷은 {SERVER_NAMES[RANKING_SERVER]} 기준")
     view = ui.LayoutView()
