@@ -112,8 +112,6 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
     eternity, demigod = cut_rp(rank_300), cut_rp(rank_1000)
     history = rank_history.cut_history(season_id) if season_id else []
     ranked = [r for r in top or [] if r.get('mmr')]
-    view = RatingView(client, season_id, ranked, eternity, demigod) if client and season_id else ui.LayoutView()
-
     now = datetime.now(timezone.utc)
     tiers = []
     for tier, icon, place, rp, official, own in (('이터니티', '10', 300, eternity, 1, 3), ('데미갓', '9', 1000, demigod, 2, 4)):
@@ -124,18 +122,20 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
             days = rank_history.daily(history, own)
             span = rank_history.forecast(days if len(days) >= 7 else rank_history.daily(history, official), start, now, season_end)
         tiers.append((tier, icon, place, rp, official, found, start, span))
+    # 컷은 휴면 제외 값이 기본. 판별 전이면 순위표 값
+    shown = [t[6] or t[3] for t in tiers]
+    view = RatingView(client, season_id, ranked, *shown) if client and season_id else ui.LayoutView()
 
     def block(tier, icon, place, rp, official, found, start, span) -> str:
         head = f"{app_emojis.tier(icon)} {tier} {place:,}위".strip()
         if not rp:
             return f"{head} 정보 없음"
-        text = f"{head} **{rp:,}** RP"
-        before = _day_ago(history, official)
+        value = start or rp
+        text = f"{head} {'약 ' if found and found[2] else ''}**{value:,}** RP"
+        before = _day_ago(history, official + 2 if found else official)
         if before:
-            text += f" `24시간 {rp - before:+,}`"
-        extra = []
-        if found:
-            extra.append(f"휴면 {found[1]}명 제외 {'약 ' if found[2] else ''}{start:,}")
+            text += f" `24시간 {value - before:+,}`"
+        extra = [f"휴면 {found[1]}명 제외", f"순위표 {rp:,}"] if found else ["휴면 확인 중이라 순위표 기준"]
         if span:
             low, high = (max(round(v), TierSystem.RANKED_GATE) for v in (span[0], span[2]))
             extra.append(f"종료 예상 {low:,}~{high:,}")
@@ -154,7 +154,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
     chart = _outlook_chart(history, tiers, season_end, now) if season_end else None
     if chart:
         children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'cut_outlook.png', chart))))
-        children.append(ui.TextDisplay("-# 휴면은 7일 넘게 랭크 게임이 없는 계정, 종료 예상은 휴면 제외 컷의 하루 추세"))
+        children.append(ui.TextDisplay("-# 휴면은 7일 넘게 랭크 게임이 없는 계정, 종료 예상은 하루 추세 기준"))
     else:
         week_ago = time.time() - 7 * 86400
         recent = [h for h in history if h[0] >= week_ago]
@@ -174,19 +174,19 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
 
 
 def _outlook_chart(history, tiers, season_end: datetime, now: datetime) -> Optional[bytes]:
-    """최근 14일 하루 컷과 시즌 종료까지 예상 범위. 예상이 하나도 없으면 None"""
-    bands, series, names = [], [], []
+    """휴면 제외 컷 기록과 시즌 종료까지 예상 범위, 흐린 순위표 컷 기록. 예상이 하나도 없으면 None"""
+    bands, series, refs, names = [], [], [], []
     for tier, icon, _, rp, official, _, start, span in tiers:
-        if not span or not rp:
+        if not span or not start:
             continue
         colour = visual.TIER_COLOURS[icon]
         low, mid, high = (max(round(v), TierSystem.RANKED_GATE) for v in span)
-        # 휴면 계정은 종료 전에 RP가 깎여 빠지므로 순위표 컷이 휴면 제외 예상으로 모인다고 보고 지금 컷에서 이음
-        bands.append((now, rp, season_end, low, mid, high, colour))
-        days = [p for p in rank_history.daily(history, official)[-14:] if p[0] < now] + [(now, rp)]
-        series.append((days, colour))
+        bands.append((now, start, season_end, low, mid, high, colour))
+        own = [p for p in rank_history.daily(history, official + 2)[-14:] if p[0] < now]
+        series.append((own + [(now, start)], colour))
+        refs.append([p for p in rank_history.daily(history, official)[-14:] if p[0] < now] + [(now, rp)])
         names.append(tier)
-    return visual.forecast_chart(series, bands, legend=names) if bands else None
+    return visual.forecast_chart(series, bands, refs=refs, legend=names) if bands else None
 
 
 def spread_layout(ranked: List[Dict], eternity: Optional[int], demigod: Optional[int]) -> ui.LayoutView:
@@ -269,16 +269,17 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
     if mine and mine[0] == user_id:
         accounts.rename(interaction.user.id, current)
     lines = [f"### {current}\n**{mmr:,}** RP"]
-    for tier, icon, cut, place in (('이터니티', '10', cut_rp(rank_300), 300), ('데미갓', '9', cut_rp(rank_1000), 1000)):
-        if not cut:
+    for tier, icon, official, place in (('이터니티', '10', cut_rp(rank_300), 300), ('데미갓', '9', cut_rp(rank_1000), 1000)):
+        if not official:
             continue
+        found = rank_history.active_cut(season_id, top, place) if top else None
+        cut = max(found[0], TierSystem.RANKED_GATE) if found else official
         gap = cut - mmr
         state = f"컷까지 **{gap:,}** RP" if gap > 0 else f"컷보다 **{-gap:,}** RP 위"
         lines.append(f"{app_emojis.tier(icon)} {tier} {state}".strip())
-        found = rank_history.active_cut(season_id, top, place) if top else None
         if found:
-            gap = max(found[0], TierSystem.RANKED_GATE) - mmr
-            lines.append(f"-# 휴면 제외 컷까지 {gap:,} RP" if gap > 0 else f"-# 휴면 제외 컷보다 {-gap:,} RP 위")
+            gap = official - mmr
+            lines.append(f"-# 순위표 컷까지 {gap:,} RP" if gap > 0 else f"-# 순위표 컷보다 {-gap:,} RP 위")
     if user_rank and user_rank.get('serverCode') not in (None, RANKING_SERVER):
         lines.append(f"-# 컷은 {SERVER_NAMES[RANKING_SERVER]} 기준")
     view = ui.LayoutView()

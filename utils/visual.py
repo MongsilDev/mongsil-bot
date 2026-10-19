@@ -243,10 +243,14 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
 
 def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]],
                    bands: Sequence[Tuple[datetime, float, datetime, float, float, float, int]],
-                   *, legend: Sequence[str] = (), width: int = 720, height: int = 300) -> Optional[bytes]:
-    """기록 선과 그 끝에서 시즌 종료까지 이어지는 예상 범위. bands는 (시작 시각, 시작 값, 끝 시각, 낮은 값, 가운데, 높은 값, 색)"""
+                   *, refs: Sequence[Sequence[Tuple[datetime, float]]] = (), legend: Sequence[str] = (),
+                   width: int = 720, height: int = 300) -> Optional[bytes]:
+    """기록 선과 그 끝에서 시즌 종료까지 이어지는 예상 범위. bands는 (시작 시각, 시작 값, 끝 시각, 낮은 값, 가운데, 높은 값, 색).
+    refs는 흐린 회색 참고 선. 기록이 한 점뿐인 선은 점만 찍음"""
     series = [([(t, v) for t, v in pts if v is not None], accent) for pts, accent in series]
-    series = [(pts, accent) for pts, accent in series if len(pts) >= 2]
+    series = [(pts, accent) for pts, accent in series if pts]
+    refs = [[(t, v) for t, v in pts if v is not None] for pts in refs]
+    refs = [pts for pts in refs if len(pts) >= 2]
     if not series or not bands:
         return None
     s = SCALE
@@ -254,11 +258,12 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
     over = Image.new('RGBA', img.size, (0, 0, 0, 0))
     d, o = ImageDraw.Draw(img), ImageDraw.Draw(over)
     left, right, top, bottom = 52 * s, (width - 112) * s, 44 * s, (height - 34) * s
-    t0 = min(pts[0][0] for pts, _ in series)
+    t0 = min([pts[0][0] for pts, _ in series] + [pts[0][0] for pts in refs])
     t1 = max(b[2] for b in bands)
     now = max(b[0] for b in bands)
     span = max((t1 - t0).total_seconds(), 1)
-    values = [v for pts, _ in series for _, v in pts] + [x for b in bands for x in (b[3], b[5])]
+    values = ([v for pts, _ in series for _, v in pts] + [v for pts in refs for _, v in pts]
+              + [x for b in bands for x in (b[3], b[5])])
     lo, hi = min(values), max(values)
     ticks = _ticks(lo - (hi - lo) * 0.1, hi + (hi - lo) * 0.1, 4)
     lo, hi = ticks[0], ticks[-1]
@@ -303,9 +308,13 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
             d.line([(a[0] + (b[0] - a[0]) * f0, a[1] + (b[1] - a[1]) * f0),
                     (a[0] + (b[0] - a[0]) * f1, a[1] + (b[1] - a[1]) * f1)], fill=rgb, width=2 * s)
         labels.append([b[1], f'{b_lo:,.0f}~{b_hi:,.0f}', rgb])
+    ref_colour = _mix(BG, SUBTEXT, 0.7)
+    for pts in refs:
+        d.line(_smooth([xy(t, v) for t, v in pts]), fill=ref_colour, width=2 * s, joint='curve')
     for pts, accent in series:
         rgb = _hex(accent)
-        d.line(_smooth([xy(t, v) for t, v in pts]), fill=rgb, width=3 * s, joint='curve')
+        if len(pts) >= 2:
+            d.line(_smooth([xy(t, v) for t, v in pts]), fill=rgb, width=3 * s, joint='curve')
         x, y = xy(*pts[-1])
         d.ellipse([x - 6 * s, y - 6 * s, x + 6 * s, y + 6 * s], fill=(255, 255, 255), outline=rgb, width=3 * s)
 
@@ -324,6 +333,9 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
         d.rounded_rectangle([x, 14 * s, x + 14 * s, 18 * s], radius=2 * s, fill=_hex(accent))
         d.text((x + 20 * s, 16 * s), label, font=font(12, bold=True), fill=TEXT, anchor='lm')
         x += (34 + len(label) * 13) * s
+    if refs:
+        d.rounded_rectangle([x, 15 * s, x + 14 * s, 17 * s], radius=1 * s, fill=ref_colour)
+        d.text((x + 20 * s, 16 * s), '순위표 컷', font=font(12), fill=SUBTEXT, anchor='lm')
     d.text((right + 112 * s - 16 * s, 16 * s), '점선은 시즌 종료 예상', font=small, fill=SUBTEXT, anchor='rm')
     return _png(img.convert('RGB'))
 
