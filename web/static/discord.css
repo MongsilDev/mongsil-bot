@@ -7,7 +7,7 @@
   background: #313338;
   border-radius: 12px;
   color: #dbdee1;
-  font: 16px/1.375 "gg sans", "Noto Sans KR", -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font: 16px/1.375 var(--sans);
   letter-spacing: 0;
   text-align: left;
 }
