@@ -142,7 +142,7 @@ class SettingsView(CooldownLayoutView):
         else:
             channel = interaction.channel
             if not isinstance(channel, discord.TextChannel):
-                await self.refuse(interaction, "알림은 일반 채널이나 공지 채널에만 보낼 수 있습니다.")
+                await self.refuse(interaction, "알림은 일반 채널이나 공지 채널에만 보낼 수 있습니다.\n알림을 받을 채널에서 /설정을 다시 실행해주세요.")
                 return None
             missing = channel_ok(channel, key == 'alert_cut')
             if missing:

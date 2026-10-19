@@ -231,7 +231,9 @@ class ERClient(commands.Bot):
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         error_message = "명령어 실행 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요."
 
-        if isinstance(error, app_commands.CheckFailure):
+        if isinstance(error, app_commands.NoPrivateMessage):
+            error_message = "이 명령어는 서버 안에서만 쓸 수 있습니다."
+        elif isinstance(error, app_commands.CheckFailure):
             error_message = "이 명령어를 실행할 권한이 없습니다."
         elif isinstance(error, app_commands.CommandOnCooldown):
             error_message = f"명령어를 너무 자주 사용했습니다.\n{math.ceil(error.retry_after)}초 후에 다시 시도해주세요."
