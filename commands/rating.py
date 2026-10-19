@@ -181,8 +181,8 @@ def _tens(v: float) -> int:
 
 
 def _outlook_chart(history, tiers, now: datetime) -> Optional[bytes]:
-    """최근 2주 순위표 컷과 휴면 강등 컷, 시즌 종료까지 날마다 오전 9시 예상 범위. 예상이 하나도 없으면 None"""
-    bands, series, refs, names = [], [], [], []
+    """최근 2주 휴면 강등 컷과 시즌 종료까지 날마다 오전 9시 예상 범위. 예상이 하나도 없으면 None"""
+    bands, series, names = [], [], []
     for tier, icon, _, rp, official, _, start, outlook in tiers:
         if not outlook:
             continue
@@ -191,9 +191,8 @@ def _outlook_chart(history, tiers, now: datetime) -> Optional[bytes]:
         bands.append((now, start, future, colour))
         own = [p for p in rank_history.at_nine(history, official + 2)[-14:] if p[0] < now]
         series.append((own + [(now, start)], colour))
-        refs.append([p for p in rank_history.at_nine(history, official)[-14:] if p[0] < now] + [(now, rp)])
         names.append(tier)
-    return visual.forecast_chart(series, bands, refs=refs, legend=names) if bands else None
+    return visual.forecast_chart(series, bands, legend=names) if bands else None
 
 
 def spread_layout(ranked: List[Dict], eternity: Optional[int], demigod: Optional[int]) -> ui.LayoutView:

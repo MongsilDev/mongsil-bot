@@ -96,7 +96,7 @@ def record_cuts(season_id: int, eternity: Optional[int], demigod: Optional[int],
 
 
 def cut_history(season_id: int) -> List[tuple]:
-    """(시각, 이터니티, 데미갓, 휴면 제외 이터니티, 휴면 제외 데미갓). 휴면 제외 값은 10-19부터 기록"""
+    """(시각, 이터니티, 데미갓, 휴면 강등 이터니티, 휴면 강등 데미갓). 휴면 강등 값은 10-19 16시부터 기록, 10-05~10-19 오전 9시 값은 게임 기록으로 복원"""
     return [(c[0], c[2], c[3], *(c[4:6] + [None] * (6 - len(c)))) for c in _load()['cuts'] if c[1] == season_id]
 
 
