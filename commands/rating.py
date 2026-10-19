@@ -111,25 +111,35 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
     """레이팅 정보 LayoutView를 생성합니다. top은 아시아1 상위 목록"""
     eternity, demigod = cut_rp(rank_300), cut_rp(rank_1000)
     history = rank_history.cut_history(season_id) if season_id else []
-    view = RatingView(client, season_id) if client and season_id else ui.LayoutView()
-
     ranked = [r for r in top or [] if r.get('mmr')]
-    active = {place: rank_history.active_cut(season_id, ranked, place) if season_id and ranked else None
-              for place in (300, 1000)}
+    view = RatingView(client, season_id, ranked, eternity, demigod) if client and season_id else ui.LayoutView()
 
-    def cut_block(tier: str, icon: str, rank: int, rp: Optional[int], index: int) -> str:
-        head = f"{app_emojis.tier(icon)} {tier} {rank:,}위".strip()
+    now = datetime.now(timezone.utc)
+    tiers = []
+    for tier, icon, place, rp, official, own in (('이터니티', '10', 300, eternity, 1, 3), ('데미갓', '9', 1000, demigod, 2, 4)):
+        found = rank_history.active_cut(season_id, ranked, place) if season_id and ranked else None
+        start = max(found[0], TierSystem.RANKED_GATE) if found else None
+        span = None
+        if start and season_end:
+            days = rank_history.daily(history, own)
+            span = rank_history.forecast(days if len(days) >= 7 else rank_history.daily(history, official), start, now, season_end)
+        tiers.append((tier, icon, place, rp, official, found, start, span))
+
+    def block(tier, icon, place, rp, official, found, start, span) -> str:
+        head = f"{app_emojis.tier(icon)} {tier} {place:,}위".strip()
         if not rp:
             return f"{head} 정보 없음"
         text = f"{head} **{rp:,}** RP"
-        before = _day_ago(history, index)
+        before = _day_ago(history, official)
         if before:
             text += f" `24시간 {rp - before:+,}`"
-        found = active[rank]
+        extra = []
         if found:
-            value = max(found[0], TierSystem.RANKED_GATE)
-            text += f"\n-# 휴면 제외 {'약 ' if found[2] else ''}**{value:,}** RP, 휴면 {found[1]}명 제외"
-        return text
+            extra.append(f"휴면 {found[1]}명 제외 {'약 ' if found[2] else ''}{start:,}")
+        if span:
+            low, high = (max(round(v), TierSystem.RANKED_GATE) for v in (span[0], span[2]))
+            extra.append(f"종료 예상 {low:,}~{high:,}")
+        return text + ("\n-# " + " | ".join(extra) if extra else "")
 
     sub = [season_name, SERVER_NAMES[RANKING_SERVER]]
     if season_end:
@@ -138,89 +148,81 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
             sub.append(f"시즌 종료 D-{days}" if days else "시즌 종료 D-day")
     children = [
         ui.TextDisplay("### 이터컷\n-# " + " | ".join(sub)),
-        ui.TextDisplay(cut_block('이터니티', '10', 300, eternity, 1) + "\n" + cut_block('데미갓', '9', 1000, demigod, 2)),
+        ui.TextDisplay("\n".join(block(*t) for t in tiers)),
     ]
 
-    if ranked:
-        cuts = [(rp, name, visual.TIER_COLOURS[icon]) for rp, name, icon in
-                ((eternity, '이터니티', '10'), (demigod, '데미갓', '9')) if rp]
-        chart = visual.rp_histogram([int(r['mmr']) for r in ranked[:1000]], cuts)
-        if chart:
-            children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'cut_spread.png', chart))))
-        by_rank = {r['rank']: int(r['mmr']) for r in ranked}
-        facts = [f"{rank}위 {by_rank[rank]:,} RP" for rank in (1, 100, 500) if rank in by_rank]
-        if eternity:
-            chasing = sum(1 for r in ranked if r['rank'] > 300 and int(r['mmr']) >= eternity - 50)
-            facts.append(f"이터니티 컷까지 50 RP 이내 {chasing}명")
-        children.append(ui.TextDisplay("-# " + " | ".join(facts)))
-
-    outlook = _outlook(history, active, season_end)
-    if outlook:
-        lines, chart = outlook
-        children.append(ui.TextDisplay(lines))
+    chart = _outlook_chart(history, tiers, season_end, now) if season_end else None
+    if chart:
         children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'cut_outlook.png', chart))))
-        children.append(ui.TextDisplay("-# 휴면은 7일 넘게 랭크 게임 기록이 없는 계정입니다. 예상은 지금의 휴면 제외 컷에 하루 추세를 이어 그린 범위입니다."))
-
-    week_ago = time.time() - 7 * 86400
-    recent = [h for h in history if h[0] >= week_ago]
-    if not outlook and len(recent) >= 3 and recent[-1][0] - recent[0][0] >= 6 * 3600:
-        stamp = lambda ts: datetime.fromtimestamp(ts, timezone.utc)
-        chart = visual.lines_chart([
-            ([(stamp(h[0]), h[1]) for h in recent], visual.TIER_COLOURS['10']),
-            ([(stamp(h[0]), h[2]) for h in recent], visual.TIER_COLOURS['9']),
-        ], hours=168 if recent[-1][0] - recent[0][0] > 2 * 86400 else 24, end_labels=True, legend=('이터니티', '데미갓'), mark_extremes=True, label_low=True)
-        if chart:
-            url = visual.attach(view, 'cut.png', chart)
-            children.append(ui.MediaGallery(discord.MediaGalleryItem(url)))
+        children.append(ui.TextDisplay("-# 휴면은 7일 넘게 랭크 게임이 없는 계정, 종료 예상은 휴면 제외 컷의 하루 추세"))
+    else:
+        week_ago = time.time() - 7 * 86400
+        recent = [h for h in history if h[0] >= week_ago]
+        if len(recent) >= 3 and recent[-1][0] - recent[0][0] >= 6 * 3600:
+            stamp = lambda ts: datetime.fromtimestamp(ts, timezone.utc)
+            chart = visual.lines_chart([
+                ([(stamp(h[0]), h[1]) for h in recent], visual.TIER_COLOURS['10']),
+                ([(stamp(h[0]), h[2]) for h in recent], visual.TIER_COLOURS['9']),
+            ], hours=168 if recent[-1][0] - recent[0][0] > 2 * 86400 else 24, end_labels=True, legend=('이터니티', '데미갓'), mark_extremes=True, label_low=True)
+            if chart:
+                children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'cut.png', chart))))
 
     view.add_item(ui.Container(*children, accent_colour=visual.colour('cut')))
     if isinstance(view, RatingView):
-        view.add_item(ui.ActionRow(view.compare_button))
+        view.add_item(ui.ActionRow(view.compare_button, view.spread_button))
     return view
 
 
-def _outlook(history, active: Dict[int, Optional[tuple]], season_end: Optional[datetime]):
-    """시즌 종료 예상 문구와 차트. 하루 값이 7일 안 되거나 휴면 제외 컷이 없으면 None.
-    추세는 휴면 제외 컷 기록이 7일 쌓이기 전까지 순위표 컷 기록으로 계산"""
-    if not season_end or not history:
-        return None
-    now = datetime.now(timezone.utc)
-    stamp = lambda ts: datetime.fromtimestamp(ts, timezone.utc)
-    rows, bands, series, names = [], [], [], []
-    for tier, icon, place, official, own in (('이터니티', '10', 300, 1, 3), ('데미갓', '9', 1000, 2, 4)):
-        found = active.get(place)
-        if not found:
-            continue
-        start = max(found[0], TierSystem.RANKED_GATE)
-        days = rank_history.daily(history, own)
-        if len(days) < 7:
-            days = rank_history.daily(history, official)
-        span = rank_history.forecast(days, start, now, season_end)
+def _outlook_chart(history, tiers, season_end: datetime, now: datetime) -> Optional[bytes]:
+    """최근 14일 하루 컷과 시즌 종료까지 예상 범위. 예상이 하나도 없으면 None"""
+    bands, series, names = [], [], []
+    for tier, icon, _, _, official, _, start, span in tiers:
         if not span:
             continue
-        low, mid, high = (max(round(v), TierSystem.RANKED_GATE) for v in span)
         colour = visual.TIER_COLOURS[icon]
-        rows.append(f"{app_emojis.tier(icon)} {tier} **{low:,}~{high:,}** RP".strip())
-        names.append(tier)
+        low, mid, high = (max(round(v), TierSystem.RANKED_GATE) for v in span)
         bands.append((now, start, season_end, low, mid, high, colour))
-        cutoff = time.time() - 14 * 86400
-        series.append(([(stamp(h[0]), h[official]) for h in history if h[0] >= cutoff], colour))
-    if not rows:
-        return None
-    chart = visual.forecast_chart(series, bands, legend=names)
-    if not chart:
-        return None
-    end = season_end.astimezone(visual.KST)
-    return f"**시즌 종료 예상** {end.month}/{end.day} 추세 기준\n" + "\n".join(rows), chart
+        days = rank_history.daily(history, official)[-14:]
+        series.append((days, colour))
+        names.append(tier)
+    return visual.forecast_chart(series, bands, legend=names) if bands else None
+
+
+def spread_layout(ranked: List[Dict], eternity: Optional[int], demigod: Optional[int]) -> ui.LayoutView:
+    """상위 1000명 RP 분포와 주요 순위 RP"""
+    view = ui.LayoutView()
+    children = [ui.TextDisplay("### 상위 1000명 RP 분포")]
+    cuts = [(rp, name, visual.TIER_COLOURS[icon]) for rp, name, icon in
+            ((eternity, '이터니티', '10'), (demigod, '데미갓', '9')) if rp]
+    chart = visual.rp_histogram([int(r['mmr']) for r in ranked[:1000]], cuts)
+    if chart:
+        children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'cut_spread.png', chart))))
+    by_rank = {r['rank']: int(r['mmr']) for r in ranked}
+    facts = [f"{rank}위 {by_rank[rank]:,} RP" for rank in (1, 100, 500) if rank in by_rank]
+    if eternity:
+        chasing = sum(1 for r in ranked if r['rank'] > 300 and int(r['mmr']) >= eternity - 50)
+        facts.append(f"이터니티 컷까지 50 RP 이내 {chasing}명")
+    children.append(ui.TextDisplay("-# " + " | ".join(facts)))
+    view.add_item(ui.Container(*children, accent_colour=visual.colour('cut')))
+    return view
 
 
 class RatingView(CooldownLayoutView):
-    def __init__(self, client: ERClient, season_id: int):
+    def __init__(self, client: ERClient, season_id: int, ranked: List[Dict] = (),
+                 eternity: Optional[int] = None, demigod: Optional[int] = None):
         super().__init__(timeout=config.view_timeout_interactive)
         self.client = client
         self.season_id = season_id
+        self.spread = (list(ranked), eternity, demigod)
         self.compare_button = ui.Button(style=discord.ButtonStyle.secondary, label="내 RP와 비교", emoji="🔍")
         self.compare_button.callback = self.open_modal
+        self.spread_button = ui.Button(style=discord.ButtonStyle.secondary, label="RP 분포", emoji="📊",
+                                       disabled=not ranked)
+        self.spread_button.callback = self.show_spread
+
+    async def show_spread(self, interaction: discord.Interaction):
+        view = spread_layout(*self.spread)
+        await interaction.response.send_message(view=view, files=visual.files_of(view), ephemeral=True)
 
     async def open_modal(self, interaction: discord.Interaction):
         account = accounts.get(interaction.user.id)

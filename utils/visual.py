@@ -308,7 +308,6 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
         d.ellipse([x, 10 * s, x + 10 * s, 20 * s], fill=_hex(accent))
         d.text((x + 16 * s, 15 * s), label, font=font(12, bold=True), fill=TEXT, anchor='lm')
         x += (30 + len(label) * 13) * s
-    d.text((right + 90 * s, 15 * s), '점선은 휴면 제외 컷의 추세', font=font(11), fill=SUBTEXT, anchor='rm')
     return _png(img)
 
 

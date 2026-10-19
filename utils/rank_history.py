@@ -155,14 +155,15 @@ def is_dormant(p: list, now: float) -> Optional[bool]:
 
 
 def active_cut(season_id: int, top_ranks: List[dict], place: int) -> Optional[Tuple[int, int, bool]]:
-    """휴면 계정을 뺀 place번째 RP, 그 위에서 뺀 휴면 계정 수, 추정 여부. 판별 안 된 계정이 있으면 None.
+    """휴면 계정을 뺀 place번째 RP, 그 위에서 뺀 휴면 계정 수, 추정 여부. 판별 안 된 계정이 20명 넘으면 None.
+    그 이하는 조회 실패나 새로 들어온 계정이라 활동으로 봄.
     목록이 1000위까지라 활동 계정이 place명이 안 되면 끝부분 순위당 RP 감소폭과 휴면 비율로 나머지를 추정"""
     players = player_book(season_id)
     book = _load()['players']
     since = book.get('since') or min((p[FIRST] for p in players.values()), default=0)
     now = time.time()
     ranked = sorted((r for r in top_ranks if r.get('mmr')), key=lambda r: r.get('rank', 0))
-    active = dormant = 0
+    active = dormant = unknown = 0
     tail: List[bool] = []
     for r in ranked:
         p = players.get(r.get('nickname'))
@@ -170,7 +171,9 @@ def active_cut(season_id: int, top_ranks: List[dict], place: int) -> Optional[Tu
         if state is None:
             # 기록을 시작한 뒤 새로 들어온 계정은 올라왔거나 닉네임을 바꾼 것이라 활동으로 봄
             if p and p[FIRST] - since < 3600:
-                return None
+                unknown += 1
+                if unknown > 20:
+                    return None
             state = False
         tail.append(state)
         if state:
