@@ -294,7 +294,11 @@ def secure_headers(request: web.Request, response) -> None:
     response.headers.setdefault(
         'Content-Security-Policy',
         "default-src 'self'; img-src 'self' https: data:; "
-        "style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; form-action 'self'",
+        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' https://www.googletagmanager.com https://static.cloudflareinsights.com; "
+        "connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com "
+        "https://*.googletagmanager.com https://cloudflareinsights.com; "
+        "frame-ancestors 'none'; form-action 'self'",
     )
 
 

@@ -34,6 +34,7 @@
 <meta name="csrf" content="{{ session.csrf }}">
 {% endif %}
 <script src="/static/app.js?v={{ static_version }}" defer></script>
+<script src="/static/analytics.js?v={{ static_version }}" defer></script>
 </head>
 <body{% if rail is not none %} class="has-rail"{% endif %}>
 <header class="bar">
