@@ -155,7 +155,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
     if any(t[5] for t in tiers):
         notes.append("7일 넘게 쉰 계정은 시즌 종료까지 휴면 강등된 RP로 계산")
     if chart:
-        notes.append("종료 예상은 최근 2주 오전 9시 추세")
+        notes.append("종료 예상은 오전 9시 추세, 높은 값은 지난 시즌 마지막 5일 급등 포함")
     if notes:
         children.append(ui.TextDisplay("-# " + " | ".join(notes)))
     if not chart:

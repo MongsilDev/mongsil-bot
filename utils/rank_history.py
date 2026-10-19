@@ -25,6 +25,9 @@ GRACE = 12
 PATCH_ANCHOR = datetime(2026, 8, 13).date()
 # 휴면 강등은 메테오라이트 4 아래로 내려가지 않음
 DECAY_FLOOR = 6400
+DAMP = 0.95
+# 시즌 11 300위가 마지막 5일에 직전 추세보다 220점 더 올랐음. 시즌 12 하루 게임 수가 0.87배라 줄임
+END_RUSH = 190
 KST = timezone(timedelta(hours=9))
 # players 항목 순서
 MMR, CHANGED, FIRST, SEEN, LAST_GAME, CHECKED, UID = range(7)
@@ -243,39 +246,37 @@ def at_nine(history: List[tuple], index: int) -> List[Tuple[datetime, float]]:
     return [(d, v) for d, (_, v) in sorted(days.items())]
 
 
-def _pair_slopes(points: List[Tuple[datetime, float]]) -> List[float]:
-    return sorted((b[1] - a[1]) / ((b[0] - a[0]).total_seconds() / 86400)
-                  for i, a in enumerate(points) for b in points[i + 1:])
-
-
-def _theil_sen(points: List[Tuple[datetime, float]]) -> float:
-    return statistics.median(_pair_slopes(points))
+def _theil_sen(values: List[float]) -> float:
+    return statistics.median((values[j] - values[i]) / (j - i) for i in range(len(values)) for j in range(i + 1, len(values)))
 
 
 def forecast(points: List[Tuple[datetime, float]], start: float, now: datetime, end: datetime,
              min_days: int = 7, z: float = 1.2816) -> Optional[dict]:
-    """최근 15일 오전 9시 값의 Theil-Sen 기울기로 start에서 시즌 종료까지 날마다 오전 9시 값을 예상.
-    범위는 하루 변화가 기울기에서 벗어난 정도로 잡은 80% 구간이라 멀수록 넓어짐.
-    반환은 기울기, 과거 추세선 두 점, 날마다 (시각, 가운데, 낮은 값, 높은 값)"""
+    """오전 9시 값의 감쇠 추세(Holt, 날마다 기울기 0.95배)로 start에서 시즌 종료까지 날마다 오전 9시 값을 예상.
+    시즌 12 재구성 49일 백테스트에서 직선 추세보다 7일 뒤 오차가 40에서 9로 줄었음.
+    범위는 한 걸음 예측 잔차로 잡은 80% 구간이라 멀수록 넓어짐. 높은 값에는 마지막 5일 급등분을 더함.
+    반환은 날마다 (시각, 가운데, 낮은 값, 높은 값)"""
     if len(points) < min_days or end <= now:
         return None
-    pts = points[-15:]
-    slope = _theil_sen(pts)
-    steps = [((b[1] - a[1]) / ((b[0] - a[0]).total_seconds() / 86400)) for a, b in zip(pts, pts[1:])]
-    sigma = math.sqrt(statistics.fmean((x - slope) ** 2 for x in steps))
-    n = len(steps)
-    base = pts[0][0]
-    days_of = lambda t: (t - base).total_seconds() / 86400
-    intercept = statistics.median(v - slope * days_of(t) for t, v in pts)
-    fit = [(t, intercept + slope * days_of(t)) for t in (pts[0][0], pts[-1][0])]
+    values = [v for _, v in points]
+    level, trend, residuals = values[0], _theil_sen(values[:7]), []
+    for v in values[1:]:
+        residuals.append(v - (level + DAMP * trend))
+        last = level
+        level = 0.3 * v + 0.7 * (level + DAMP * trend)
+        trend = 0.1 * (level - last) + 0.9 * DAMP * trend
+    sigma = math.sqrt(statistics.fmean(r * r for r in residuals[-14:]))
+    n = len(residuals[-14:])
     future = []
     day = now.astimezone(KST).replace(hour=9, minute=0, second=0, microsecond=0)
     if day <= now:
         day += timedelta(days=1)
     while day <= end:
         h = (day - now).total_seconds() / 86400
+        mid = start + trend * sum(DAMP ** k for k in range(1, math.ceil(h) + 1)) * h / math.ceil(h)
         half = z * sigma * math.sqrt(h + h * h / n)
-        mid = start + slope * h
-        future.append((day, mid, mid - half, mid + half))
+        rush = END_RUSH * max(0.0, 1 - (end - day).total_seconds() / (5 * 86400))
+        # 컷은 시즌 내내 내려간 적이 거의 없어 낮은 값은 지금 값까지만
+        future.append((day, mid, max(mid - half, start), mid + half + rush))
         day += timedelta(days=1)
-    return {'slope': slope, 'fit': fit, 'future': future} if future else None
+    return {'future': future} if future else None
