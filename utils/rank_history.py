@@ -251,6 +251,34 @@ def active_cut(season_id: int, top_ranks: List[dict], place: int, end: Optional[
     return value, dropped(value), True
 
 
+def decay_schedule(season_id: int, top_ranks: List[dict], cut: float, end: float) -> Tuple[List[Tuple[str, int]], int]:
+    """cut 위에 있는 휴면 계정이 휴면 강등으로 cut 아래로 내려가는 날(KST)별 인원과 시즌 끝까지 안 내려가는 인원"""
+    players = player_book(season_id)
+    now = time.time()
+    days: Dict[str, int] = {}
+    stay = 0
+    for r in top_ranks:
+        p = players.get(r.get('nickname'))
+        mmr = int(r.get('mmr') or 0)
+        at = last_active(p) if p else None
+        if mmr < cut or at is None or now - at <= DORMANT_DAYS * 86400:
+            continue
+        at = at if at > 0 else now - 60 * 86400
+        # 차감은 15시라 날마다 16시에 확인
+        day = datetime.fromtimestamp(now, KST).replace(hour=16, minute=0, second=0, microsecond=0)
+        if day.timestamp() <= now:
+            day += timedelta(days=1)
+        while day.timestamp() <= end:
+            if max(mmr - 100 * (decay_ticks(at, day.timestamp()) - decay_ticks(at, now)), min(mmr, DECAY_FLOOR)) < cut:
+                key = day.strftime('%Y-%m-%d')
+                days[key] = days.get(key, 0) + 1
+                break
+            day += timedelta(days=1)
+        else:
+            stay += 1
+    return sorted(days.items()), stay
+
+
 def at_nine(history: List[tuple], index: int) -> List[Tuple[datetime, float]]:
     """날마다 KST 오전 9시에 가장 가까운 기록. 시즌이 오전 9시에 끝나서 같은 시각끼리 비교. 앞뒤 90분 안에 기록이 없는 날은 뺌"""
     days: Dict[datetime, Tuple[float, float]] = {}
@@ -290,7 +318,7 @@ def forecast(points: List[Tuple[datetime, float]], start: float, now: datetime, 
         level = ALPHA * v + (1 - ALPHA) * (level + DAMP * trend)
         trend = BETA * (level - last) + (1 - BETA) * DAMP * trend
     mid_s, low_s, high_s = surge
-    future = []
+    future, raw_low = [], []
     day = now.astimezone(KST).replace(hour=9, minute=0, second=0, microsecond=0)
     if day <= now:
         day += timedelta(days=1)
@@ -301,5 +329,7 @@ def forecast(points: List[Tuple[datetime, float]], start: float, now: datetime, 
         half = 6.2 * h ** 0.75
         # 컷은 시즌 내내 내려간 적이 거의 없어 낮은 값은 지금 값까지만
         future.append((day, base + share * mid_s, max(base - half + share * low_s, start), base + half + share * high_s))
+        raw_low.append(base - half + share * low_s)
         day += timedelta(days=1)
-    return {'future': future} if future else None
+    # raw_low는 지금 값으로 자르기 전 낮은 값. 확률 계산용
+    return {'future': future, 'raw_low': raw_low} if future else None

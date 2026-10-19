@@ -121,6 +121,46 @@ def tier_cuts(season_id: Optional[int], ranked: List[Dict], history: List[tuple]
     return tiers
 
 
+async def cut_snapshot(client: ERClient) -> Optional[dict]:
+    """labs.mongsil.dev 이터컷 예측 페이지용. /이터컷과 같은 계산. 휴면 계정은 인원만 내보냄"""
+    season = await get_ranked_season()
+    if not season:
+        return None
+    season_id, season_name = season
+    ranked = [r for r in await fetch_ranking_data(client, season_id) or [] if r.get('mmr')]
+    if not ranked:
+        return None
+    rank_300, rank_1000 = await fetch_rating_info(client, season_id)
+    end = season_end_for(await get_season_info(), season_id)
+    history = rank_history.cut_history(season_id)
+    now = datetime.now(timezone.utc)
+    stamp = lambda t: round(t.timestamp()) if isinstance(t, datetime) else round(t)
+    tiers = {}
+    for key, (tier, icon, place, rp, official, found, start, outlook) in zip(
+            ('eternity', 'demigod'), tier_cuts(season_id, ranked, history, end, cut_rp(rank_300), cut_rp(rank_1000), now)):
+        board = {stamp(t): v for t, v in rank_history.at_nine(history, official)}
+        adjusted = {stamp(t): v for t, v in rank_history.at_nine(history, official + 2)}
+        days = sorted(board)[-30:]
+        schedule, stay = rank_history.decay_schedule(season_id, ranked, start, end.timestamp()) if end and start else ([], 0)
+        tiers[key] = {
+            'place': place, 'board': rp, 'cut': start, 'estimated': bool(found and found[2]),
+            'dropped': found[1] if found else None,
+            'history': [[t, board[t], adjusted.get(t)] for t in days],
+            'forecast': [[stamp(t), round(m), round(lo), round(hi), round(raw)]
+                         for (t, m, lo, hi), raw in zip(outlook['future'], outlook['raw_low'])] if outlook else None,
+            'decay': [[d, n] for d, n in schedule], 'decayStay': stay,
+        }
+    return {
+        'updatedAt': round(now.timestamp()),
+        'season': {'id': season_id, 'name': season_name, 'end': stamp(end) if end else None},
+        'rps': [int(r['mmr']) for r in sorted(ranked, key=lambda r: r.get('rank', 0))],
+        'tiers': tiers,
+        # 지금부터 랭크 게임을 안 하면 시즌 끝까지 깎이는 횟수. 유예 12 가정
+        'quitTicks': rank_history.decay_ticks(now.timestamp(), end.timestamp()) if end else None,
+        'rule': {'grace': rank_history.GRACE, 'step': 100, 'floor': rank_history.DECAY_FLOOR, 'dormantDays': rank_history.DORMANT_DAYS},
+    }
+
+
 def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], season_name: str,
                          season_id: Optional[int] = None, season_end: Optional[datetime] = None,
                          client: Optional[ERClient] = None, top: Optional[List[Dict]] = None) -> ui.LayoutView:

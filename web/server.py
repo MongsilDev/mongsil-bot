@@ -1004,6 +1004,22 @@ async def health(request: web.Request):
                              status=200 if ok else 503)
 
 
+_cut_cache: dict = {}
+
+
+async def api_cut(request: web.Request):
+    """labs.mongsil.dev 이터컷 예측 페이지용 JSON. 5분 동안 같은 값"""
+    from commands.rating import cut_snapshot
+    if time.time() - _cut_cache.get('at', 0) > 300:
+        data = await cut_snapshot(client)
+        if data:
+            _cut_cache.update(at=time.time(), data=data)
+    data = _cut_cache.get('data')
+    if not data:
+        return web.json_response({'error': 'unavailable'}, status=503)
+    return web.json_response(data, headers={'Cache-Control': 'public, max-age=300'})
+
+
 async def invite(request: web.Request):
     """봇 추가 링크. ?guild=서버ID면 그 서버를 미리 고름"""
     gid = request.query.get('guild', '')
@@ -1078,6 +1094,7 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
     app.router.add_get('/privacy-policy', redirect_to('/privacy'))
     app.router.add_get('/speculation.json', speculation)
     app.router.add_get('/health', health)
+    app.router.add_get('/api/cut', api_cut)
     app.router.add_static('/static', ROOT / 'static')
     app.on_cleanup.append(lambda _: http.close())
     refresh = asyncio.create_task(previews.refresh_loop(client))
