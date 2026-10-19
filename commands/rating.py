@@ -153,9 +153,9 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
         children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'cut_outlook.png', chart))))
     notes = []
     if any(t[5] for t in tiers):
-        notes.append("7일 넘게 쉰 계정은 시즌 종료까지 휴면 강등된 RP로 계산")
+        notes.append("휴면 강등 반영")
     if chart:
-        notes.append("종료 예상은 오전 9시 추세, 높은 값은 지난 시즌 마지막 5일 급등 포함")
+        notes.append("높은 값은 막판 급등 포함")
     if notes:
         children.append(ui.TextDisplay("-# " + " | ".join(notes)))
     if not chart:
