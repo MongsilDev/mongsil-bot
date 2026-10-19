@@ -309,7 +309,7 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
             f0, f1 = i / length, min(i + 5 * s, length) / length
             d.line([(a[0] + (b[0] - a[0]) * f0, a[1] + (b[1] - a[1]) * f0),
                     (a[0] + (b[0] - a[0]) * f1, a[1] + (b[1] - a[1]) * f1)], fill=rgb, width=2 * s)
-        labels.append([b[1], f'{round(b_lo, -1):,.0f}~{round(b_hi, -1):,.0f}', rgb])
+        labels.append([b[1], f'{round(b_mid, -1):,.0f}', f'{round(b_lo, -1):,.0f}~{round(b_hi, -1):,.0f}', rgb])
     ref_colour = _mix(BG, SUBTEXT, 0.7)
     for pts in refs:
         d.line(_smooth([xy(t, v) for t, v in pts]), fill=ref_colour, width=2 * s, joint='curve')
@@ -319,16 +319,20 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
             d.line(_smooth([xy(t, v) for t, v in pts]), fill=rgb, width=3 * s, joint='curve')
         x, y = xy(*pts[-1])
         d.ellipse([x - 6 * s, y - 6 * s, x + 6 * s, y + 6 * s], fill=(255, 255, 255), outline=rgb, width=3 * s)
+        d.text((x, y - 11 * s), f'{pts[-1][1]:,.0f}', font=font(12, bold=True), fill=TEXT, anchor='mb',
+               stroke_width=3 * s, stroke_fill=BG)
 
     labels.sort()
     for i in range(1, len(labels)):
-        labels[i][0] = max(labels[i][0], labels[i - 1][0] + 30 * s)
-    label_font = font(12, bold=True)
-    for y, text, rgb in labels:
-        w = d.textlength(text, font=label_font)
+        labels[i][0] = max(labels[i][0], labels[i - 1][0] + 44 * s)
+    mid_font, range_font = font(13, bold=True), font(10)
+    for y, mid, span, rgb in labels:
+        w = max(d.textlength(mid, font=mid_font), d.textlength(span, font=range_font))
         x = x_end + 10 * s
-        d.rounded_rectangle([x, y - 12 * s, x + w + 16 * s, y + 12 * s], radius=12 * s, fill=_mix(BG, rgb, 0.24))
-        d.text((x + 8 * s, y), text, font=label_font, fill=_mix(rgb, (255, 255, 255), 0.35), anchor='lm')
+        d.rounded_rectangle([x, y - 19 * s, x + w + 16 * s, y + 19 * s], radius=10 * s, fill=_mix(BG, rgb, 0.24))
+        tint = _mix(rgb, (255, 255, 255), 0.35)
+        d.text((x + 8 * s, y - 7 * s), mid, font=mid_font, fill=tint, anchor='lm')
+        d.text((x + 8 * s, y + 9 * s), span, font=range_font, fill=_mix(tint, BG, 0.25), anchor='lm')
 
     x = left
     for label, (_, accent) in zip(legend, series):

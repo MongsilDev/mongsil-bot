@@ -131,10 +131,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
         before = _day_ago(history, official + 2 if found else official)
         if before:
             text += f" `24시간 {start - before:+,}`"
-        if outlook:
-            mid, low, high = (max(_tens(v), TierSystem.RANKED_GATE) for v in outlook['future'][-1][1:])
-            text += f"\n-# 종료 예상 {mid:,} ({low:,}~{high:,})"
-        elif not found:
+        if not found:
             text += "\n-# 휴면 확인 중이라 순위표 기준"
         return text
 
@@ -174,10 +171,6 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
     if isinstance(view, RatingView):
         view.add_item(ui.ActionRow(view.compare_button, view.spread_button))
     return view
-
-
-def _tens(v: float) -> int:
-    return int(round(v / 10) * 10)
 
 
 def _outlook_chart(history, tiers, now: datetime) -> Optional[bytes]:
