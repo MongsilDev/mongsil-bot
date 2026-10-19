@@ -15,6 +15,8 @@ from utils.logging_config import get_logger
 logger = get_logger('순위기록')
 
 PATH = 'data/rank_history.json'
+# 매시 상위 1000명 RP 전체. 순위 사이 인원과 밀집도 분석용이라 지우지 않고 한 줄씩 덧붙임
+SNAPSHOTS = 'data/rank_snapshots.jsonl'
 INTERVAL = 3600
 KEEP_RANKS = 49 * 3600
 KEEP_CUTS = 120 * 86400
@@ -27,11 +29,12 @@ PATCH_ANCHOR = datetime(2026, 8, 13).date()
 DECAY_FLOOR = 6400
 # 시즌 12 09-01~10-19 오전 9시 컷 백테스트로 고른 감쇠 추세 계수
 ALPHA, BETA, DAMP = 0.5, 0.2, 0.95
-# 막판 급등. 시즌 11 마지막 8일에 직전 7일 추세보다 300위 204, 1000위 162 더 올랐고 하루 상승은 2.9배, 2.7배.
-# 앞 값은 그 초과분에 시즌 12 하루 게임 수 비율 0.87을 곱한 것
-SURGE = {300: (177, 2.9), 1000: (141, 2.7)}
-# 종료 7일 전부터 종료일까지 날마다 급등분의 누적 비율. 시즌 11 두 컷 평균
-SURGE_SHAPE = (0.06, 0.18, 0.20, 0.24, 0.34, 0.41, 0.56, 1.0)
+# 막판 급등 (가운데, 낮은 값, 높은 값). etercut.com 아카이브의 시즌 10, 11 진행률 곡선에서
+# 마지막 14일 상승분이 진행률 75~85% 추세보다 300위 267, 267, 1000위 60, 203 많았음.
+# 가운데는 평균에 시즌 12 하루 게임 수 비율 0.87을 곱한 값
+SURGE = {300: (232, 116, 267), 1000: (114, 52, 203)}
+# (남은 날, 그때까지 나온 급등분 비율). 두 시즌 300위 평균
+SURGE_LEFT = ((0, 1.0), (1, 0.83), (3, 0.59), (4.5, 0.37), (7, 0.18), (9, 0.10), (14, 0.0))
 KST = timezone(timedelta(hours=9))
 # players 항목 순서
 MMR, CHANGED, FIRST, SEEN, LAST_GAME, CHECKED, UID = range(7)
@@ -86,7 +89,9 @@ def ranks_day_ago(season_id: int) -> Optional[Dict[str, int]]:
 
 
 def record_cuts(season_id: int, eternity: Optional[int], demigod: Optional[int],
-                active_eternity: Optional[int] = None, active_demigod: Optional[int] = None) -> None:
+                active_eternity: Optional[int] = None, active_demigod: Optional[int] = None,
+                rps: Optional[List[int]] = None) -> None:
+    """rps는 순위 순서의 상위 RP 전체. 컷을 기록한 시각에 SNAPSHOTS에도 남김"""
     if not eternity and not demigod:
         return
     state = _load()
@@ -100,6 +105,12 @@ def record_cuts(season_id: int, eternity: Optional[int], demigod: Optional[int],
     cuts.append([now, season_id, eternity, demigod, active_eternity, active_demigod])
     state['cuts'] = cuts
     _save()
+    if rps:
+        try:
+            with open(SNAPSHOTS, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({'t': round(now), 's': season_id, 'rp': rps}, separators=(',', ':')) + '\n')
+        except OSError as e:
+            logger.warning(f"순위 스냅숏 저장 실패: {e}")
 
 
 def cut_history(season_id: int) -> List[tuple]:
@@ -258,11 +269,17 @@ def _theil_sen(values: List[float]) -> float:
     return statistics.median((values[j] - values[i]) / (j - i) for i in range(len(values)) for j in range(i + 1, len(values)))
 
 
+def _surge_share(left: float) -> float:
+    for (a, x), (b, y) in zip(SURGE_LEFT, SURGE_LEFT[1:]):
+        if left <= b:
+            return x + (y - x) * (max(left, a) - a) / (b - a)
+    return 0.0
+
+
 def forecast(points: List[Tuple[datetime, float]], start: float, now: datetime, end: datetime,
-             surge: Tuple[float, float] = (0, 1), min_days: int = 7) -> Optional[dict]:
-    """오전 9시 값의 감쇠 추세(Holt, 날마다 기울기 0.95배)로 start에서 시즌 종료까지 날마다 오전 9시 값을 예상.
-    가운데 값의 막판 급등은 시즌 11 초과분을 그대로 더한 값과 시즌 12 추세에 배율을 곱한 값의 평균.
-    범위는 백테스트 80% 오차(24일 뒤 약 67)라 멀수록 넓어지고, 낮은 값은 급등 없이, 높은 값은 초과분 그대로.
+             surge: Tuple[float, float, float] = (0, 0, 0), min_days: int = 7) -> Optional[dict]:
+    """오전 9시 값의 감쇠 추세(Holt, 날마다 기울기 0.95배)로 start에서 시즌 종료까지 날마다 오전 9시 값을 예상하고
+    마지막 14일에 막판 급등분을 더함. 범위는 백테스트 80% 오차(24일 뒤 약 67)라 멀수록 넓어짐.
     반환은 날마다 (시각, 가운데, 낮은 값, 높은 값)"""
     if len(points) < min_days or end <= now:
         return None
@@ -272,24 +289,17 @@ def forecast(points: List[Tuple[datetime, float]], start: float, now: datetime, 
         last = level
         level = ALPHA * v + (1 - ALPHA) * (level + DAMP * trend)
         trend = BETA * (level - last) + (1 - BETA) * DAMP * trend
-    days = []
+    mid_s, low_s, high_s = surge
+    future = []
     day = now.astimezone(KST).replace(hour=9, minute=0, second=0, microsecond=0)
     if day <= now:
         day += timedelta(days=1)
     while day <= end:
         h = (day - now).total_seconds() / 86400
-        days.append((day, h, trend * sum(DAMP ** k for k in range(1, math.ceil(h) + 1)) * h / math.ceil(h)))
-        day += timedelta(days=1)
-    if not days:
-        return None
-    extra, ratio = surge
-    late = days[-1][2] - (days[-9][2] if len(days) > 8 else 0)
-    middle = (extra + (ratio - 1) * max(late, 0)) / 2
-    future = []
-    for day, h, gain in days:
-        left = round((end - day).total_seconds() / 86400)
-        share = SURGE_SHAPE[len(SURGE_SHAPE) - 1 - left] if left < len(SURGE_SHAPE) else 0
+        base = start + trend * sum(DAMP ** k for k in range(1, math.ceil(h) + 1)) * h / math.ceil(h)
+        share = _surge_share((end - day).total_seconds() / 86400)
         half = 6.2 * h ** 0.75
         # 컷은 시즌 내내 내려간 적이 거의 없어 낮은 값은 지금 값까지만
-        future.append((day, start + gain + share * middle, max(start + gain - half, start), start + gain + half + share * extra))
-    return {'future': future}
+        future.append((day, base + share * mid_s, max(base - half + share * low_s, start), base + half + share * high_s))
+        day += timedelta(days=1)
+    return {'future': future} if future else None

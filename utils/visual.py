@@ -265,7 +265,7 @@ def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]
     values = ([v for pts, _ in series for _, v in pts] + [v for pts in refs for _, v in pts]
               + [x for b in bands for f in b[2] for x in f[2:]])
     lo, hi = min(values), max(values)
-    ticks = _ticks(lo - (hi - lo) * 0.1, hi + (hi - lo) * 0.1, 4)
+    ticks = _ticks(lo - (hi - lo) * 0.1, hi + (hi - lo) * 0.1, 5)
     lo, hi = ticks[0], ticks[-1]
 
     def xy(t: datetime, v: float) -> Tuple[float, float]:

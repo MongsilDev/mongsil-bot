@@ -46,8 +46,9 @@ async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[
 
         end = season_end_for(await get_season_info(), season_id)
         active = [rank_history.active_cut(season_id, top_ranks, place, end and end.timestamp()) for place in (300, 1000)]
+        rps = [int(r['mmr']) for r in sorted(top_ranks, key=lambda r: r.get('rank', 0)) if r.get('mmr')]
         rank_history.record_cuts(season_id, cut_rp(rank_300), cut_rp(rank_1000),
-                                 *(max(a[0], TierSystem.RANKED_GATE) if a else None for a in active))
+                                 *(max(a[0], TierSystem.RANKED_GATE) if a else None for a in active), rps=rps)
         return rank_300, rank_1000
     except Exception as e:
         logger.error(f"이터컷 조회 실패: {e}", exc_info=True)
