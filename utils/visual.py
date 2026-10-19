@@ -241,6 +241,77 @@ def lines_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]], 
     return _png(img)
 
 
+def forecast_chart(series: Sequence[Tuple[Sequence[Tuple[datetime, float]], int]],
+                   bands: Sequence[Tuple[datetime, float, datetime, float, float, float, int]],
+                   *, legend: Sequence[str] = (), width: int = 720, height: int = 280) -> Optional[bytes]:
+    """기록 선과 그 뒤 예상 범위. bands는 (시작 시각, 시작 값, 끝 시각, 낮은 값, 가운데, 높은 값, 색)"""
+    series = [([(t, v) for t, v in pts if v is not None], accent) for pts, accent in series]
+    series = [(pts, accent) for pts, accent in series if len(pts) >= 2]
+    if not series or not bands:
+        return None
+    img, d = _canvas(width, height)
+    s = SCALE
+    left, right, top, bottom = 56 * s, (width - 96) * s, 34 * s, (height - 30) * s
+    t0 = min(pts[0][0] for pts, _ in series)
+    t1 = max(b[2] for b in bands)
+    span = max((t1 - t0).total_seconds(), 1)
+    values = [v for pts, _ in series for _, v in pts] + [x for b in bands for x in (b[1], b[3], b[5])]
+    lo, hi = min(values), max(values)
+    ticks = _ticks(lo - (hi - lo) * 0.06, hi + (hi - lo) * 0.06)
+    lo, hi = ticks[0], ticks[-1]
+
+    def xy(t: datetime, v: float) -> Tuple[float, float]:
+        return (left + (t - t0).total_seconds() / span * (right - left),
+                bottom - (v - lo) / (hi - lo) * (bottom - top))
+
+    small = font(11)
+    for v in ticks:
+        y = xy(t0, v)[1]
+        d.line([(left, y), (right, y)], fill=GRID, width=s)
+        d.text((left - 8 * s, y), f'{v:,.0f}', font=small, fill=SUBTEXT, anchor='rm')
+    days = max(1, round(span / 86400))
+    step = max(1, math.ceil(days / 7))
+    day = (t0.astimezone(KST) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    while day < t1 - timedelta(days=step / 2):
+        d.text((xy(day, lo)[0], bottom + 8 * s), f'{day.month}/{day.day}', font=small, fill=SUBTEXT, anchor='mt')
+        day += timedelta(days=step)
+    end = t1.astimezone(KST)
+    x_end = xy(t1, lo)[0]
+    for y in range(int(top), int(bottom), 8 * s):
+        d.line([(x_end, y), (x_end, y + 4 * s)], fill=SUBTEXT, width=s)
+    d.text((x_end, bottom + 8 * s), f'{end.month}/{end.day} 종료', font=font(11, bold=True), fill=TEXT, anchor='mt')
+
+    for start_t, start_v, end_t, b_lo, b_mid, b_hi, accent in bands:
+        rgb = _hex(accent)
+        layer = Image.new('RGB', img.size, _mix(BG, rgb, 0.22))
+        mask = Image.new('L', img.size, 0)
+        ImageDraw.Draw(mask).polygon([xy(start_t, start_v), xy(end_t, b_hi), xy(end_t, b_lo)], fill=255)
+        img.paste(layer, (0, 0), mask)
+        a, b = xy(start_t, start_v), xy(end_t, b_mid)
+        length = math.dist(a, b)
+        for i in range(0, int(length), 12 * s):
+            f0, f1 = i / length, min(i + 7 * s, length) / length
+            d.line([(a[0] + (b[0] - a[0]) * f0, a[1] + (b[1] - a[1]) * f0),
+                    (a[0] + (b[0] - a[0]) * f1, a[1] + (b[1] - a[1]) * f1)], fill=rgb, width=2 * s)
+        d.ellipse([a[0] - 4 * s, a[1] - 4 * s, a[0] + 4 * s, a[1] + 4 * s], fill=rgb)
+        label = f'{b_lo:,.0f}~{b_hi:,.0f}'
+        d.text((b[0] + 8 * s, b[1]), label, font=font(12, bold=True), fill=rgb, anchor='lm')
+
+    for pts, accent in series:
+        rgb = _hex(accent)
+        line = [xy(t, v) for t, v in pts]
+        d.line(_smooth(line), fill=rgb, width=3 * s, joint='curve')
+        x, y = line[-1]
+        d.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=(255, 255, 255), outline=rgb, width=3 * s)
+    x = left + 10 * s
+    for label, (_, accent) in zip(legend, series):
+        d.ellipse([x, 10 * s, x + 10 * s, 20 * s], fill=_hex(accent))
+        d.text((x + 16 * s, 15 * s), label, font=font(12, bold=True), fill=TEXT, anchor='lm')
+        x += (30 + len(label) * 13) * s
+    d.text((right + 90 * s, 15 * s), '점선은 휴면 제외 컷의 추세', font=font(11), fill=SUBTEXT, anchor='rm')
+    return _png(img)
+
+
 def heatmap(grid: Sequence[Sequence[float]], row_labels: Sequence[str], accent: int,
             right_labels: Optional[Sequence[str]] = None, width: int = 720) -> bytes:
     """행 x 24시간 히트맵. 칸 색이 진할수록 큰 값"""
