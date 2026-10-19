@@ -16,6 +16,7 @@ from urllib.parse import urlencode
 import aiohttp
 import discord
 import jinja2
+import markupsafe
 from aiohttp import web
 
 from commands.alerts import channel_ok, hour_label
@@ -120,6 +121,7 @@ def shortdate(d: datetime) -> str:
 
 
 env.filters['shortdate'] = shortdate
+env.filters['lines'] = lambda text: markupsafe.Markup('<br>').join(re.split(r'(?<=[.?!])\s+', text))
 env.globals['session_avatar'] = lambda s: avatar_url(s['user_id'], s['avatar'])
 env.globals['support_server'] = '/support'
 env.globals['bot_avatar'] = lambda size: client.user.display_avatar.with_size(size).url if client.user else '/favicon.ico'

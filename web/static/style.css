@@ -1403,6 +1403,7 @@ a.grow:hover {
 .save-state {
   color: var(--on);
   font-size: 13px;
+  white-space: pre-line;
 }
 
 .save-state:empty {

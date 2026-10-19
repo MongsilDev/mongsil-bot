@@ -9,7 +9,7 @@ const showState = (el, text, kind = 'ok') => {
   const box = el.closest('[data-setting]')?.querySelector('.save-state');
   if (!box) return;
   clearTimeout(box.timer);
-  box.textContent = text;
+  box.textContent = text.split(/(?<=[.?!])\s+/).join('\n');
   box.dataset.kind = kind;
   if (kind === 'ok' && text) box.timer = setTimeout(() => { box.textContent = ''; }, 2400);
 };
