@@ -49,7 +49,7 @@ class ConcurrentData:
 
     def add_data(self, time: datetime, count: int):
         """새로운 동시접속자 데이터를 추가합니다."""
-        # 24시간이 지난 데이터는 deque가 자동으로 제거
+        # MAX_POINTS를 넘는 오래된 데이터는 deque가 자동으로 제거
         self.data.append((time, count))
 
     def backfill(self, points) -> int:

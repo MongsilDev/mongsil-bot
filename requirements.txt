@@ -1,7 +1,7 @@
 # Discord 봇 라이브러리
 discord.py==2.7.1
 
-# 비동기 HTTP 클라이언트 (API 요청 및 로깅 로깅용)
+# 비동기 HTTP 클라이언트 (API 요청 및 웹 대시보드 서버용)
 aiohttp==3.14.4
 
 # 환경 변수 관리

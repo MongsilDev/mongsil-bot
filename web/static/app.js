@@ -4,7 +4,7 @@ const settingsUrl = document.querySelector('[data-settings-url]')?.dataset.setti
 
 const failText = (e) => (e instanceof TypeError ? '서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.' : e.message);
 
-// kind는 ok, error, hint. 저장 완료만 잠시 뒤 지움
+// kind는 ok, error. 저장 완료만 잠시 뒤 지움
 const showState = (el, text, kind = 'ok') => {
   const box = el.closest('[data-setting]')?.querySelector('.save-state');
   if (!box) return;

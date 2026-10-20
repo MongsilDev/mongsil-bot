@@ -179,7 +179,7 @@ def _parse_season_date(date_str: str) -> Optional[datetime]:
         '%Y-%m-%dT%H:%M:%S%z',      # ISO 8601 with timezone
         '%Y-%m-%dT%H:%M:%S.%f%z',   # ISO 8601 with microseconds
         '%Y-%m-%dT%H:%M:%S',         # ISO 8601 without timezone
-        '%Y-%m-%d %H:%M:%S',         # 환경변수 형식
+        '%Y-%m-%d %H:%M:%S',         # 공백 구분 형식
         '%Y/%m/%d %H:%M:%S',         # 슬래시 형식
     ]
     for fmt in formats:

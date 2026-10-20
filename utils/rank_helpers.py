@@ -55,7 +55,7 @@ async def fetch_user_stats_solo(
         use_cache: 캐시 사용 여부 (기본값: True)
 
     Returns:
-        유저의 솔로 랭크 통계 딕셔너리 또는 None
+        유저의 솔로 랭크 통계 딕셔너리
 
     Raises:
         APIError: API 요청 실패 시
@@ -80,7 +80,7 @@ async def fetch_user_stats_solo(
                     stats.get('matchingTeamMode', 0) == 3):
                     return stats
 
-            # matchingMode 필터가 맞지 않으면 첫 번째 결과 반환 (API 응답 형식 변경 대응)
+            # matchingMode 필터가 맞지 않아도 결과가 하나뿐이면 그 결과 반환 (API 응답 형식 변경 대응)
             if len(stats_list) == 1:
                 return stats_list[0]
 

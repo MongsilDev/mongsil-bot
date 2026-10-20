@@ -70,7 +70,7 @@ def setup_logging(
     logging.getLogger('aiohttp').setLevel(logging.WARNING)
     logging.getLogger('aiohttp.client').setLevel(logging.WARNING)
     
-    # urllib3 로거 레벨 조정 (aiohttp 내부에서 사용)
+    # urllib3 로거 레벨 조정 (sentry-sdk 전송에서 사용)
     logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:

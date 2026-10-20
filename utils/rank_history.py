@@ -120,7 +120,7 @@ def cut_history(season_id: int) -> List[tuple]:
 
 
 def record_players(season_id: int, top_ranks: List[dict]) -> None:
-    """닉네임별 [RP, 마지막 변화, 처음 본 시각, 마지막으로 본 시각]. 닉네임을 바꾸면 새 계정으로 처리됨"""
+    """닉네임별 [RP, 마지막 변화, 처음 본 시각, 마지막으로 본 시각, 마지막 랭크 게임, 확인 시각, uid]. 닉네임을 바꾸면 새 계정으로 처리됨"""
     state = _load()
     now = time.time()
     book = state['players']
