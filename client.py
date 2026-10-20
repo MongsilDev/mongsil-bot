@@ -72,7 +72,7 @@ class ERClient(commands.Bot):
                     if field in user_data:
                         return user_data[field]
 
-        # '없음' 응답(HTTP 200 + code 404)까지 24시간 캐시하면
+        # code 200인데 user가 없는 응답까지 24시간 캐시하면
         # 신규 생성이나 개명 직후 유저가 하루 동안 조회 불가가 된다
         self.api_client.uncache(url, params=params)
         if not await self._nickname_search_alive():

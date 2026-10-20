@@ -1414,10 +1414,6 @@ a.grow:hover {
   color: var(--bad);
 }
 
-.save-state[data-kind="hint"] {
-  color: var(--muted);
-}
-
 /* 변경 기록 */
 .changes {
   list-style: none;
