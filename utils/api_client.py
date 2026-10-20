@@ -154,7 +154,7 @@ class OptimizedAPIClient:
                 except asyncio.TimeoutError:
                     # str()이 빈 문자열이라 일반 분기로 가면 "예상치 못한 오류: "만 남는다
                     logger.warning(f"API 요청 시간 초과: {url}")
-                    raise APIError("요청 시간 초과", "이터널 리턴 서버가 응답하지 않았습니다.\n잠시 후 다시 시도해주세요.") from None
+                    raise APIError("요청 시간 초과", "서버가 제한 시간 안에 응답하지 않았습니다.\n잠시 후 다시 시도해주세요.") from None
                 except (APIError, BotError):
                     raise
                 except Exception as e:
