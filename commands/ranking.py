@@ -209,7 +209,7 @@ class PaginationView(CooldownLayoutView):
 
     async def toggle_guild(self, interaction: discord.Interaction, show: bool):
         if show and interaction.guild is None:
-            await interaction.response.send_message(view=create_error_layout("서버 순위는 서버 안에서만 볼 수 있습니다."), ephemeral=True)
+            await interaction.response.send_message(view=create_error_layout("서버 순위는 서버 안에서만 확인할 수 있습니다."), ephemeral=True)
             return
         await interaction.response.defer()
         if show and self.guild_rows is None:

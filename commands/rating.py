@@ -249,7 +249,7 @@ def spread_layout(ranked: List[Dict], eternity: Optional[int], demigod: Optional
     facts = [f"{rank}위 {by_rank[rank]:,} RP" for rank in (1, 100, 500) if rank in by_rank]
     if eternity:
         near = [int(r['mmr']) - eternity for r in ranked]
-        facts.append(f"이터니티 컷 위 50 RP 안 {sum(0 <= g < 50 for g in near)}명, 아래 50 RP 안 {sum(-50 <= g < 0 for g in near)}명")
+        facts.append(f"이터니티 컷 위 50 RP 이내 {sum(0 <= g < 50 for g in near)}명, 아래 50 RP 이내 {sum(-50 <= g < 0 for g in near)}명")
     children.append(ui.TextDisplay("-# " + " | ".join(facts)))
     view.add_item(ui.Container(*children, accent_colour=visual.colour('cut')))
     return view
@@ -328,7 +328,7 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
         text = f"{app_emojis.tier(icon)} {tier} " + (f"컷까지 **{gap:,}** RP" if gap > 0 else f"컷보다 **{-gap:,}** RP 위")
         # 순위표가 1000위까지라 그 아래 RP는 사이 인원을 셀 수 없음
         if board and min(mmr, cut) >= min(board):
-            text += f", 사이 {sum(1 for v in board if min(mmr, cut) < v < max(mmr, cut)):,}명"
+            text += f", 사이에 {sum(1 for v in board if min(mmr, cut) < v < max(mmr, cut)):,}명"
         if outlook:
             final = outlook['future'][-1][1]
             text += f"\n-# 종료 예상 컷 {round(final, -1):,.0f}" + (f"까지 {round(final - mmr):,} RP" if final > mmr else f"보다 {round(mmr - final):,} RP 위")

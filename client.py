@@ -77,7 +77,7 @@ class ERClient(commands.Bot):
         self.api_client.uncache(url, params=params)
         if not await self._nickname_search_alive():
             raise ServiceDownError("닉네임 검색 중단",
-                           "지금은 게임 점검이나 장애로 닉네임 검색이 되지 않습니다.\n잠시 후 다시 시도해주세요.")
+                           "지금은 게임 점검이나 장애로 닉네임을 검색할 수 없습니다.\n잠시 후 다시 시도해주세요.")
         return None
 
     async def _nickname_search_alive(self) -> bool:
