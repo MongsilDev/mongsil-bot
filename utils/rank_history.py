@@ -33,12 +33,12 @@ ALPHA, BETA, DAMP = 0.5, 0.2, 0.95
 # 마지막 14일 상승분이 진행률 75~85% 추세보다 300위 267, 267, 1000위 60, 203 많았음.
 # 가운데는 평균에 시즌 12 하루 게임 수 비율 0.87을 곱한 값
 SURGE = {300: (232, 116, 267), 1000: (114, 52, 203)}
-# (남은 날, 그때까지 나온 급등분 비율). 두 시즌 300위 평균
+# (남은 날, 그때까지 발생한 급등분 비율). 두 시즌 300위 평균
 SURGE_LEFT = ((0, 1.0), (1, 0.83), (3, 0.59), (4.5, 0.37), (7, 0.18), (9, 0.10), (14, 0.0))
 KST = timezone(timedelta(hours=9))
 # players 항목 순서
 MMR, CHANGED, FIRST, SEEN, LAST_GAME, CHECKED, UID = range(7)
-# LAST_GAME 값. 0은 확인한 범위 안에 랭크 게임 없음, -1은 일반 게임만 많아 끝까지 못 봄
+# LAST_GAME 값. 0은 확인한 범위 안에 랭크 게임 없음, -1은 일반 게임만 많아 끝까지 읽지 못한 경우
 NO_RECENT, UNREADABLE = 0, -1
 
 _state: Optional[dict] = None
@@ -120,7 +120,7 @@ def cut_history(season_id: int) -> List[tuple]:
 
 
 def record_players(season_id: int, top_ranks: List[dict]) -> None:
-    """닉네임별 [RP, 마지막 변화, 처음 본 시각, 마지막으로 본 시각]. 닉네임을 바꾸면 새 계정으로 보임"""
+    """닉네임별 [RP, 마지막 변화, 처음 본 시각, 마지막으로 본 시각]. 닉네임을 바꾸면 새 계정으로 처리됨"""
     state = _load()
     now = time.time()
     book = state['players']
@@ -140,7 +140,7 @@ def record_players(season_id: int, top_ranks: List[dict]) -> None:
         old.extend([None] * (UID + 1 - len(old)))
         delta = int(mmr) - old[MMR]
         if delta:
-            # 휴면 차감은 하루 100점. 게임으로 바뀐 RP만 활동으로 봄
+            # 휴면 차감은 하루 100점. 게임으로 바뀐 RP만 활동으로 간주
             if not (delta < 0 and delta % 100 == 0):
                 old[CHANGED] = now
             old[MMR] = int(mmr)
@@ -157,7 +157,7 @@ def player_book(season_id: int) -> Dict[str, list]:
         return {}
     for p in book['list'].values():
         p.extend([None] * (UID + 1 - len(p)))
-        # 10-19까지는 8일 전까지만 봐서 NO_RECENT가 실제 마지막 게임을 모르는 값
+        # 10-19까지는 8일 전까지만 확인해서 NO_RECENT가 실제 마지막 게임을 모르는 값
         if book.get('v') != 2 and p[LAST_GAME] == NO_RECENT:
             p[LAST_GAME] = p[CHECKED] = None
     book['v'] = 2
@@ -198,20 +198,20 @@ def decay_ticks(last: float, until: float) -> int:
 
 
 def projected_rp(p: list, mmr: int, now: float, end: float) -> Optional[int]:
-    """7일 넘게 쉰 계정이 end까지 돌아오지 않으면 남을 RP. 이미 깎인 만큼은 mmr에 들어 있음. 활동 중이면 mmr"""
+    """7일 넘게 쉰 계정이 end까지 랭크 게임을 하지 않으면 남을 RP. 이미 깎인 만큼은 mmr에 반영돼 있음. 활동 중이면 mmr"""
     at = last_active(p)
     if at is None:
         return None
     if now - at <= DORMANT_DAYS * 86400:
         return mmr
-    # 게임 기록 끝까지 랭크 게임이 없으면 유예를 다 쓴 것으로 봄
+    # 게임 기록 끝까지 랭크 게임이 없으면 유예를 다 쓴 것으로 간주
     at = at if at > 0 else now - 60 * 86400
     return max(mmr - 100 * (decay_ticks(at, end) - decay_ticks(at, now)), min(mmr, DECAY_FLOOR))
 
 
 def active_cut(season_id: int, top_ranks: List[dict], place: int, end: Optional[float] = None) -> Optional[Tuple[int, int, bool]]:
-    """7일 넘게 쉰 계정을 end(시즌 종료)까지 휴면 강등된 RP로 다시 줄 세운 place번째 RP, 그 위에서 내려간 휴면 계정 수, 추정 여부.
-    판별 안 된 계정이 20명 넘으면 None. 그 이하는 조회 실패나 새로 들어온 계정이라 활동으로 봄.
+    """7일 넘게 쉰 계정을 end(시즌 종료)까지 휴면 강등된 RP로 다시 정렬한 place번째 RP, 그 위에서 내려간 휴면 계정 수, 추정 여부.
+    판별 안 된 계정이 20명 넘으면 None. 그 이하는 조회 실패나 목록에 처음 나타난 계정이라 활동으로 간주.
     목록이 1000위까지라 1000위 밖에서 올라올 계정은 알 수 없음. 활동 계정이 place명이 안 되면 끝부분 순위당 RP 감소폭과 활동 비율로 나머지를 추정"""
     players = player_book(season_id)
     book = _load()['players']
@@ -228,7 +228,7 @@ def active_cut(season_id: int, top_ranks: List[dict], place: int, end: Optional[
         p = players.get(r.get('nickname'))
         value = projected_rp(p, mmr, now, end) if p else None
         if value is None:
-            # 기록을 시작한 뒤 새로 들어온 계정은 올라왔거나 닉네임을 바꾼 것이라 활동으로 봄
+            # 기록을 시작한 뒤 목록에 처음 나타난 계정은 순위가 올랐거나 닉네임을 바꾼 것이라 활동으로 간주
             if p and p[FIRST] - since < 3600:
                 unknown += 1
                 if unknown > 20:
@@ -236,7 +236,7 @@ def active_cut(season_id: int, top_ranks: List[dict], place: int, end: Optional[
             value = mmr
         scores.append((value, mmr))
     last = int(ranked[-1]['mmr'])
-    # 1000위보다 낮아진 휴면 계정은 목록 밖 계정과 순서를 알 수 없어 줄에서 뺌
+    # 1000위보다 낮아진 휴면 계정은 목록 밖 계정과 순서를 알 수 없어 순위 계산에서 제외
     kept = sorted((v for v, _ in scores if v >= last), reverse=True)
     dropped = lambda cut: sum(1 for v, mmr in scores if v < cut <= mmr)
     if len(kept) >= place:

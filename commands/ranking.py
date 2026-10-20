@@ -246,7 +246,7 @@ class PaginationView(CooldownLayoutView):
         """페이지를 업데이트합니다. 캐시에 없으면 lazy-load합니다.
 
         페이지 번호는 로드 성공 후에만 반영한다. 실패한 페이지를 캐시하면
-        뷰 수명 동안 그 페이지가 빈 채로 박제되므로 캐시하지 않는다.
+        뷰 수명 동안 그 페이지가 빈 채로 고정되므로 캐시하지 않는다.
         """
         if not interaction.response.is_done():
             await interaction.response.defer()
@@ -302,7 +302,7 @@ async def get_ranking_info(client: ERClient, season_id: int, page: int = 1) -> O
         page_data = ranking_data[start_idx:end_idx]
         before = rank_history.ranks_day_ago(season_id)
 
-        # 10명 동시 요청이면 api_client 세마포어(10)를 독점해 다른 명령이 굶는다
+        # 10명 동시 요청이면 api_client 세마포어(10)를 독점해 다른 명령이 계속 대기
         fetch_limit = asyncio.Semaphore(5)
 
         async def fetch_single_user(user_data):

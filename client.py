@@ -30,7 +30,7 @@ class ERClient(commands.Bot):
             intents.message_content = True
             intents.presences = False
 
-        # 게임 닉네임이나 공식 사이트 제목에 섞인 멘션이 울리지 않게 기본값을 막음
+        # 게임 닉네임이나 공식 사이트 제목에 섞인 멘션이 알림을 보내지 않게 allowed_mentions 기본값을 none으로 지정
         super().__init__(command_prefix="!", intents=intents, activity=discord.Game(name="이터널 리턴"),
                          allowed_mentions=discord.AllowedMentions.none())
 
@@ -57,7 +57,7 @@ class ERClient(commands.Bot):
         """닉네임으로 유저 UID를 조회합니다.
 
         None은 '없는 닉네임'만 의미한다. API 장애는 예외로 전파해
-        '닉네임을 확인해주세요' 오안내가 나가지 않게 한다.
+        '닉네임을 확인해주세요'라고 잘못 안내하지 않게 한다.
         """
         url = f"{config.api_url}/user/nickname"
         params = {'query': nickname}
@@ -120,7 +120,7 @@ class ERClient(commands.Bot):
             ]:
                 await self.load_extension(module)
 
-            # supervisord는 SIGTERM으로 멈춤. 처리하지 않으면 close와 cog_unload 저장이 돌지 않음
+            # supervisord는 SIGTERM으로 멈춤. 처리하지 않으면 close와 cog_unload 저장이 실행되지 않음
             asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, lambda: asyncio.create_task(self.close()))
             await app_emojis.load(self)
             self.refresh_names.start()
@@ -128,14 +128,14 @@ class ERClient(commands.Bot):
             self.prune_records.start()
 
             if os.getenv('DASHBOARD_URL') and os.getenv('DASHBOARD_CLIENT_SECRET'):
-                # 대시보드 설정 오류로 봇까지 내려가지 않게 여기서 끊음
+                # 대시보드 설정 오류로 봇까지 종료되지 않게 여기서 예외를 처리
                 try:
                     from web.server import start_dashboard
                     self.dashboard = await start_dashboard(self)
                 except Exception:
                     logger.error("대시보드 시작 실패", exc_info=True)
             else:
-                logger.info("대시보드 꺼짐 (DASHBOARD_URL, DASHBOARD_CLIENT_SECRET 필요)")
+                logger.info("대시보드 시작 안 함 (DASHBOARD_URL, DASHBOARD_CLIENT_SECRET 필요)")
 
             # 커맨드 동기화는 SYNC_COMMANDS=1 환경변수가 설정된 경우에만 수행
             # 매 재시작마다 sync하면 Discord rate limit에 걸려 연결 끊김/재연결 반복 발생
@@ -186,7 +186,7 @@ class ERClient(commands.Bot):
         await app_emojis.sync_characters(self)
 
     async def command_channel_check(self, interaction: discord.Interaction) -> bool:
-        """서버가 지정한 채널 밖의 명령을 막음. 서버 관리 권한이 있으면 어디서나 씀"""
+        """서버가 지정한 채널 밖의 명령을 차단. 서버 관리 권한이 있으면 모든 채널에서 사용 가능"""
         if interaction.type is not discord.InteractionType.application_command or interaction.guild_id is None:
             return True
         channel = interaction.channel

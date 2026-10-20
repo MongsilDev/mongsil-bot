@@ -81,7 +81,7 @@ def _media(url: str, files: dict) -> str:
 
 
 def _size(url: str, files: dict) -> str:
-    """PNG 머리의 가로세로. 자리를 미리 잡아 그림이 늦게 떠도 화면이 밀리지 않음"""
+    """PNG 머리의 가로세로. 자리를 미리 확보해 그림이 늦게 표시돼도 화면 배치가 바뀌지 않음"""
     data = files.get(url.removeprefix('attachment://'), b'')
     if data[:8] != b'\x89PNG\r\n\x1a\n':
         return ''

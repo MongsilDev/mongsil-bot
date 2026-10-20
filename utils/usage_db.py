@@ -56,7 +56,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 db = sqlite3.connect(DB_PATH, isolation_level=None)
 db.row_factory = sqlite3.Row
 db.executescript(SCHEMA)
-# 결과가 화면에 뜬 시점. ms는 명령 처리가 모두 끝난 시점이라 체감 속도와 다름
+# 결과가 화면에 표시된 시점. ms는 명령 처리가 모두 끝난 시점이라 체감 속도와 다름
 if 'shown_ms' not in {r[1] for r in db.execute("PRAGMA table_info(command_log)")}:
     db.execute("ALTER TABLE command_log ADD COLUMN shown_ms INTEGER")
 

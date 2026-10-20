@@ -182,7 +182,7 @@ class Alerts(commands.Cog):
         articles = (await api_client.get(NEWS.format('patchnote'), use_cache=False))['articles']
         ids = [a['id'] for a in articles]
         seen = guild_settings.state('seen_patches')
-        # 처음 켤 때 이미 올라온 글은 본 것으로 둠
+        # 처음 켤 때 이미 게시된 글은 확인한 것으로 기록
         if seen is None:
             guild_settings.set_state('seen_patches', ids)
             return

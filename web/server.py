@@ -1,5 +1,5 @@
 """
-웹 대시보드. 봇 프로세스 안에서 aiohttp로 돌아 봇 상태와 설정 캐시를 그대로 공유
+웹 대시보드. 봇 프로세스 안에서 aiohttp로 실행돼 봇 상태와 설정 캐시를 그대로 공유
 """
 import asyncio
 import hashlib
@@ -38,7 +38,7 @@ SERVICE_START = datetime(2023, 6, 15, tzinfo=KST)
 ADMINISTRATOR = 1 << 3
 MANAGE_GUILD = 1 << 5
 
-# HTTPS에서는 __Host- 접두사로 하위 도메인이 쿠키를 심지 못하게 함. 이름은 start_dashboard에서 정함
+# HTTPS에서는 __Host- 접두사로 하위 도메인이 쿠키를 설정하지 못하게 함. 이름은 start_dashboard에서 정함
 SESSION_COOKIE = 'mb_session'
 STATE_COOKIE = 'mb_state'
 SESSION_TTL = 7 * 86400
@@ -242,7 +242,7 @@ def percentile(values: list[int], q: float) -> int | None:
 
 
 def usage_summary(cmd_rows, zoom_rows, now: int, start: int | None = None) -> dict:
-    """30일 사용량 타일과 차트. 행은 60일치를 받아 앞 30일과 비교. start는 그 서버에 몽실봇이 들어온 시각"""
+    """30일 사용량 타일과 차트. 행은 60일치를 받아 앞 30일과 비교. start는 그 서버에 몽실봇이 추가된 시각"""
     # 차트 막대와 같은 범위가 되게 29일 전 0시부터
     since, prev = day_start(29), day_start(59)
     cur = [r for r in cmd_rows if r['ts'] >= since]
@@ -287,7 +287,7 @@ def secure_headers(request: web.Request, response) -> None:
     response.headers.setdefault('Referrer-Policy', 'same-origin')
     response.headers.setdefault('X-Frame-Options', 'DENY')
     if not request.path.startswith(('/static/', '/preview/')):
-        # no-store는 뒤로 가기 캐시를 막아 no-cache로 둠
+        # no-store는 뒤로 가기 캐시를 비활성화해 no-cache로 둠
         response.headers.setdefault('Cache-Control', 'private, no-cache')
     if response.content_type == 'text/html':
         response.headers.setdefault('Speculation-Rules', '"/speculation.json"')
@@ -333,7 +333,7 @@ async def ready_middleware(request: web.Request, handler):
 
 
 def wants_json(request: web.Request) -> bool:
-    """설정 저장은 app.js의 fetch라 오류도 JSON으로 돌려줘야 화면에 원인이 나옴"""
+    """설정 저장은 app.js의 fetch라 오류도 JSON으로 돌려줘야 화면에 원인이 표시됨"""
     return request.method == 'POST' and 'X-CSRF-Token' in request.headers
 
 
@@ -617,7 +617,7 @@ async def servers(request: web.Request):
 
 
 async def verify_manager(request: web.Request, guild: discord.Guild) -> None:
-    """설정 저장 직전에 봇 토큰으로 권한을 다시 확인. 서버 목록 캐시가 늦게 갱신돼도 권한을 잃은 유저는 막힘"""
+    """설정 저장 직전에 봇 토큰으로 권한을 다시 확인. 서버 목록 캐시가 늦게 갱신돼도 권한을 잃은 유저의 저장은 거부됨"""
     user_id = request['session']['user_id']
     if guild.owner_id == user_id:
         return
@@ -735,7 +735,7 @@ def alert_rows(guild: discord.Guild) -> list[dict]:
 
 
 def zoom_blocked(guild: discord.Guild) -> list[str]:
-    """서버 권한은 있는데 채널 설정에 막혀 이모지 확대가 안 되는 채널"""
+    """서버 권한은 있는데 채널 권한 설정 때문에 이모지 확대가 안 되는 채널"""
     if not guild.me.guild_permissions.manage_webhooks:
         return []
     out = []
@@ -945,7 +945,7 @@ async def admin(request: web.Request):
         source = shown if len(shown) >= 20 else [r['ms'] for r in mine if r['ms'] is not None]
         failed = sum(1 for r in mine if r['status'] == 'error')
         counted = sum(1 for r in mine if r['status'] != 'down')
-        # 표본이 100개 안 되면 느린 5%가 상위 몇 개 값이라 비움
+        # 표본이 100개 안 되면 느린 5%가 상위 몇 개 값이라 표시하지 않음
         item.update(errors=failed, error_rate=failed / counted * 100 if counted else 0,
                     median=percentile(source, 0.5), p95=percentile(source, 0.95) if len(source) >= 100 else None,
                     basis='표시' if source is shown else '처리')
@@ -1042,7 +1042,7 @@ async def preview_image(request: web.Request):
 
 SAME_SITE = {'and': [{'href_matches': '/*'}, {'not': {'href_matches': '/log*'}}, {'not': {'href_matches': '/auth/*'}},
                      {'not': {'href_matches': '/invite*'}}, {'not': {'href_matches': '/support'}}, {'not': {'href_matches': '/discord'}}]}
-# 서버 줄과 내 서버 목록은 화면이 뜨자마자 받아 두어 서버를 바꿀 때 왕복을 기다리지 않음. 나머지는 마우스를 올리면 미리 그림
+# 서버 줄과 내 서버 목록은 화면이 표시되자마자 받아 두어 서버를 바꿀 때 왕복을 기다리지 않음. 나머지는 마우스를 올리면 미리 그림
 SPECULATION = json.dumps({
     'prefetch': [{'where': {'and': [SAME_SITE, {'selector_matches': '.rail a, .glist a'}]}, 'eagerness': 'eager'}],
     'prerender': [{'where': SAME_SITE, 'eagerness': 'moderate'}],

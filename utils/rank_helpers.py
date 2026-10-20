@@ -71,7 +71,7 @@ async def fetch_user_stats_solo(
         if data and data.get('code') == 200:
             stats_list = data.get('userStats', [])
             if not stats_list:
-                # uid까지 찾힌 유저라 닉네임 문제는 아니다
+                # uid까지 찾은 유저라 닉네임 문제는 아니다
                 raise NotFoundError("유저 통계 없음", "이번 시즌 랭크 게임 기록이 있는 유저만 조회할 수 있습니다.")
 
             # 랭크 솔로 모드 통계 찾기 (matchingMode=3, matchingTeamMode=3)
@@ -90,7 +90,7 @@ async def fetch_user_stats_solo(
         else:
             error_msg = data.get('message') if data else 'No response'
             # 탈퇴한 계정은 닉네임 검색 인덱스에 남아 uid 조회는 되지만
-            # 통계 조회가 User Not Found로 떨어진다. 유저 조건이지 장애가 아니다.
+            # 통계 조회는 User Not Found로 실패. 유저 조건이지 장애가 아니다.
             # 저장해 둔 uid가 무효가 되면 401 Unauthorized
             if error_msg in ('User Not Found', 'Unauthorized'):
                 logger.warning(f"유저 통계 {error_msg}, uid={user_id}")

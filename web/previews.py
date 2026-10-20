@@ -33,7 +33,7 @@ async def _build(client) -> None:
     from utils.rank_helpers import fetch_ranking_data
 
     class RankingPreview(PaginationView):
-        # 미리보기는 1페이지만 쓰므로 다음 페이지 선조회를 막음
+        # 미리보기는 1페이지만 쓰므로 다음 페이지 선조회를 하지 않음
         def _prefetch(self, page):
             pass
 

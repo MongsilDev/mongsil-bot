@@ -56,7 +56,7 @@ async def sync_characters(client: discord.Client) -> None:
     """게임 데이터에 있는데 얼굴 이모지가 없는 실험체를 등록. 실패하면 이름만 표시
 
     한 번 올린 얼굴은 디스코드 앱 이모지로 남아 외부 서비스가 없어도 그대로 쓰임.
-    외부 이미지는 새 실험체가 나왔을 때 한 번만 받음
+    외부 이미지는 새 실험체가 추가됐을 때 한 번만 받음
     """
     try:
         from commands.season import fetch_patch_notes

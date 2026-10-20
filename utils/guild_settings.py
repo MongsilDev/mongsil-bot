@@ -106,7 +106,7 @@ def state(key: str, default: Any = None) -> Any:
 
 
 def set_state(key: str, value: Any) -> bool:
-    """알림 중복 방지가 이 저장에 기대므로 실패하면 False를 돌려 전송을 막게 함"""
+    """알림 중복 방지가 이 저장에 기대므로 실패하면 False를 반환해 전송하지 않게 함"""
     try:
         db.execute("INSERT OR REPLACE INTO bot_state VALUES (?, ?)", (key, json.dumps(value, ensure_ascii=False)))
         return True

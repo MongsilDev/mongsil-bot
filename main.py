@@ -11,7 +11,7 @@ from utils.errors import is_transient, redact_secrets
 from utils.logging_config import setup_logging, get_logger
 from utils.emoji_zoom import process_emoji_zoom, cleanup_emoji_zoom_cache, schedule_webhook_warmup
 
-# 장애 추적. config import로 .env가 로드된 뒤여야 DSN이 잡힌다.
+# 장애 추적. config import로 .env가 로드된 뒤여야 DSN 값을 읽을 수 있음
 # DSN이 비어 있으면 transport가 없어 어디로도 전송되지 않는다.
 _RECONNECT_LOGGERS = ("discord.client", "discord.gateway")
 

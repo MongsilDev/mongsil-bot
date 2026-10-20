@@ -466,7 +466,7 @@ def season_timeline(start: datetime, end: datetime, now: datetime, marks: Sequen
         text = f'시작까지 {(start.date() - now.date()).days}일' if now < start else '시즌 종료'
         d.text((((left + right) / 2) * s, cy * s), text, font=bold, fill=BG if now >= end else TEXT, anchor='mm')
     else:
-        # 좁은 쪽에 안 들어가는 표기는 넓은 쪽에 합침
+        # 좁은 쪽 폭을 넘는 표기는 넓은 쪽에 합침
         segments = [[f'{passed}일 지남' if passed else '오늘 시작', left * s, today - 16 * s, BG], [f'{left_days}일 남음' if left_days else '오늘 종료', today + 16 * s, right * s, TEXT]]
         fits = [x1 - x0 > d.textlength(t, font=bold) + 12 * s for t, x0, x1, _ in segments]
         if not all(fits) and any(fits):

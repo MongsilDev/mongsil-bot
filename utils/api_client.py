@@ -105,15 +105,15 @@ class OptimizedAPIClient:
             self._cache.move_to_end(cache_key)
             return self._cache[cache_key]
 
-        # 429 대기는 세마포어 밖에서 한다. 슬롯을 쥔 채 재시도를 기다리면
-        # 동시 429 시 전 요청이 슬롯을 물고 서로를 기다리는 교착이 된다.
+        # 429 대기는 세마포어 밖에서 한다. 슬롯을 점유한 채 재시도를 기다리면
+        # 동시 429 시 전 요청이 슬롯을 점유한 채 서로를 기다리는 교착이 된다.
         for attempt in range(MAX_RETRIES + 1):
             retry_after = None
 
             async with self._semaphore:
                 session = await self.get_session()
 
-                # API 키는 bser 요청에만 실어 다른 호스트(Steam, 동물 API 등)로 새지 않게 한다
+                # API 키는 bser 요청에만 실어 다른 호스트(Steam, 동물 API 등)로 전송되지 않게 한다
                 headers = {'x-api-key': config.api_key} if url.startswith('https://open-api.bser.io') else None
 
                 try:

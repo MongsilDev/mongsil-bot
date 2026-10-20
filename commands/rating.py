@@ -57,7 +57,7 @@ async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[
 async def last_ranked_game(client: ERClient, nickname: str, season_id: int,
                            uid: Optional[str] = None) -> Tuple[Optional[str], Optional[float]]:
     """uid와 이 시즌 마지막 랭크 게임 시각. 게임 기록 끝까지 없으면 NO_RECENT,
-    일반 게임만 많아 끝까지 못 보면 UNREADABLE, 조회 실패는 None"""
+    일반 게임만 많아 끝까지 읽지 못하면 UNREADABLE, 조회 실패는 None"""
     if not uid:
         data = await client.api_client.get(f"{config.api_url}/user/nickname", params={'query': nickname}, use_cache=False)
         user = (data or {}).get('user') or {}
@@ -78,7 +78,7 @@ async def last_ranked_game(client: ERClient, nickname: str, season_id: int,
 
 
 def needs_check(p: list, now: float) -> bool:
-    """RP 변화로 최근 활동을 아는 계정은 건너뜀. 모르면 확인, 휴면으로 본 계정은 하루마다 다시 확인"""
+    """RP 변화로 최근 활동을 아는 계정은 건너뜀. 모르면 확인, 휴면으로 판단한 계정은 하루마다 다시 확인"""
     at = rank_history.last_active(p)
     if at is not None and now - at <= rank_history.DORMANT_DAYS * 86400:
         return False

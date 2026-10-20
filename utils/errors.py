@@ -13,7 +13,7 @@ from .logging_config import get_logger
 
 logger = get_logger('errors')
 
-# aiohttp 예외 문자열에는 요청 URL이 쿼리까지 통째로 들어온다(Steam key= 등).
+# aiohttp 예외 문자열에는 요청 URL이 쿼리까지 그대로 포함된다(Steam key= 등).
 _SECRET_QS = re.compile(r"(key|apikey|api_key|code|state|token|access_token)=[^&\s'\"]+", re.IGNORECASE)
 
 
@@ -32,7 +32,7 @@ TRANSIENT_EXC_NAMES = frozenset((
 
 
 def is_transient(exc: Optional[BaseException]) -> bool:
-    """예외나 그 원인 체인에 일시적 네트워크, 타임아웃 예외가 있는지 본다.
+    """예외나 그 원인 체인에 일시적 네트워크, 타임아웃 예외가 있는지 확인한다.
 
     from None으로 감춘 원인도 __context__에 남아 있어 함께 검사한다.
     """

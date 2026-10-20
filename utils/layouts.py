@@ -82,7 +82,7 @@ class CooldownLayoutView(ui.LayoutView):
 
 
 def mark_shown(interaction: discord.Interaction) -> None:
-    """결과 카드가 화면에 뜬 시점을 명령어 기록에 남김"""
+    """결과 카드가 화면에 표시된 시점을 명령어 기록에 남김"""
     interaction.extras['shown_ms'] = int((discord.utils.utcnow() - interaction.created_at).total_seconds() * 1000)
 
 
@@ -98,7 +98,7 @@ FAST_REPLY_SECONDS = 1.0
 
 
 async def send_card(interaction: discord.Interaction, loading: str, build):
-    """결과가 빨리 나오면 바로 보내고, 늦으면 로딩 카드를 먼저 보낸 뒤 교체. 이미 응답한 인터랙션은 새 메시지로"""
+    """결과가 빨리 준비되면 바로 보내고, 늦으면 로딩 카드를 먼저 보낸 뒤 교체. 이미 응답한 인터랙션은 새 메시지로"""
     from . import visual
     if not interaction.response.is_done():
         task = asyncio.ensure_future(build())
@@ -118,7 +118,7 @@ async def send_card(interaction: discord.Interaction, loading: str, build):
     try:
         view = await build()
     except BotError as e:
-        # 원 응답은 계정 카드라 오류로 덮지 않고 로딩 메시지를 오류로 바꿈
+        # 원 응답은 계정 카드라 오류로 덮어쓰지 않고 로딩 메시지를 오류로 바꿈
         await message.edit(view=create_error_layout(e.user_message))
         return None, message
     except Exception:

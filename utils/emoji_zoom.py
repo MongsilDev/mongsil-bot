@@ -19,7 +19,7 @@ logger = get_logger('이모지확대')
 # 설정 파일 경로
 SETTINGS_PATH = Path('./data/settings.json')
 
-# 웹훅 캐시 (채널 ID -> 웹훅). 지워진 웹훅은 전송 때 NotFound로 걸러 다시 만든다
+# 채널 ID별 웹훅 캐시. 지워진 웹훅은 전송 때 NotFound로 걸러 다시 만든다
 _webhook_cache: Dict[int, discord.Webhook] = {}
 
 # 설정 캐시
@@ -253,7 +253,7 @@ async def process_emoji_zoom(message: discord.Message) -> None:
     except (ValueError, AttributeError):
         return
 
-    # 이미지나 외부 이모지가 막힌 유저가 확대로 우회하지 못하게 함
+    # 이미지나 외부 이모지 권한이 없는 유저가 확대로 우회하지 못하게 함
     perms = message.channel.permissions_for(message.author)
     if not perms.embed_links:
         return
