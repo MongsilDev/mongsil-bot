@@ -327,7 +327,7 @@ async def ready_middleware(request: web.Request, handler):
     """재시작 직후 서버 목록이 비어 있는 동안 틀린 화면 대신 잠시 기다리게 함"""
     if client.is_ready() or request.path.startswith(('/static/', '/health')):
         return await handler(request)
-    response = error_page(request, 503, "몽실봇이 다시 켜지는 중", "몇 초 뒤 새로고침해주세요.")
+    response = error_page(request, 503, "몽실봇을 다시 시작하는 중", "몇 초 뒤 새로고침해주세요.")
     response.headers['Retry-After'] = '5'
     return response
 

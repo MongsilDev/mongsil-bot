@@ -25,41 +25,41 @@
   <table class="data doc-table">
     <thead><tr><th scope="col">항목</th><th scope="col">수집 시점</th><th scope="col">보유 기간</th></tr></thead>
     <tbody>
-      <tr><td data-label="항목">디스코드 유저 ID, 서버 ID, 명령어 이름, 처리 결과와 걸린 시간</td><td data-label="수집 시점">명령어를 쓸 때</td><td data-label="보유 기간">1년</td></tr>
+      <tr><td data-label="항목">디스코드 유저 ID, 서버 ID, 명령어 이름, 처리 결과와 처리 시간</td><td data-label="수집 시점">명령어를 사용할 때</td><td data-label="보유 기간">1년</td></tr>
       <tr><td data-label="항목">디스코드 유저 ID, 서버 ID</td><td data-label="수집 시점">이모지 확대가 동작할 때</td><td data-label="보유 기간">1년</td></tr>
-      <tr><td data-label="항목">디스코드 유저 ID, 이터널 리턴 닉네임과 계정 번호</td><td data-label="수집 시점">/계정으로 닉네임을 등록할 때</td><td data-label="보유 기간">등록 해제까지</td></tr>
-      <tr><td data-label="항목">디스코드 유저 ID, 사용자 이름, 프로필 사진 주소, 디스코드 로그인 토큰</td><td data-label="수집 시점">대시보드에 로그인할 때</td><td data-label="보유 기간">로그아웃 또는 로그인 7일 뒤까지</td></tr>
-      <tr><td data-label="항목">디스코드 유저 ID, 사용자 이름</td><td data-label="수집 시점">서버 설정을 바꿀 때</td><td data-label="보유 기간">1년</td></tr>
-      <tr><td data-label="항목">서버 ID, 서버 이름, 멤버 수</td><td data-label="수집 시점">몽실봇이 서버에 들어가거나 나올 때</td><td data-label="보유 기간">1년</td></tr>
-      <tr><td data-label="항목">방문한 페이지 주소, 브라우저와 기기 정보, 방문 통계 쿠키 식별자</td><td data-label="수집 시점">대시보드 페이지를 조작하거나 10초 넘게 볼 때</td><td data-label="보유 기간">수집일로부터 14개월</td></tr>
-      <tr><td data-label="항목">서버 접속 기록: 접속 IP 주소, 요청한 주소, 브라우저 정보</td><td data-label="수집 시점">대시보드에 접속할 때</td><td data-label="보유 기간">기록이 100MB를 넘으면 오래된 것부터 지움</td></tr>
+      <tr><td data-label="항목">디스코드 유저 ID, 이터널 리턴 닉네임과 계정 번호</td><td data-label="수집 시점">/계정으로 닉네임을 등록할 때</td><td data-label="보유 기간">등록 해제 시까지</td></tr>
+      <tr><td data-label="항목">디스코드 유저 ID, 사용자 이름, 프로필 사진 주소, 디스코드 로그인 토큰</td><td data-label="수집 시점">대시보드에 로그인할 때</td><td data-label="보유 기간">로그아웃 시 또는 로그인 후 7일까지</td></tr>
+      <tr><td data-label="항목">디스코드 유저 ID, 사용자 이름</td><td data-label="수집 시점">서버 설정을 변경할 때</td><td data-label="보유 기간">1년</td></tr>
+      <tr><td data-label="항목">서버 ID, 서버 이름, 멤버 수</td><td data-label="수집 시점">몽실봇이 서버에 참가하거나 서버에서 퇴장할 때</td><td data-label="보유 기간">1년</td></tr>
+      <tr><td data-label="항목">방문한 페이지 주소, 브라우저와 기기 정보, 방문 통계 쿠키 식별자</td><td data-label="수집 시점">대시보드 페이지를 조작하거나 10초 넘게 머물 때</td><td data-label="보유 기간">수집일로부터 14개월</td></tr>
+      <tr><td data-label="항목">서버 접속 기록: 접속 IP 주소, 요청한 주소, 브라우저 정보</td><td data-label="수집 시점">대시보드에 접속할 때</td><td data-label="보유 기간">기록이 100MB를 넘으면 오래된 기록부터 삭제</td></tr>
     </tbody>
   </table>
 </div>
-<p>이모지 확대는 이모지만 보낸 메시지를 찾으려고 채널 메시지를 읽지만, 메시지 내용은 저장하지 않습니다.</p>
+<p>이모지 확대 기능은 이모지만 담긴 메시지를 찾기 위해 채널 메시지를 읽지만, 메시지 내용은 저장하지 않습니다.</p>
 
 <h2>3. 파기</h2>
-<p>보유 기간이 지난 기록은 매일 자동으로 지웁니다.<br>
-암호화한 백업본은 최대 5주 뒤 지워집니다.<br>
-지운 정보는 되살릴 수 없습니다.</p>
+<p>보유 기간이 지난 기록은 매일 자동으로 파기합니다.<br>
+암호화한 백업본은 최대 5주 뒤 삭제됩니다.<br>
+파기한 정보는 복구할 수 없습니다.</p>
 
 <h2>4. 제3자 제공</h2>
-<p>전적을 조회할 때 닉네임과 계정 번호를 님블뉴런의 이터널 리턴 Open API에 보냅니다.<br>
+<p>전적을 조회할 때 닉네임과 계정 번호를 님블뉴런의 이터널 리턴 Open API에 전송합니다.<br>
 이 경우를 제외하면 개인정보를 제3자에게 제공하거나 판매하지 않습니다.</p>
 
 <h2>5. 처리 위탁과 국외 이전</h2>
 <div class="table-wrap">
   <table class="data doc-table">
-    <thead><tr><th scope="col">받는 곳</th><th scope="col" class="nw">국가</th><th scope="col">업무와 항목</th></tr></thead>
+    <thead><tr><th scope="col">수탁자</th><th scope="col" class="nw">국가</th><th scope="col">업무와 항목</th></tr></thead>
     <tbody>
-      <tr><td data-label="받는 곳">Sentry<br><span class="nw">compliance@sentry.io</span></td><td class="nw" data-label="국가">미국</td><td data-label="업무와 항목">오류 기록.<br>오류가 난 명령어의 서버 ID, 유저 ID, 닉네임이 오류가 날 때 전송됨.<br>보유 기간은 Sentry 보관 정책을 따름</td></tr>
-      <tr><td data-label="받는 곳">Cloudflare<br><span class="nw">dpo@cloudflare.com</span></td><td class="nw" data-label="국가">미국</td><td data-label="업무와 항목">대시보드 접속 중계, 방문 통계, 백업 보관.<br>접속 IP 주소, 요청 정보, 방문한 페이지 주소, 브라우저 종류가 접속할 때마다, 암호화한 백업본이 매일 전송됨.<br>방문 통계는 쿠키를 쓰지 않음.<br>보유 기간은 Cloudflare 정책을 따르고, 백업본은 최대 5주</td></tr>
-      <tr><td data-label="받는 곳">Google LLC<br><span class="nw">googlekrsupport@google.com</span></td><td class="nw" data-label="국가">미국</td><td data-label="업무와 항목">Google 애널리틱스 방문 통계 분석.<br>쿠키 식별자, 방문한 페이지 주소, 브라우저와 기기 정보, 접속 IP 주소가 대시보드 페이지를 조작하거나 10초 넘게 볼 때 전송됨.<br>보유 기간은 수집일로부터 14개월</td></tr>
+      <tr><td data-label="수탁자">Sentry<br><span class="nw">compliance@sentry.io</span></td><td class="nw" data-label="국가">미국</td><td data-label="업무와 항목">오류 기록.<br>오류가 날 때 해당 명령어의 서버 ID, 유저 ID, 닉네임이 전송됨.<br>보유 기간은 Sentry 보관 정책을 따름</td></tr>
+      <tr><td data-label="수탁자">Cloudflare<br><span class="nw">dpo@cloudflare.com</span></td><td class="nw" data-label="국가">미국</td><td data-label="업무와 항목">대시보드 접속 중계, 방문 통계, 백업 보관.<br>접속할 때마다 접속 IP 주소, 요청 정보, 방문한 페이지 주소, 브라우저 종류가 전송됨.<br>암호화한 백업본이 매일 전송됨.<br>방문 통계는 쿠키를 사용하지 않음.<br>보유 기간은 Cloudflare 정책을 따르고, 백업본은 최대 5주</td></tr>
+      <tr><td data-label="수탁자">Google LLC<br><span class="nw">googlekrsupport@google.com</span></td><td class="nw" data-label="국가">미국</td><td data-label="업무와 항목">Google 애널리틱스 방문 통계 분석.<br>대시보드 페이지를 조작하거나 10초 넘게 머물 때 쿠키 식별자, 방문한 페이지 주소, 브라우저와 기기 정보, 접속 IP 주소가 전송됨.<br>보유 기간은 수집일로부터 14개월</td></tr>
     </tbody>
   </table>
 </div>
 <p>위 국외 이전은 서비스 제공에 필요한 처리 위탁이며, 개인정보 보호법 제28조의8 제1항 제3호에 따릅니다.<br>
-봇과 대시보드를 쓰지 않으면 개인정보가 국외로 이전되지 않으며, 이전을 원하지 않으면 해당 기능을 쓸 수 없습니다.<br>
+봇과 대시보드를 이용하지 않으면 개인정보가 국외로 이전되지 않으며, 이전을 거부하면 해당 기능을 이용할 수 없습니다.<br>
 Google 애널리틱스 수집만 거부하는 방법은 6번 항목에 있습니다.</p>
 
 <h2>6. 쿠키</h2>
@@ -68,21 +68,22 @@ Google 애널리틱스 수집만 거부하는 방법은 6번 항목에 있습니
   <li>__Host-mb_state: 디스코드 로그인 중 위조 요청 방지, 10분</li>
   <li>_ga, _ga_S3NS09MHSM: Google 애널리틱스 방문자 구분, 최대 2년</li>
 </ul>
-<p>광고 쿠키는 쓰지 않습니다.<br>
-쿠키를 막으면 대시보드에 로그인할 수 없습니다.<br>
+<p>광고 쿠키는 사용하지 않습니다.<br>
+쿠키를 차단하면 대시보드에 로그인할 수 없습니다.<br>
 Google 애널리틱스의 수집만 거부하려면 <a href="https://tools.google.com/dlpage/gaoptout">Google 애널리틱스 차단 브라우저 부가기능</a>을 설치하면 됩니다.</p>
 
 <h2>7. 안전 조치</h2>
 <ul>
   <li>운영자만 접근할 수 있는 서버에 저장</li>
-  <li>로그인 세션 값은 해시로 저장하고, 디스코드 로그인 토큰은 서버에만 둠</li>
+  <li>로그인 세션 값은 해시로 저장하고, 디스코드 로그인 토큰은 서버에만 보관</li>
   <li>HTTPS 접속만 허용, 백업본 암호화</li>
 </ul>
 
 <h2>8. 정보주체의 권리</h2>
 <p>언제든지 자신의 개인정보 열람, 정정, 삭제, 처리 정지를 요구할 수 있습니다.<br>
-닉네임 등록 정보는 /계정의 등록 해제 버튼으로, 로그인 정보는 대시보드 로그아웃으로 바로 지워집니다.<br>
-그 밖의 요구는 <a href="{{ support_server }}">지원 서버</a>나 아래 이메일로 보내 주시면 본인 확인 뒤 바로 처리합니다.<br>
+닉네임 등록 정보는 /계정에서 등록 해제 버튼을 누르면 즉시 삭제됩니다.<br>
+로그인 정보는 대시보드에서 로그아웃하면 즉시 삭제됩니다.<br>
+그 밖의 요구는 <a href="{{ support_server }}">지원 서버</a>나 아래 이메일로 요청하면 본인 확인 후 지체 없이 처리합니다.<br>
 만 14세 미만 아동의 권리는 법정대리인이 행사할 수 있습니다.</p>
 
 <h2>9. 개인정보 보호책임자</h2>
@@ -98,5 +99,5 @@ Google 애널리틱스의 수집만 거부하려면 <a href="https://tools.googl
 </ul>
 
 <h2>11. 변경</h2>
-<p>처리방침이 바뀌면 이 페이지에 시행일과 함께 올립니다.</p>
+<p>처리방침을 변경하면 이 페이지에 시행일과 함께 게시합니다.</p>
 {% endblock %}
