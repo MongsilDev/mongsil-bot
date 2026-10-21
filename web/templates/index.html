@@ -59,13 +59,13 @@
     {% if live.eternity is defined and live.eternity %}
     <div class="score-cell">
       <dt><img src="/static/tier/10.png" alt="" width="28" height="28">이터니티 컷</dt>
-      <dd class="score-value">{{ num(live.eternity, 'RP') }}</dd>
+      <dd class="score-value">{% if live.eternity_est %}<span class="u">약 </span>{% endif %}{{ num(live.eternity, 'RP') }}</dd>
     </div>
     {% endif %}
     {% if live.demigod is defined and live.demigod %}
     <div class="score-cell">
       <dt><img src="/static/tier/9.png" alt="" width="28" height="28">데미갓 컷</dt>
-      <dd class="score-value">{{ num(live.demigod, 'RP') }}</dd>
+      <dd class="score-value">{% if live.demigod_est %}<span class="u">약 </span>{% endif %}{{ num(live.demigod, 'RP') }}</dd>
     </div>
     {% endif %}
     {% if live.season_days is defined %}
