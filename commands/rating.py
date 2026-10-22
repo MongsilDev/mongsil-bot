@@ -341,8 +341,10 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
         lines.append(f"-# 컷은 {SERVER_NAMES[RANKING_SERVER]} 기준")
     view = ui.LayoutView()
     view.add_item(ui.Container(ui.TextDisplay("\n".join(lines)), accent_colour=visual.colour('cut')))
+    # labs 진단 칸은 0~20000만 받음
+    query = f"?rp={mmr}" if 0 < mmr <= 20000 else ""
     view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="내 RP 진단", emoji=EMOJIS['labs'],
-                                         url=f"{config.labs_url}/er/cut#check-h")))
+                                         url=f"{config.labs_url}/er/cut{query}#check-h")))
     await interaction.followup.send(view=view, ephemeral=True)
 
 
