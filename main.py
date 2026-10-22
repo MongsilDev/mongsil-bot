@@ -32,26 +32,57 @@ def _sentry_before_send(event, hint):
         if str(msg).startswith("Attempting a reconnect"):
             return None
 
-    # 통과한 이벤트에도 URL 쿼리 자격증명이 남지 않게 가린다.
-    if logentry:
-        for k in ("message", "formatted"):
-            if logentry.get(k):
-                logentry[k] = redact_secrets(logentry[k])
+    return _redact_event(event, hint)
+
+
+def _redact_event(event, hint):
+    """오류 이벤트와 성능 추적 공용. URL 자격증명이 남지 않게 가림"""
+    logentry = event.get("logentry") or {}
+    for k in ("message", "formatted"):
+        if logentry.get(k):
+            logentry[k] = redact_secrets(logentry[k])
+    if isinstance(logentry.get("params"), list):
+        logentry["params"] = [redact_secrets(p) if isinstance(p, str) else p for p in logentry["params"]]
     if event.get("message"):
         event["message"] = redact_secrets(event["message"])
     for exc in (event.get("exception") or {}).get("values") or []:
         if exc.get("value"):
             exc["value"] = redact_secrets(exc["value"])
-    for crumb in (event.get("breadcrumbs") or {}).get("values") or []:
-        if crumb.get("message"):
-            crumb["message"] = redact_secrets(crumb["message"])
+    # /auth/callback 쿼리에 OAuth code와 state가 있음
+    request = event.get("request") or {}
+    if isinstance(request.get("query_string"), str):
+        request["query_string"] = redact_secrets(request["query_string"])
+    headers = request.get("headers") or {}
+    for k, v in headers.items():
+        if isinstance(v, str):
+            headers[k] = redact_secrets(v)
+    # aiohttp 브레드크럼과 span은 data의 url, http.query에 요청 주소가 그대로 있음
+    for item in ((event.get("breadcrumbs") or {}).get("values") or []) + (event.get("spans") or []):
+        for k in ("message", "description"):
+            if isinstance(item.get(k), str):
+                item[k] = redact_secrets(item[k])
+        data = item.get("data") or {}
+        for k in ("url", "http.query"):
+            if isinstance(data.get(k), str):
+                data[k] = redact_secrets(data[k])
     return event
+
+
+def _traces_sampler(ctx):
+    """요청이 보낸 sentry-trace, baggage로는 샘플링하지 않음"""
+    request = ctx.get("aiohttp_request")
+    if request is not None and ("sentry-trace" in request.headers or "baggage" in request.headers):
+        return 0
+    return 0.1
 
 
 sentry_sdk.init(
     dsn=os.getenv("SENTRY_DSN", ""),
-    traces_sample_rate=0.1,
+    traces_sampler=_traces_sampler,
+    # Discord, bser 같은 외부 요청에 sentry-trace와 baggage 헤더를 붙이지 않음
+    trace_propagation_targets=[],
     before_send=_sentry_before_send,
+    before_send_transaction=_redact_event,
     # 대시보드 OAuth 핸들러 지역변수에 액세스 토큰이 있음
     include_local_variables=False,
 )

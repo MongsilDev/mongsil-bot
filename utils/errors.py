@@ -15,11 +15,13 @@ logger = get_logger('errors')
 
 # aiohttp 예외 문자열에는 요청 URL이 쿼리까지 그대로 포함된다(Steam key= 등).
 _SECRET_QS = re.compile(r"(key|apikey|api_key|code|state|token|access_token)=[^&\s'\"]+", re.IGNORECASE)
+# 웹후크와 상호작용 토큰은 쿼리가 아닌 경로에 있음
+_SECRET_PATH = re.compile(r"(/(?:webhooks|interactions)/\d+/)[^/?\s'\"]+")
 
 
 def redact_secrets(text) -> str:
-    """로그, 에러 메시지에 실릴 문자열에서 URL 쿼리 자격증명을 가린다."""
-    return _SECRET_QS.sub(r"\1=****", str(text))
+    """로그, 에러 메시지에 실릴 문자열에서 URL 자격증명을 가린다."""
+    return _SECRET_PATH.sub(r"\1****", _SECRET_QS.sub(r"\1=****", str(text)))
 
 
 TRANSIENT_EXC_NAMES = frozenset((
