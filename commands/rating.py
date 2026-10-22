@@ -217,7 +217,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
                 children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'cut.png', chart))))
 
     view.add_item(ui.Container(*children, accent_colour=visual.colour('cut')))
-    labs = ui.Button(style=discord.ButtonStyle.link, label="이터컷 예측", emoji=EMOJIS['web'], url=f"{config.labs_url}/er/cut")
+    labs = ui.Button(style=discord.ButtonStyle.link, label="이터컷 예측", emoji=EMOJIS['labs'], url=f"{config.labs_url}/er/cut")
     if isinstance(view, RatingView):
         view.add_item(ui.ActionRow(view.compare_button, view.spread_button, labs))
     else:
@@ -341,7 +341,7 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
         lines.append(f"-# 컷은 {SERVER_NAMES[RANKING_SERVER]} 기준")
     view = ui.LayoutView()
     view.add_item(ui.Container(ui.TextDisplay("\n".join(lines)), accent_colour=visual.colour('cut')))
-    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="내 RP 진단", emoji=EMOJIS['web'],
+    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="내 RP 진단", emoji=EMOJIS['labs'],
                                          url=f"{config.labs_url}/er/cut#check-h")))
     await interaction.followup.send(view=view, ephemeral=True)
 
