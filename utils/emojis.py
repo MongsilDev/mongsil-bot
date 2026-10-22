@@ -17,6 +17,7 @@ EMOJIS = {
     'support': '💬',
     'invite': '🚀',
     'web': '🌐',
+    'labs': '🛠️',
     'patch_note': '📝',
 }
 

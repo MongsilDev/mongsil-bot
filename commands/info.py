@@ -22,9 +22,6 @@ KST = ZoneInfo('Asia/Seoul')
 SERVICE_START = datetime(2023, 6, 15, tzinfo=KST)
 
 
-UPDATES_CHANNEL = "https://discord.com/channels/1173385068450951269/1173385069507924033"
-
-
 def _last_update() -> Optional[datetime]:
     """배포본의 마지막 커밋 시각. 폴러가 push를 당기면 봇이 재시작되므로 기동 때 한 번만 읽음"""
     try:
@@ -152,12 +149,6 @@ def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = No
         ),
         ui.Button(
             style=discord.ButtonStyle.link,
-            label="업데이트 소식",
-            url=UPDATES_CHANNEL,
-            emoji=EMOJIS['patch_note'],
-        ),
-        ui.Button(
-            style=discord.ButtonStyle.link,
             label="서버에 추가",
             url=config.bot_invite,
             emoji=EMOJIS['invite'],
@@ -172,7 +163,7 @@ def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = No
             style=discord.ButtonStyle.link,
             label="Labs",
             url=config.labs_url,
-            emoji=EMOJIS['web'],
+            emoji=EMOJIS['labs'],
         ),
     ))
     return view
