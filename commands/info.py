@@ -168,6 +168,12 @@ def create_bot_info_layout(client: ERClient, guild: Optional[discord.Guild] = No
             url=config.dashboard_url,
             emoji=EMOJIS['web'],
         ),
+        ui.Button(
+            style=discord.ButtonStyle.link,
+            label="Labs",
+            url=config.labs_url,
+            emoji=EMOJIS['web'],
+        ),
     ))
     return view
 

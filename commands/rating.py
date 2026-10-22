@@ -15,6 +15,7 @@ from utils.layouts import send_card, CooldownLayoutView
 from utils.errors import handle_errors, validate_nickname, NotFoundError, ServiceDownError
 from commands import account
 from utils import accounts, app_emojis, rank_history, visual
+from utils.emojis import EMOJIS
 from utils.logging_config import get_logger
 from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_ranking_data, fetch_user_rank, fetch_user_stats_solo
 from utils.tier_system import TierSystem
@@ -216,8 +217,11 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
                 children.append(ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'cut.png', chart))))
 
     view.add_item(ui.Container(*children, accent_colour=visual.colour('cut')))
+    labs = ui.Button(style=discord.ButtonStyle.link, label="이터컷 예측", emoji=EMOJIS['web'], url=f"{config.labs_url}/er/cut")
     if isinstance(view, RatingView):
-        view.add_item(ui.ActionRow(view.compare_button, view.spread_button))
+        view.add_item(ui.ActionRow(view.compare_button, view.spread_button, labs))
+    else:
+        view.add_item(ui.ActionRow(labs))
     return view
 
 
@@ -337,6 +341,8 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
         lines.append(f"-# 컷은 {SERVER_NAMES[RANKING_SERVER]} 기준")
     view = ui.LayoutView()
     view.add_item(ui.Container(ui.TextDisplay("\n".join(lines)), accent_colour=visual.colour('cut')))
+    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="내 RP 진단", emoji=EMOJIS['web'],
+                                         url=f"{config.labs_url}/er/cut#check-h")))
     await interaction.followup.send(view=view, ephemeral=True)
 
 
