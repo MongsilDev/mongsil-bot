@@ -162,6 +162,11 @@ async def get_or_create_webhook(channel) -> Optional[discord.Webhook]:
     if channel_id in _webhook_cache:
         return _webhook_cache[channel_id]
 
+    # 채널 덮어쓰기로만 막힌 채널은 403 없이 건너뜀. 서버 권한이 없으면 실제 403으로 서버를 끔
+    me = channel.guild.me
+    if me.guild_permissions.manage_webhooks and not channel.permissions_for(me).manage_webhooks:
+        return None
+
     try:
         webhook = await _pick_webhook(channel) or await channel.create_webhook(
             name=WEBHOOK_NAME,
@@ -209,6 +214,9 @@ async def warm_webhook_cache(client: discord.Client) -> None:
 
 
 async def _delete_original(message: discord.Message) -> bool:
+    # 권한 없이 보내면 403. 403은 Discord의 IP 단위 차단 횟수에 들어감
+    if not message.channel.permissions_for(message.guild.me).manage_messages:
+        return False
     try:
         await message.delete()
         return True

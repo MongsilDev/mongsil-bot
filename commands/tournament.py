@@ -41,6 +41,7 @@ LIVE_PER_GUILD = 3
 LIVE_PER_USER = 3
 LIVE_TOTAL = 50
 REFRESH_GAP = 5.0
+TOO_SOON = "잠시 후 다시 눌러주세요."
 
 BAD_CODE = "대회 코드는 영문과 숫자 6자리입니다.\n-# Labs 대회 화면의 코드나 주소를 그대로 붙여 넣어도 됩니다."
 GONE = "없거나 지워진 대회입니다.\n-# 대회는 마지막 수정 뒤 24시간이 지나면 지워집니다."
@@ -256,15 +257,15 @@ async def reply_error(interaction: discord.Interaction, text: str) -> None:
         await interaction.response.send_message(view=view, ephemeral=True)
 
 
-_last_refresh: Dict[int, float] = {}
+_last_refresh: Dict[object, float] = {}
 
 
-def too_soon(message_id: int) -> bool:
-    """새로고침과 조 선택은 메시지마다 REFRESH_GAP 간격"""
+def too_soon(key) -> bool:
+    """새로고침과 조 선택은 메시지마다, 자동 갱신 켜기와 끄기는 사람마다 REFRESH_GAP 간격"""
     now = time.monotonic()
-    if now - _last_refresh.get(message_id, 0) < REFRESH_GAP:
+    if now - _last_refresh.get(key, 0) < REFRESH_GAP:
         return True
-    _last_refresh[message_id] = now
+    _last_refresh[key] = now
     if len(_last_refresh) > 5000:
         _last_refresh.clear()
     return False
@@ -367,6 +368,10 @@ class LiveButton(ui.DynamicItem[ui.Button], template=r'ta:(?P<code>[0-9A-Z]{6,7}
             await reply_error(interaction, full)
             return
         await interaction.response.defer()
+        # 권한 판단에 Labs 응답이 필요해 거절될 클릭도 Labs를 부름
+        if too_soon(('live', interaction.user.id)):
+            await reply_error(interaction, TOO_SOON)
+            return
         try:
             b = await fetch_board(self.code, self.group, interaction.user.id)
         except (NotFoundError, ServiceDownError, ValidationError) as e:
@@ -403,6 +408,9 @@ class LiveOffButton(ui.DynamicItem[ui.Button], template=r'tx:(?P<code>[0-9A-Z]{6
         allowed = row is None or row['started_by'] == interaction.user.id \
             or interaction.permissions.manage_messages
         await interaction.response.defer()
+        if not allowed and too_soon(('live', interaction.user.id)):
+            await reply_error(interaction, TOO_SOON)
+            return
         try:
             b = await fetch_board(self.code, self.group, None if allowed else interaction.user.id)
         except (NotFoundError, ValidationError) as e:
@@ -509,6 +517,8 @@ class Tournament(commands.Cog):
     @app_commands.command(name="대회", description="Labs 대회 순위")
     @app_commands.describe(코드="대회 코드나 Labs 대회 주소", 조="여러 조로 나눈 대회의 조")
     @app_commands.choices(조=[app_commands.Choice(name=f"{g}조", value=g) for g in GROUPS])
+    # Labs 봇 토큰 한도(분당 1200회)를 모든 서버가 나눠 씀
+    @app_commands.checks.cooldown(3, 10)
     @handle_errors(user_message="대회 순위를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def tournament_command(self, interaction: discord.Interaction, 코드: str,
                                  조: Optional[app_commands.Choice[str]] = None):
