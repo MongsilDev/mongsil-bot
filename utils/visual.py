@@ -23,6 +23,7 @@ COLOURS = {
     'concurrent': 0x3BA55C,
     'season': 0xF0B232,
     'cut': 0xE84C7D,
+    'tournament': 0x26F1F6,
     'playtime': 0x5865F2,
     'ranking': 0xD9A24A,
     'info': 0x5865F2,

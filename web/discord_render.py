@@ -105,7 +105,8 @@ def _item(item, files: dict) -> str:
             side = _button(acc)
         return f'<div class="dc-section"><div class="dc-section-body">{body}</div>{side}</div>'
     if isinstance(item, ui.ActionRow):
-        return '<div class="dc-row">' + ''.join(_button(b) for b in item.children if isinstance(b, ui.Button)) + '</div>'
+        children = [c.item if isinstance(c, ui.DynamicItem) else c for c in item.children]
+        return '<div class="dc-row">' + ''.join(_button(b) for b in children if isinstance(b, ui.Button)) + '</div>'
     if isinstance(item, ui.MediaGallery):
         return '<div class="dc-gallery">' + ''.join(
             f'<img src="{html.escape(_media(m.media.url, files))}" alt=""{_size(m.media.url, files)} loading="lazy" decoding="async">'

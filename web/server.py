@@ -51,7 +51,7 @@ FALLBACK_TTL = 3600
 
 
 # 봇에서 자주 쓰는 순서, 목록에 없는 명령은 맨 뒤
-COMMAND_ORDER = ['랭크', '랭킹', '이터컷', '플탐', '시즌', '동접', '계정', '강아지', '고양이', '설정', '정보']
+COMMAND_ORDER = ['랭크', '랭킹', '이터컷', '플탐', '시즌', '동접', '대회', '계정', '강아지', '고양이', '설정', '정보']
 
 # 이모지 확대와 명령어는 스레드와 포럼 글도 부모 채널 기준
 SCOPE_TYPES = (discord.TextChannel, discord.VoiceChannel, discord.ForumChannel)

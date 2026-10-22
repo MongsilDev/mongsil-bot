@@ -4,7 +4,7 @@
 {% block main %}
 <header class="doc-head">
   <h1>개인정보 처리방침</h1>
-  <p class="sec-meta">2026년 10월 20일 시행</p>
+  <p class="sec-meta">2026년 10월 22일 시행</p>
 </header>
 
 <p>몽실봇 디스코드 봇과 대시보드 bot.mongsil.dev가 처리하는 개인정보를 개인정보 보호법 제30조에 따라 공개합니다.<br>
@@ -14,6 +14,7 @@
 <ul>
   <li>명령어 응답, 서버 설정 적용과 변경 기록</li>
   <li>/계정에 등록한 닉네임으로 전적 조회와 서버 순위</li>
+  <li>/대회 자동 완성과 자동 갱신 권한 확인</li>
   <li>대시보드 로그인과 관리 권한 확인</li>
   <li>사용량과 운영 통계</li>
   <li>오류 확인과 남용 방지</li>
@@ -28,6 +29,7 @@
       <tr><td data-label="항목">디스코드 유저 ID, 서버 ID, 명령어 이름, 처리 결과와 처리 시간</td><td data-label="수집 시점">명령어를 사용할 때</td><td data-label="보유 기간">1년</td></tr>
       <tr><td data-label="항목">디스코드 유저 ID, 서버 ID</td><td data-label="수집 시점">이모지 확대가 동작할 때</td><td data-label="보유 기간">1년</td></tr>
       <tr><td data-label="항목">디스코드 유저 ID, 이터널 리턴 닉네임과 계정 번호</td><td data-label="수집 시점">/계정으로 닉네임을 등록할 때</td><td data-label="보유 기간">등록 해제 시까지</td></tr>
+      <tr><td data-label="항목">자동 갱신을 켠 디스코드 유저 ID, 서버 ID, 채널 ID, 메시지 ID, 대회 코드</td><td data-label="수집 시점">/대회 카드의 자동 갱신을 켤 때</td><td data-label="보유 기간">자동 갱신이 멈출 때까지, 최대 6시간</td></tr>
       <tr><td data-label="항목">디스코드 유저 ID, 사용자 이름, 프로필 사진 주소, 디스코드 로그인 토큰</td><td data-label="수집 시점">대시보드에 로그인할 때</td><td data-label="보유 기간">로그아웃 시 또는 로그인 후 7일까지</td></tr>
       <tr><td data-label="항목">디스코드 유저 ID, 사용자 이름</td><td data-label="수집 시점">서버 설정을 변경할 때</td><td data-label="보유 기간">1년</td></tr>
       <tr><td data-label="항목">서버 ID, 서버 이름, 멤버 수</td><td data-label="수집 시점">몽실봇이 서버에 참가하거나 서버에서 퇴장할 때</td><td data-label="보유 기간">1년</td></tr>
@@ -45,7 +47,8 @@
 
 <h2>4. 제3자 제공</h2>
 <p>전적을 조회할 때 닉네임과 계정 번호를 님블뉴런의 이터널 리턴 Open API에 전송합니다.<br>
-이 경우를 제외하면 개인정보를 제3자에게 제공하거나 판매하지 않습니다.</p>
+/대회 자동 완성과 자동 갱신 권한을 확인할 때 디스코드 유저 ID를 같은 운영자의 Labs 점수 계산기에 전송합니다.<br>
+이 두 경우를 제외하면 개인정보를 제3자에게 제공하거나 판매하지 않습니다.</p>
 
 <h2>5. 처리 위탁과 국외 이전</h2>
 <div class="table-wrap">

@@ -117,6 +117,7 @@ class ERClient(commands.Bot):
                 "commands.rating",
                 "commands.account",
                 "commands.alerts",
+                "commands.tournament",
             ]:
                 await self.load_extension(module)
 

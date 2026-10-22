@@ -109,6 +109,10 @@ async def _build(client) -> None:
     async def info():
         return {'input': '', 'html': render_view(create_bot_info_layout(client))}
 
+    async def tournament():
+        from commands.tournament import board_view, fetch_board
+        return {'input': 'EXAMPLE', 'html': render_view(board_view(await fetch_board('EXAMPLE')))}
+
     async def settings():
         # 실제 서버 설정을 읽지 않도록 존재하지 않는 서버 ID로 그림
         return {'input': '', 'html': render_view(SettingsView(0))}
@@ -116,7 +120,7 @@ async def _build(client) -> None:
     # bser API 부담을 나누려고 순서대로 실행
     for name, make in [
         ('랭크', rank), ('랭킹', ranking), ('이터컷', rating), ('플탐', playtime), ('시즌', season_card),
-        ('동접', concurrent), ('계정', account), ('정보', info), ('설정', settings),
+        ('동접', concurrent), ('대회', tournament), ('계정', account), ('정보', info), ('설정', settings),
         ('강아지', animal('https://api.thedogapi.com/v1/images/search', '강아지')),
         ('고양이', animal('https://api.thecatapi.com/v1/images/search', '고양이')),
     ]:
