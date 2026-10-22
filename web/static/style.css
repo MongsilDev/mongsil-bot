@@ -1728,12 +1728,6 @@ a.grow:hover {
   gap: 12px;
 }
 
-.basis {
-  margin-left: 4px;
-  color: var(--faint);
-  font-size: 12px;
-}
-
 .is-bad {
   color: var(--bad);
 }

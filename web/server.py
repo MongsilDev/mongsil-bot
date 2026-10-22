@@ -947,8 +947,7 @@ async def admin(request: web.Request):
         counted = sum(1 for r in mine if r['status'] != 'down')
         # 표본이 100개 안 되면 느린 5%가 상위 몇 개 값이라 표시하지 않음
         item.update(errors=failed, error_rate=failed / counted * 100 if counted else 0,
-                    median=percentile(source, 0.5), p95=percentile(source, 0.95) if len(source) >= 100 else None,
-                    basis='표시' if source is shown else '처리')
+                    median=percentile(source, 0.5), p95=percentile(source, 0.95) if len(source) >= 100 else None)
         commands.append(item)
 
     by_guild = Counter(r['guild_id'] for r in rows if r['guild_id'])

@@ -24,7 +24,6 @@ class BotConfig:
     appid_erbs: int = 1049590
 
     # 개발자 정보
-    developer_tag: str = 'mongsil.dev'
     support_server: str = 'https://discord.gg/4QSFVsNNkE'
     bot_invite: str = 'https://discord.com/oauth2/authorize?client_id=1118780504490131557'
     dashboard_url: str = os.getenv('DASHBOARD_URL', 'https://bot.mongsil.dev')

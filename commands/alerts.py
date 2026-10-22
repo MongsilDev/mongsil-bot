@@ -99,7 +99,7 @@ def patch_layout(article: dict) -> ui.LayoutView:
     if article.get('thumbnail_url'):
         children.append(ui.MediaGallery(discord.MediaGalleryItem(article['thumbnail_url'])))
     view.add_item(ui.Container(*children, accent_colour=visual.colour('season')))
-    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="패치 노트 보기", emoji=EMOJIS['patch_note'],
+    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="핫픽스" if "핫픽스" in _title(article) else "패치 노트", emoji=EMOJIS['patch_note'],
                                          url=article.get('url') or ARTICLE.format(article['id']))))
     return view
 
@@ -110,7 +110,7 @@ def maintenance_layout(kind: str, article: dict, window: Optional[str]) -> ui.La
     view = ui.LayoutView(timeout=None)
     view.add_item(ui.Container(ui.TextDisplay(f"### {head}\n{body}"),
                                accent_colour=visual.colour('concurrent' if kind == 'done' else 'season')))
-    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="공지 보기", emoji=EMOJIS['web'],
+    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="공지", emoji=EMOJIS['web'],
                                          url=article.get('url') or ARTICLE.format(article['id']))))
     return view
 

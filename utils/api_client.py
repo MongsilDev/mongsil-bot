@@ -133,7 +133,7 @@ class OptimizedAPIClient:
                             if attempt >= MAX_RETRIES:
                                 raise APIError(
                                     f"API Rate limit 초과 (최대 {MAX_RETRIES}회 재시도 후 실패)",
-                                    "API 요청 한도를 초과했습니다.\n잠시 후 다시 시도해주세요."
+                                    "요청이 많아 조회하지 못했습니다.\n잠시 후 다시 시도해주세요."
                                 )
                             # Retry-After는 HTTP-date 형식일 수 있어 int 실패 시 기본값 사용
                             try:
@@ -146,7 +146,7 @@ class OptimizedAPIClient:
                             logger.warning(f"API 요청 실패: {response.status}")
                             raise APIError(
                                 f"API 요청 실패: {response.status} - {error_text}",
-                                "API 요청 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요."
+                                "조회 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요."
                             )
                 except aiohttp.ClientError as e:
                     logger.warning(f"네트워크 오류: {redact_secrets(e)}")

@@ -21,9 +21,6 @@ KST = ZoneInfo('Asia/Seoul')
 Target = Tuple[str, Optional[str], Optional[int]]
 AfterRegister = Callable[[discord.Interaction, str, str, int], Awaitable[None]]
 
-HINT = "/랭크, /플탐에서 닉네임 생략 가능"
-
-
 async def account_summary(client: ERClient, user_id: int, uid: str, nickname: str):
     """등록 계정의 이번 시즌 요약 텍스트와 티어 아이콘 번호"""
     from commands.season import get_ranked_season
@@ -73,7 +70,7 @@ async def account_view(client: ERClient, user_id: int) -> ui.LayoutView:
         register = ui.Button(style=discord.ButtonStyle.primary, label="닉네임 등록")
         register.callback = lambda i: i.response.send_modal(RegisterModal(client))
         view.add_item(ui.Container(
-            ui.TextDisplay(f"### 내 계정\n등록한 닉네임이 없습니다.\n-# {HINT}"),
+            ui.TextDisplay("### 내 계정\n등록한 닉네임이 없습니다."),
             ui.ActionRow(register),
             accent_colour=visual.colour('info'),
         ))
@@ -113,7 +110,7 @@ async def account_view(client: ERClient, user_id: int) -> ui.LayoutView:
     view.add_item(ui.Container(
         top,
         ui.Separator(),
-        ui.TextDisplay(f"-# 내 계정 | {day:%Y.%m.%d} 등록"),
+        ui.TextDisplay(f"-# {day:%Y.%m.%d} 등록"),
         ui.ActionRow(dakgg, change, remove),
         accent_colour=visual.tier_colour(icon) if icon else visual.colour('info'),
     ))
@@ -125,7 +122,7 @@ def prompt_view(client: ERClient, after: AfterRegister) -> ui.LayoutView:
     register = ui.Button(style=discord.ButtonStyle.primary, label="닉네임 등록")
     register.callback = lambda i: i.response.send_modal(RegisterModal(client, after))
     view.add_item(ui.Container(
-        ui.TextDisplay(f"닉네임을 입력하거나 내 닉네임을 등록해주세요.\n-# {HINT}"),
+        ui.TextDisplay("닉네임을 입력하거나 내 닉네임을 등록해주세요."),
         ui.ActionRow(register),
         accent_colour=visual.colour('info'),
     ))

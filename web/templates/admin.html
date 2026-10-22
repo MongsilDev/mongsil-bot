@@ -16,7 +16,7 @@
   <div class="score-cell">
     <dt>오늘 명령어</dt>
     <dd class="score-value">{{ num(usage.today.value, '회') }}</dd>
-    <dd class="stat-note">어제 이 시각 {{ usage.today.same_time|number }}회, 하루 {{ usage.today.yesterday|number }}회</dd>
+    <dd class="stat-note">어제 이 시각 {{ usage.today.same_time|number }}회, 어제 하루 {{ usage.today.yesterday|number }}회</dd>
   </div>
   {% for label, item, unit in [('30일 명령어', usage.commands, '회'), ('30일 사용자', usage.users, '명'), ('30일 이모지 확대', usage.zooms, '회')] %}
   <div class="score-cell">
@@ -35,7 +35,7 @@
 {{ trend(usage) }}
 
 <section class="block" aria-labelledby="cmd-title">
-  <div class="sec-head"><h2 id="cmd-title">명령어</h2><p class="sec-meta">최근 30일, 응답은 표시 또는 처리 완료 기준</p></div>
+  <div class="sec-head"><h2 id="cmd-title">명령어</h2><p class="sec-meta">최근 30일</p></div>
   {% if commands %}
   <div class="table-wrap">
     <table class="data">
@@ -52,7 +52,7 @@
         <td><span class="cmd">/{{ c.name }}</span></td>
         <td class="col-share"><span class="share"><span class="bar-track"><i style="width:{{ c.bar }}%"></i></span><span class="num">{{ c.count|number }}</span></span></td>
         <td class="num{% if c.error_rate >= 3 %} is-bad{% elif not c.errors %} muted{% endif %}">{{ '%.1f'|format(c.error_rate) }}%</td>
-        <td class="num">{% if c.median is not none %}{{ '%.2f'|format(c.median / 1000) }}초 <span class="basis">{{ c.basis }}</span>{% else %}-{% endif %}</td>
+        <td class="num">{% if c.median is not none %}{{ '%.2f'|format(c.median / 1000) }}초{% else %}-{% endif %}</td>
         <td class="num muted">{% if c.p95 is not none %}{{ '%.2f'|format(c.p95 / 1000) }}초{% else %}-{% endif %}</td>
       </tr>
       {% endfor %}

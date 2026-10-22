@@ -234,7 +234,7 @@ class ERClient(commands.Bot):
         if isinstance(error, app_commands.NoPrivateMessage):
             error_message = "이 명령어는 서버 안에서만 쓸 수 있습니다."
         elif isinstance(error, app_commands.CheckFailure):
-            error_message = "이 명령어를 실행할 권한이 없습니다."
+            error_message = "서버 관리 권한이 있는 멤버만 쓸 수 있습니다."
         elif isinstance(error, app_commands.CommandOnCooldown):
             error_message = f"명령어를 너무 자주 사용했습니다.\n{math.ceil(error.retry_after)}초 후에 다시 시도해주세요."
 

@@ -145,7 +145,7 @@ class PaginationView(CooldownLayoutView):
             sub.append("변동은 24시간 전 기준")
         header = f"### {SERVER_NAMES[RANKING_SERVER]} 랭킹\n-# " + " | ".join(sub)
         if users and not any(u.games for u in users):
-            header += "\n-# 게임 점검이나 장애로 유저별 전적 조회 실패"
+            header += "\n-# 유저별 전적을 불러오지 못했습니다."
         children = [ui.TextDisplay(header), ui.Separator()]
         children += [ui.TextDisplay(format_user_text(u, u.nickname == self.highlight)) for u in users]
         self.add_item(ui.Container(*children, accent_colour=visual.colour('ranking')))
@@ -223,7 +223,7 @@ class PaginationView(CooldownLayoutView):
         if show and not self.guild_rows:
             self.guild_rows = None
             await interaction.followup.send(view=create_error_layout(
-                "이번 시즌 랭크 기록이 있는 등록 멤버가 없습니다.\n/계정으로 닉네임을 등록해주세요."), ephemeral=True)
+                f"{self.season_name} 랭크 기록이 있는 등록 멤버가 없습니다.\n/계정으로 닉네임을 등록해주세요."), ephemeral=True)
             return
         self.show_guild = show
         self.build_layout()

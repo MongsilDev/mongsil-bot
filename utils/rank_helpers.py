@@ -72,7 +72,7 @@ async def fetch_user_stats_solo(
             stats_list = data.get('userStats', [])
             if not stats_list:
                 # uid까지 찾은 유저라 닉네임 문제는 아니다
-                raise NotFoundError("유저 통계 없음", "이번 시즌 랭크 게임 기록이 있는 유저만 조회할 수 있습니다.")
+                raise NotFoundError("유저 통계 없음", "랭크 게임 기록이 있는 유저만 조회할 수 있습니다.")
 
             # 랭크 솔로 모드 통계 찾기 (matchingMode=3, matchingTeamMode=3)
             for stats in stats_list:
@@ -99,7 +99,7 @@ async def fetch_user_stats_solo(
                     "유저 정보를 찾을 수 없습니다.\n닉네임을 바꿨다면 새 닉네임으로 조회해주세요."
                 )
             logger.warning("유저 통계 API 오류: %s", error_msg, extra={"uid": user_id})
-            raise APIError(f"API 오류: {error_msg}", "API 요청 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
+            raise APIError(f"API 오류: {error_msg}", "조회 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     except (APIError, NotFoundError):
         raise
     except Exception as e:

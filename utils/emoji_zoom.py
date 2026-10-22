@@ -165,7 +165,7 @@ async def get_or_create_webhook(channel) -> Optional[discord.Webhook]:
     try:
         webhook = await _pick_webhook(channel) or await channel.create_webhook(
             name=WEBHOOK_NAME,
-            reason="이모지 확대 기능"
+            reason="이모지 확대용 웹후크 생성"
         )
         _webhook_cache[channel_id] = webhook
         return webhook
@@ -303,8 +303,12 @@ async def process_emoji_zoom(message: discord.Message) -> None:
     if not sent and await deleting:
         # 원본만 지워진 경우 봇 이름으로라도 확대본을 남긴다
         try:
-            await message.channel.send(f"**{discord.utils.escape_markdown(message.author.display_name)}**\n{emoji_url}",
-                                       allowed_mentions=discord.AllowedMentions.none())
+            fallback = discord.ui.LayoutView(timeout=None)
+            fallback.add_item(discord.ui.Container(
+                discord.ui.TextDisplay(f"**{discord.utils.escape_markdown(message.author.display_name)}**"),
+                discord.ui.MediaGallery(discord.MediaGalleryItem(emoji_url)),
+            ))
+            await message.channel.send(view=fallback, allowed_mentions=discord.AllowedMentions.none())
         except discord.HTTPException as e:
             logger.warning(f"확대 이모지 대체 전송 실패 (채널 {message.channel.id}): {e}")
         return

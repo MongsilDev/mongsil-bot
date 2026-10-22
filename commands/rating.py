@@ -180,7 +180,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
         if before:
             text += f" `24시간 {start - before:+,}`"
         if not found:
-            text += "\n-# 휴면 확인 중이라 순위표 기준"
+            text += "\n-# 휴면 계정을 확인하는 중이라 순위표 값을 표시합니다."
         return text
 
     sub = [season_name, SERVER_NAMES[RANKING_SERVER]]
