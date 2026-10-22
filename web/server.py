@@ -22,6 +22,7 @@ from aiohttp import web
 from commands.alerts import channel_ok, hour_label
 from utils import accounts, guild_settings
 from utils.config import config
+from utils.errors import BotError
 from utils.emoji_zoom import load_disabled_servers, save_disabled_servers, schedule_webhook_removal
 from utils.logging_config import get_logger
 from utils.usage_db import db
@@ -66,7 +67,7 @@ client: discord.Client = None
 base_url = ''
 client_secret = ''
 http: aiohttp.ClientSession = None
-guild_cache: dict[str, tuple[float, list]] = {}
+guild_cache: dict[int, tuple[float, list]] = {}
 guild_info_cache: dict[int, tuple[float, dict]] = {}
 refreshing: set = set()
 background: set = set()
@@ -282,11 +283,17 @@ def session_key(sid: str) -> str:
     return hashlib.sha256(sid.encode()).hexdigest()
 
 
+def same_token(a: str, b: str) -> bool:
+    """token_urlsafe 값 비교. 깨진 쿠키처럼 ASCII가 아닌 입력은 다른 값"""
+    return isinstance(a, str) and a.isascii() and b.isascii() and secrets.compare_digest(a, b)
+
+
 def secure_headers(request: web.Request, response) -> None:
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
     response.headers.setdefault('Referrer-Policy', 'same-origin')
     response.headers.setdefault('X-Frame-Options', 'DENY')
-    if not request.path.startswith(('/static/', '/preview/')):
+    # 정적 경로의 오류 응답은 로그인 정보가 담긴 HTML이라 캐시 대상 아님
+    if not request.path.startswith(('/static/', '/preview/')) or response.status >= 400:
         # no-store는 뒤로 가기 캐시를 비활성화해 no-cache로 둠
         response.headers.setdefault('Cache-Control', 'private, no-cache')
     if response.content_type == 'text/html':
@@ -306,7 +313,7 @@ def secure_headers(request: web.Request, response) -> None:
 async def session_middleware(request: web.Request, handler):
     sid = request.cookies.get(SESSION_COOKIE)
     request['session'] = None
-    if sid:
+    if sid and sid.isascii():
         row = db.execute("SELECT * FROM sessions WHERE id = ? AND expires > ?", (session_key(sid), int(time.time()))).fetchone()
         if row:
             request['session'] = dict(row)
@@ -383,7 +390,7 @@ def require_login(request: web.Request):
 
 def check_csrf(request: web.Request, token: str | None):
     session = request['session']
-    if not session or not token or not secrets.compare_digest(token.encode(), session['csrf'].encode()):
+    if not session or not token or not same_token(token, session['csrf']):
         raise web.HTTPForbidden(text='CSRF')
 
 
@@ -395,14 +402,14 @@ async def fetch_guilds(session: dict) -> list[dict]:
     async with http.get(f"{API}/users/@me/guilds", headers={'Authorization': f"Bearer {session['token']}"}) as r:
         if r.status == 401:
             db.execute("DELETE FROM sessions WHERE id = ?", (session['id'],))
-            guild_cache.pop(session['id'], None)
+            guild_cache.pop(session['user_id'], None)
             raise SessionExpired()
         r.raise_for_status()
         guilds = await r.json()
     now = time.time()
     for key in [k for k, (ts, _) in guild_cache.items() if now - ts > FALLBACK_TTL]:
         del guild_cache[key]
-    guild_cache[session['id']] = (now, guilds)
+    guild_cache[session['user_id']] = (now, guilds)
     return guilds
 
 
@@ -427,7 +434,7 @@ def refresh_later(key, coro_fn) -> None:
 async def user_guilds(request: web.Request) -> list[dict]:
     """로그인 유저의 서버 목록. 60초가 지나면 캐시를 쓰면서 뒤에서 새로 받음"""
     session = request['session']
-    cached = guild_cache.get(session['id'])
+    cached = guild_cache.get(session['user_id'])
     age = time.time() - cached[0] if cached else None
     if cached and age < GUILDS_TTL:
         return cached[1]
@@ -489,7 +496,7 @@ async def callback(request: web.Request):
     state, _, nxt = saved.partition('|')
     if 'error' in request.query:
         raise web.HTTPFound('/')
-    if not state or not secrets.compare_digest(state.encode(), request.query.get('state', '').encode()) or 'code' not in request.query:
+    if not state or not same_token(state, request.query.get('state', '')) or 'code' not in request.query:
         return error_page(request, 400, "로그인하지 못했습니다", "처음 화면에서 다시 로그인해주세요.")
 
     data = {
@@ -527,11 +534,16 @@ async def callback(request: web.Request):
 
 
 async def logout(request: web.Request):
-    form = await request.post()
+    if not request['session']:
+        raise web.HTTPForbidden(text='CSRF')
+    try:
+        form = await request.post()
+    except (ValueError, LookupError):
+        raise web.HTTPBadRequest()
     check_csrf(request, form.get('csrf'))
     session = request['session']
     db.execute("DELETE FROM sessions WHERE id = ?", (session['id'],))
-    guild_cache.pop(session['id'], None)
+    guild_cache.pop(session['user_id'], None)
     try:
         auth = aiohttp.BasicAuth(str(client.application_id), client_secret)
         async with http.post(f"{API}/oauth2/token/revoke", data={'token': session['token'], 'token_type_hint': 'access_token'}, auth=auth) as r:
@@ -811,7 +823,7 @@ async def toggle_zoom(request: web.Request):
     check_csrf(request, request.headers.get('X-CSRF-Token'))
     try:
         body = await request.json()
-    except ValueError:
+    except (ValueError, LookupError):
         raise web.HTTPBadRequest()
     if not isinstance(body, dict):
         raise web.HTTPBadRequest()
@@ -850,7 +862,7 @@ async def save_setting(request: web.Request):
     check_csrf(request, request.headers.get('X-CSRF-Token'))
     try:
         body = await request.json()
-    except ValueError:
+    except (ValueError, LookupError):
         raise web.HTTPBadRequest()
     if not isinstance(body, dict):
         raise web.HTTPBadRequest()
@@ -1004,15 +1016,34 @@ async def health(request: web.Request):
 
 
 _cut_cache: dict = {}
+_cut_lock = asyncio.Lock()
+# bser 장애 중에는 요청마다 다시 계산하지 않고 마지막 값을 줌
+CUT_RETRY_AFTER_FAIL = 60
+
+
+def _cut_due() -> bool:
+    now = time.time()
+    return now - _cut_cache.get('at', 0) > 300 and now - _cut_cache.get('failed', 0) > CUT_RETRY_AFTER_FAIL
 
 
 async def api_cut(request: web.Request):
     """labs.mongsil.dev 이터컷 예측 페이지용 JSON. 5분 동안 같은 값"""
     from commands.rating import cut_snapshot
-    if time.time() - _cut_cache.get('at', 0) > 300:
-        data = await cut_snapshot(client)
-        if data:
-            _cut_cache.update(at=time.time(), data=data)
+    # 계산 중에는 지난 값이 있으면 기다리지 않고 바로 줌
+    if _cut_due() and not (_cut_lock.locked() and 'data' in _cut_cache):
+        async with _cut_lock:
+            if _cut_due():
+                data = None
+                try:
+                    data = await cut_snapshot(client)
+                except BotError as e:
+                    logger.warning(f"이터컷 JSON 계산 실패: {e}")
+                except Exception:
+                    logger.error("이터컷 JSON 계산 오류", exc_info=True)
+                if data:
+                    _cut_cache.update(at=time.time(), data=data)
+                else:
+                    _cut_cache['failed'] = time.time()
     data = _cut_cache.get('data')
     if not data:
         return web.json_response({'error': 'unavailable'}, status=503)
@@ -1022,7 +1053,7 @@ async def api_cut(request: web.Request):
 async def invite(request: web.Request):
     """봇 추가 링크. ?guild=서버ID면 그 서버를 미리 고름"""
     gid = request.query.get('guild', '')
-    raise web.HTTPFound(invite_url(int(gid) if gid.isdigit() else None))
+    raise web.HTTPFound(invite_url(int(gid) if re.fullmatch(r'[0-9]{1,20}', gid) else None))
 
 
 def redirect_to(path: str, permanent: bool = True):
