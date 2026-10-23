@@ -210,6 +210,8 @@ class Rank(commands.Cog):
 
     @app_commands.command(name="랭크", description="시즌 랭크 전적")
     @app_commands.describe(닉네임="이터널 리턴 닉네임, 비우면 내 닉네임")
+    # 한 사람이 bser 호출을 몰아 쓰지 못하게 함
+    @app_commands.checks.cooldown(3, 10)
     @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def rank_command(self, interaction: discord.Interaction,
                            닉네임: Optional[str] = None):

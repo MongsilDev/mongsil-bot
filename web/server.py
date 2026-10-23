@@ -42,6 +42,9 @@ MANAGE_GUILD = 1 << 5
 # HTTPS에서는 __Host- 접두사로 하위 도메인이 쿠키를 설정하지 못하게 함. 이름은 start_dashboard에서 정함
 SESSION_COOKIE = 'mb_session'
 STATE_COOKIE = 'mb_state'
+# 같은 IP에서 오는 OAuth 토큰 교환은 이 간격에 한 번만 보냄
+CALLBACK_GAP = 5.0
+_last_callback: dict[str, float] = {}
 SESSION_TTL = 7 * 86400
 GUILDS_TTL = 60
 GUILD_INFO_TTL = 300
@@ -498,6 +501,13 @@ async def callback(request: web.Request):
         raise web.HTTPFound('/')
     if not state or not same_token(state, request.query.get('state', '')) or 'code' not in request.query:
         return error_page(request, 400, "로그인하지 못했습니다", "처음 화면에서 다시 로그인해주세요.")
+    ip = request.headers.get('CF-Connecting-IP') or request.remote or ''
+    now = time.monotonic()
+    if now - _last_callback.get(ip, 0) < CALLBACK_GAP:
+        return error_page(request, 429, "로그인하지 못했습니다", "잠시 후 처음 화면에서 다시 로그인해주세요.")
+    _last_callback[ip] = now
+    if len(_last_callback) > 5000:
+        _last_callback.clear()
 
     data = {
         'grant_type': 'authorization_code',

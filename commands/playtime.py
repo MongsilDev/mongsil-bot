@@ -305,6 +305,8 @@ class Playtime(commands.Cog):
 
     @app_commands.command(name="플탐", description="최근 7일 플레이 타임")
     @app_commands.describe(닉네임="이터널 리턴 닉네임, 비우면 내 닉네임")
+    # 조회 한 번에 bser를 최대 30쪽 부름
+    @app_commands.checks.cooldown(2, 30)
     @handle_errors(user_message="플레이 타임 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def playtime(self, interaction: discord.Interaction,
                        닉네임: Optional[str] = None):

@@ -261,13 +261,25 @@ _last_refresh: Dict[object, float] = {}
 
 
 def too_soon(key) -> bool:
-    """새로고침과 조 선택은 메시지마다, 자동 갱신 켜기와 끄기는 사람마다 REFRESH_GAP 간격"""
+    """새로고침과 조 선택은 메시지마다와 사람마다, 자동 갱신 켜기와 끄기는 사람마다 REFRESH_GAP 간격"""
     now = time.monotonic()
     if now - _last_refresh.get(key, 0) < REFRESH_GAP:
         return True
     _last_refresh[key] = now
     if len(_last_refresh) > 5000:
         _last_refresh.clear()
+    return False
+
+
+async def card_too_soon(interaction: discord.Interaction) -> bool:
+    # 같은 카드의 연속 클릭은 조용히 넘기고, 카드를 번갈아 누르는 사람에게만 안내. 통과한 클릭만 두 간격을 기록
+    if time.monotonic() - _last_refresh.get(interaction.message.id, 0) < REFRESH_GAP:
+        await interaction.response.defer()
+        return True
+    if too_soon(('card', interaction.user.id)):
+        await reply_error(interaction, TOO_SOON)
+        return True
+    too_soon(interaction.message.id)
     return False
 
 
@@ -316,8 +328,7 @@ class RefreshButton(ui.DynamicItem[ui.Button], template=r'tr:(?P<code>[0-9A-Z]{6
         return cls(match['code'], match['g'])
 
     async def callback(self, interaction: discord.Interaction):
-        if too_soon(interaction.message.id):
-            await interaction.response.defer()
+        if await card_too_soon(interaction):
             return
         await redraw(interaction, self.code, self.group)
 
@@ -339,8 +350,7 @@ class GroupSelect(ui.DynamicItem[ui.Select], template=r'tg:(?P<code>[0-9A-Z]{6,7
                 and not interaction.permissions.manage_messages:
             await reply_error(interaction, "자동 갱신 중인 카드는 자동 갱신을 켠 사람만 조를 바꿀 수 있습니다.")
             return
-        if too_soon(interaction.message.id):
-            await interaction.response.defer()
+        if await card_too_soon(interaction):
             return
         await redraw(interaction, self.code, group)
 
