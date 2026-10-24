@@ -110,8 +110,9 @@ async def _build(client) -> None:
         return {'input': '', 'html': render_view(create_bot_info_layout(client))}
 
     async def tournament():
-        from commands.tournament import board_view, fetch_board
-        return {'input': 'EXAMPLE', 'html': render_view(board_view(await fetch_board('EXAMPLE')))}
+        from commands.tournament import card_view, fetch_board, fetch_image
+        b = await fetch_board('EXAMPLE')
+        return {'input': 'EXAMPLE', 'html': render_view(card_view(b, await fetch_image('EXAMPLE', b['group'])))}
 
     async def settings():
         # 실제 서버 설정을 읽지 않도록 존재하지 않는 서버 ID로 그림
