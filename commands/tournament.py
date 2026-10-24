@@ -533,8 +533,9 @@ class Tournament(commands.Cog):
             try:
                 image_id = await post_round(channel, b, live['png'], None)
             except discord.HTTPException as e:
-                # 다음 tick이 다시 올림
                 logger.warning(f"자동 갱신 첫 이미지 실패 {code}: {type(e).__name__}: {e}")
+                # version 0이면 since 없이 조회해 다음 tick이 다시 올림
+                b = {**b, 'version': 0}
         live_put(message, interaction.guild.id, b, interaction.user.id, image_id, b['played'] if image_id else 0)
         logger.info(f"자동 갱신 켬 {code} {b['group']} 서버 {interaction.guild.id}")
 
