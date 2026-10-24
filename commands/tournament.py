@@ -453,13 +453,17 @@ class Tournament(commands.Cog):
             if b is UNCHANGED or not live_get(mid):
                 return
             if png is not None:
-                image_id = await post_round(channel, b, png, None if b['played'] > last_round else image_id)
+                new_round = b['played'] > last_round
+                image_id = await post_round(channel, b, png, None if new_round else image_id)
                 last_round = b['played']
             if b['ended']:
                 live_drop(mid)
                 await notice.edit(view=notice_view(b, 'ended'))
             else:
                 live_save(mid, b, image_id, last_round)
+                # 안내 메시지의 라운드 수를 맞추고, 봇이 꺼진 사이 지워졌으면 NotFound로 끔
+                if png is not None and new_round:
+                    await notice.edit(view=notice_view(b))
         except discord.NotFound:
             live_drop(mid)
             logger.info(f"자동 갱신 안내 메시지 없음, 끔 {row['code']} {mid}")
@@ -479,6 +483,11 @@ class Tournament(commands.Cog):
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
         # tick은 안내 메시지를 끝날 때만 고쳐서 지워진 것을 따로 알아야 함
         live_drop(payload.message_id)
+
+    @commands.Cog.listener()
+    async def on_raw_bulk_message_delete(self, payload: discord.RawBulkMessageDeleteEvent):
+        for mid in payload.message_ids:
+            live_drop(mid)
 
     async def code_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         rows = await my_tournaments(interaction.user.id)
@@ -528,15 +537,17 @@ class Tournament(commands.Cog):
             await reply_error(interaction, live['blocked'])
         if view is None or 'board' not in live:
             return
-        b, image_id = live['board'], None
+        b = live['board']
+        # 첫 이미지를 올리는 사이 끄기를 누를 수 있어 기록부터 남김. version 0이면 다음 tick이 since 없이 조회해 다시 올림
+        live_put(message, interaction.guild.id, {**b, 'version': 0}, interaction.user.id, None, 0)
         if live['png']:
             try:
                 image_id = await post_round(channel, b, live['png'], None)
             except discord.HTTPException as e:
                 logger.warning(f"자동 갱신 첫 이미지 실패 {code}: {type(e).__name__}: {e}")
-                # version 0이면 since 없이 조회해 다음 tick이 다시 올림
-                b = {**b, 'version': 0}
-        live_put(message, interaction.guild.id, b, interaction.user.id, image_id, b['played'] if image_id else 0)
+            else:
+                if live_get(message.id):
+                    live_save(message.id, b, image_id, b['played'])
         logger.info(f"자동 갱신 켬 {code} {b['group']} 서버 {interaction.guild.id}")
 
     tournament_command.autocomplete('코드')(code_autocomplete)
