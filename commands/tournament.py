@@ -641,14 +641,14 @@ class RelayLinkButton(ui.DynamicItem[ui.Button], template=r'tl:(?P<code>[0-9A-Z]
 _kept: Dict[int, Tuple[float, int, str, bytes]] = {}
 
 
-def keep_file(key: int, channel_id: int, file_name: str, data: bytes) -> None:
+def keep_file(key: int, channel_id: int, author_id: int, file_name: str, data: bytes) -> None:
     """다시 보내기용 파일 바이트. RELAY_KEEP_SECONDS 동안 메모리에만"""
     now = time.monotonic()
     for k in [k for k, v in _kept.items() if v[0] < now]:
         del _kept[k]
     while len(_kept) >= RELAY_KEEP_MAX:
         del _kept[next(iter(_kept))]
-    _kept[key] = (now + RELAY_KEEP_SECONDS, channel_id, file_name, data)
+    _kept[key] = (now + RELAY_KEEP_SECONDS, channel_id, author_id, file_name, data)
 
 
 def retry_view(key: int) -> ui.LayoutView:
@@ -678,17 +678,18 @@ class RelayRetryButton(ui.DynamicItem[ui.Button], template=r'tq:(?P<key>[0-9]+)'
         if too_soon(('relay', interaction.user.id)):
             return await reply_error(interaction, TOO_SOON)
         await interaction.response.defer()
-        _, channel_id, file_name, data = kept
-        r = await relay(channel_id, interaction.user.id, file_name, data)
+        # 동시에 눌러도 한 번만 보내도록 먼저 꺼내고, 실패하면 되돌림. 권한은 누른 사람이 아닌 올린 사람 기준
+        _kept.pop(self.key, None)
+        _, channel_id, author_id, file_name, data = kept
+        r = await relay(channel_id, author_id, file_name, data)
         if r is None:
+            _kept[self.key] = kept
             return await reply_error(interaction, RELAY_DOWN)
         log_result(r)
         status = r['status']
-        # 누른 사람이 운영자가 아니면 카드를 남겨 운영자가 다시 누를 수 있게 함
         if status == 'forbidden':
-            return await reply_error(interaction, UPLOAD_FORBIDDEN)
-        _kept.pop(self.key, None)
-        if status == 'unlinked':
+            await interaction.edit_original_response(view=create_error_layout(UPLOAD_FORBIDDEN))
+        elif status == 'unlinked':
             unlink(channel_id)
             await interaction.message.delete()
         elif status == 'invalid':
@@ -836,7 +837,7 @@ class Tournament(commands.Cog):
             return
         r = await relay(message.channel.id, message.author.id, a.filename, data)
         if r is None:
-            keep_file(a.id, message.channel.id, a.filename, data)
+            keep_file(a.id, message.channel.id, message.author.id, a.filename, data)
             await reply(retry_view(a.id))
             return
         log_result(r)
