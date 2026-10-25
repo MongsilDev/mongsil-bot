@@ -526,22 +526,32 @@ def unlink(channel_id: int) -> None:
     linked.discard(channel_id)
 
 
+class LinkSelect(ui.ChannelSelect):
+    """미리 고른 채널은 values에 들어오지 않아 고른 채널을 따로 들고 있음"""
+    def __init__(self, channel: Optional[discord.abc.GuildChannel]):
+        super().__init__(channel_types=[discord.ChannelType.text], min_values=0, max_values=1,
+                         default_values=[channel] if channel else [])
+        self.chosen: Optional[int] = channel.id if channel else None
+
+    async def callback(self, interaction: discord.Interaction):
+        self.chosen = self.values[0].id if self.values else None
+        await interaction.response.defer()
+
+
 class LinkView(ui.LayoutView):
     """조마다 결과를 받을 채널을 고르는 나만 보이는 카드"""
     def __init__(self, code: str, groups: List[str], guild: discord.Guild):
         super().__init__(timeout=600)
         self.code, self.guild = code, guild
         self.rows = link_rows(code)
-        self.selects: Dict[str, ui.ChannelSelect] = {}
+        self.selects: Dict[str, LinkSelect] = {}
         children = []
         for g in groups:
             row = self.rows.get(g)
             if not row or row['guild_id'] != guild.id:
                 row = None if row else recent_link(guild.id, g)
             channel = guild.get_channel(row['channel_id']) if row else None
-            select = ui.ChannelSelect(channel_types=[discord.ChannelType.text], min_values=0, max_values=1,
-                                      default_values=[channel] if channel else [])
-            select.callback = self.picked
+            select = LinkSelect(channel)
             self.selects[g] = select
             if len(groups) > 1:
                 children.append(ui.TextDisplay(f"{g}조"))
@@ -551,21 +561,15 @@ class LinkView(ui.LayoutView):
         save.callback = self.save
         self.add_item(ui.ActionRow(save))
 
-    async def picked(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-
     async def save(self, interaction: discord.Interaction):
         await interaction.response.defer()
         me = self.guild.me
         chosen: Dict[str, Optional[discord.abc.GuildChannel]] = {}
         missing_lines = []
         for g, select in self.selects.items():
-            channel = self.guild.get_channel(select.values[0].id) if select.values else None
+            channel = self.guild.get_channel(select.chosen) if select.chosen else None
             chosen[g] = channel
-            if select.values and channel is None:
-                name = discord.utils.escape_markdown(select.values[0].name)
-                missing_lines.append(f"몽실봇에 #{name}의 채널 보기, 메시지 보내기 권한이 없습니다.")
-            elif channel is not None:
+            if channel is not None:
                 perms = channel.permissions_for(me)
                 missing = [n for n, ok in (('채널 보기', perms.view_channel), ('메시지 보내기', perms.send_messages))
                            if not ok]
