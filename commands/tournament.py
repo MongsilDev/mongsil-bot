@@ -291,6 +291,8 @@ def result_view(r: dict) -> ui.LayoutView:
 
 def has_relay_button(components) -> bool:
     for c in components or []:
+        if c is None:
+            continue
         if (getattr(c, 'custom_id', None) or '').startswith('tl:'):
             return True
         if has_relay_button(getattr(c, 'children', None)) or has_relay_button([getattr(c, 'accessory', None)]):
@@ -571,12 +573,14 @@ class LinkView(ui.LayoutView):
             chosen[g] = channel
             if channel is not None:
                 perms = channel.permissions_for(me)
-                missing = [n for n, ok in (('채널 보기', perms.view_channel), ('메시지 보내기', perms.send_messages))
-                           if not ok]
+                # 결과는 답장으로 보내므로 메시지 기록 보기도 필요
+                missing = [n for n, ok in (('채널 보기', perms.view_channel), ('메시지 보내기', perms.send_messages),
+                                           ('메시지 기록 보기', perms.read_message_history)) if not ok]
                 if missing:
                     name = discord.utils.escape_markdown(channel.name)
                     missing_lines.append(f"몽실봇에 #{name}의 {', '.join(missing)} 권한이 없습니다.")
         if missing_lines:
+            missing_lines.append("채널 권한에서 몽실봇에 이 권한을 허용해주세요.")
             await reply_error(interaction, '\n'.join(missing_lines))
             return
         # 다른 서버에 연결된 조를 비워 두었으면 그 연결은 건드리지 않음
@@ -809,6 +813,10 @@ class Tournament(commands.Cog):
                 loaded.append((a, await a.read()))
             except discord.HTTPException as e:
                 logger.warning(f"결과 파일 내려받기 실패: {type(e).__name__}")
+                try:
+                    await message.reply(view=create_error_layout(REUPLOAD), mention_author=False)
+                except discord.HTTPException:
+                    pass
         for a, data in loaded:
             try:
                 await self.relay_one(message, a, data)
