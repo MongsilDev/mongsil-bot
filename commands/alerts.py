@@ -1,9 +1,8 @@
 """
-서버 알림. 패치 노트, 점검, 매일 이터컷을 서버가 지정한 채널에 올림
+서버 알림. 공식 소식 6개 분류와 매일 이터컷을 서버가 지정한 채널에 올림
 """
 import asyncio
 import logging
-import re
 import time
 from datetime import datetime
 from typing import Callable, Optional, Set
@@ -24,19 +23,12 @@ logger = get_logger('알림')
 KST = ZoneInfo('Asia/Seoul')
 NEWS = 'https://playeternalreturn.com/api/v1/posts/news?category={}&page=1&hl=ko-KR'
 ARTICLE = 'https://playeternalreturn.com/posts/news/{}?hl=ko-KR'
-WINDOW = re.compile(r'점검\s*시간\s*:\s*(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})\s*~\s*'
-                    r'(?:(\d{4})-(\d{1,2})-(\d{1,2})\s+)?(\d{1,2}):(\d{2})')
-WEEKDAYS = '월화수목금토일'
 # 공지가 늦게 수정돼도 오래된 글은 알리지 않음
 RECENT = 3 * 86400
 
 
 def hour_label(hour: int) -> str:
     return f"{'오전' if hour < 12 else '오후'} {hour % 12 or (12 if hour else 0)}시"
-
-
-def time_label(t: datetime) -> str:
-    return hour_label(t.hour) + (f" {t.minute}분" if t.minute else "")
 
 
 def channel_ok(channel, attach: bool) -> list:
@@ -61,56 +53,13 @@ def _recent(article: dict) -> bool:
     return time.time() - created.timestamp() < RECENT
 
 
-def maintenance_kind(title: str) -> Optional[str]:
-    if '점검' not in title or '확률' in title:
-        return None
-    if '완료' in title:
-        return 'done'
-    if '연장' in title:
-        return 'extended'
-    return 'notice'
-
-
-async def maintenance_window(article_id: int) -> Optional[str]:
-    """공지 본문의 점검 시간. 형식이 다르면 None"""
-    try:
-        session = await api_client.get_session()
-        async with session.get(ARTICLE.format(article_id)) as response:
-            response.raise_for_status()
-            page = await response.text()
-    except Exception as e:
-        logger.warning(f"점검 공지 본문 조회 실패: {article_id} {type(e).__name__}: {e}")
-        return None
-    m = WINDOW.search(re.sub(r'<[^>]+>', ' ', page))
-    if not m:
-        return None
-    start = datetime(int(m[1]), int(m[2]), int(m[3]), int(m[4]), int(m[5]))
-    end_day = (int(m[6]), int(m[7]), int(m[8])) if m[6] else (start.year, start.month, start.day)
-    end = datetime(*end_day, int(m[9]), int(m[10]))
-    text = f"{start.month}월 {start.day}일 {WEEKDAYS[start.weekday()]}요일 {time_label(start)}부터 "
-    if end.date() != start.date():
-        text += f"{end.month}월 {end.day}일 "
-    return text + f"{time_label(end)}까지"
-
-
-def patch_layout(article: dict) -> ui.LayoutView:
+def news_layout(article: dict, name: str, emoji: str) -> ui.LayoutView:
     view = ui.LayoutView(timeout=None)
     children = [ui.TextDisplay(f"### {_title(article)}")]
     if article.get('thumbnail_url'):
         children.append(ui.MediaGallery(discord.MediaGalleryItem(article['thumbnail_url'])))
     view.add_item(ui.Container(*children, accent_colour=visual.colour('season')))
-    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="핫픽스" if "핫픽스" in _title(article) else "패치 노트", emoji=EMOJIS['patch_note'],
-                                         url=article.get('url') or ARTICLE.format(article['id']))))
-    return view
-
-
-def maintenance_layout(kind: str, article: dict, window: Optional[str]) -> ui.LayoutView:
-    head = {'notice': '점검 안내', 'extended': '점검 연장', 'done': '점검 완료'}[kind]
-    body = "게임을 다시 시작해주세요." if kind == 'done' else window or _title(article)
-    view = ui.LayoutView(timeout=None)
-    view.add_item(ui.Container(ui.TextDisplay(f"### {head}\n{body}"),
-                               accent_colour=visual.colour('concurrent' if kind == 'done' else 'season')))
-    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="공지", emoji=EMOJIS['web'],
+    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label=name, emoji=emoji,
                                          url=article.get('url') or ARTICLE.format(article['id']))))
     return view
 
@@ -171,56 +120,34 @@ class Alerts(commands.Cog):
 
     @tasks.loop(minutes=5)
     async def watch_news(self):
-        for name, check in (('패치 노트 확인', self.check_patches), ('점검 공지 확인', self.check_maintenance)):
+        for key, path, name in guild_settings.NEWS:
             try:
-                await check()
+                await self.check_category(key, path, name)
                 self._failures[name] = 0
             except Exception as e:
                 self.note_failure(name, e)
 
-    async def check_patches(self):
-        articles = (await api_client.get(NEWS.format('patchnote'), use_cache=False))['articles']
+    async def check_category(self, key: str, path: str, name: str):
+        articles = (await api_client.get(NEWS.format(path), use_cache=False))['articles']
         ids = [a['id'] for a in articles]
-        seen = guild_settings.state('seen_patches')
+        # 패치노트는 분류를 나누기 전 기록을 이어 써서 배포 직후 지난 글을 다시 보내지 않음
+        state_key = 'seen_patches' if key == 'alert_patch' else f'seen_{path}'
+        seen = guild_settings.state(state_key)
         # 처음 켤 때 이미 게시된 글은 확인한 것으로 기록
         if seen is None:
-            guild_settings.set_state('seen_patches', ids)
+            guild_settings.set_state(state_key, ids)
             return
         new = [a for a in articles if a['id'] not in seen]
         if not new:
             return
-        if not guild_settings.set_state('seen_patches', (ids + [i for i in seen if i not in ids])[:60]):
+        if not guild_settings.set_state(state_key, (ids + [i for i in seen if i not in ids])[:60]):
             return
+        emoji = EMOJIS['patch_note'] if key == 'alert_patch' else EMOJIS['web']
         for article in sorted(new, key=lambda a: a['id']):
-            if _recent(article):
-                logger.info(f"패치 노트 알림 시작: {_title(article)}")
-                await self.deliver('alert_patch', lambda: patch_layout(article))
-
-    async def check_maintenance(self):
-        articles = (await api_client.get(NEWS.format('news'), use_cache=False))['articles']
-        found = {str(a['id']): (a, kind) for a in articles if (kind := maintenance_kind(_title(a)))}
-        seen = guild_settings.state('seen_maintenance')
-        if seen is None:
-            guild_settings.set_state('seen_maintenance', {i: kind for i, (_, kind) in found.items()})
-            return
-        changed = [(a, kind) for i, (a, kind) in found.items() if seen.get(i) != kind]
-        if not changed:
-            return
-        seen.update({str(a['id']): kind for a, kind in changed})
-        if not guild_settings.set_state('seen_maintenance', dict(list(seen.items())[-30:])):
-            return
-        for article, kind in sorted(changed, key=lambda c: c[0]['id']):
-            if not _recent(article):
-                continue
-            # 공지 제목 수정과 완료 공지가 겹치면 완료는 한 번만
-            if kind == 'done':
-                if time.time() - guild_settings.state('maintenance_done_at', 0) < 6 * 3600:
-                    continue
-                if not guild_settings.set_state('maintenance_done_at', time.time()):
-                    continue
-            window = None if kind == 'done' else await maintenance_window(article['id'])
-            logger.info(f"점검 알림 시작: {kind} {_title(article)}")
-            await self.deliver('alert_maintenance', lambda: maintenance_layout(kind, article, window))
+            # 제목이 빈 글은 공식 사이트 첫 화면으로 넘어감
+            if _recent(article) and _title(article):
+                logger.info(f"{name} 알림 시작: {_title(article)}")
+                await self.deliver(key, lambda: news_layout(article, name, emoji))
 
     async def cut_view(self) -> Optional[ui.LayoutView]:
         from commands.rating import create_rating_layout, fetch_rating_info, season_end_for

@@ -39,19 +39,45 @@ DEFAULTS: Dict[str, Any] = {
     'command_mode': 'all',
     'command_channels': [],
     'invite_days': 0,
+    'alert_news': 0,
     'alert_patch': 0,
-    'alert_maintenance': 0,
+    'alert_esports': 0,
+    'alert_event': 0,
+    'alert_broadcasts': 0,
+    'alert_dev': 0,
     'alert_cut': 0,
     'cut_hour': 9,
 }
 
+# 설정 키, 공식 소식 분류 path, 이름. 공식 사이트 탭 순서
+NEWS = [
+    ('alert_news', 'news', '새소식'),
+    ('alert_patch', 'patchnote', '패치노트'),
+    ('alert_esports', 'esports', 'E스포츠'),
+    ('alert_event', 'event', '이벤트'),
+    ('alert_broadcasts', 'broadcasts', '공식 방송'),
+    ('alert_dev', 'dev', '개발 일지'),
+]
+
 # 설정 키, 이름, 설명
-ALERTS = [
-    ('alert_patch', '패치 노트', '공식 패치 노트와 핫픽스'),
-    ('alert_maintenance', '점검', '공식 점검 공지와 점검 완료'),
+ALERTS = [(key, name, '') for key, _, name in NEWS] + [
     ('alert_cut', '매일 이터컷', '아시아1 이터니티와 데미갓 컷'),
 ]
 ALERT_NAMES = {key: name for key, name, _ in ALERTS}
+
+
+def migrate() -> None:
+    """점검 공지가 새소식 분류에 있어 점검 알림 채널을 새소식으로 옮김"""
+    db.executescript("""
+    BEGIN;
+    INSERT OR IGNORE INTO guild_settings
+        SELECT guild_id, 'alert_news', value FROM guild_settings WHERE key = 'alert_maintenance';
+    DELETE FROM guild_settings WHERE key = 'alert_maintenance';
+    COMMIT;
+    """)
+
+
+migrate()
 
 # 메시지마다 읽는 값이 있어 전부 메모리에 올려 둠
 _cache: Dict[int, Dict[str, Any]] = {}

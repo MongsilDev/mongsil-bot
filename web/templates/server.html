@@ -106,7 +106,7 @@
       <div class="setting" data-setting>
         <div class="setting-text">
           <h3 id="{{ a.key }}-label">{{ a.name }}</h3>
-          <p>{{ a.desc }}</p>
+          {% if a.desc %}<p>{{ a.desc }}</p>{% endif %}
         </div>
         <div class="controls">
           <select class="select" data-key="{{ a.key }}" aria-labelledby="{{ a.key }}-label">
