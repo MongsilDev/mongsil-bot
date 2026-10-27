@@ -274,11 +274,8 @@ def notice_text(b: dict, state: str = 'on', linked: bool = True) -> str:
         if state == 'ended' and many:
             stopped = f"{b['group']}조 경기가 끝나 자동 갱신을 멈췄습니다."
         return '\n'.join([*lines, f"-# {stopped}"])
-    rounds = (f"{b['played']}/{b['plannedRounds']}라운드" if b['mode'] == 'points' and not b['ended']
-              else f"{b['played']}라운드")
-    lines.append(f"-# {MODE.get(b['mode'], b['mode'])} | {rounds}")
-    if b.get('next') and not b['ended']:
-        lines += next_lines(b['next'])
+    mode = MODE.get(b['mode'], b['mode'])
+    lines.append(f"-# {mode} | {b['plannedRounds']}라운드" if b['mode'] == 'points' else f"-# {mode}")
     if linked:
         lines.append(f"-# 이 채널에 올린 게임 결과 CSV는 {b['group']}조 순위에 반영됩니다." if many
                      else "-# 이 채널에 올린 게임 결과 CSV는 순위에 반영됩니다.")
@@ -311,14 +308,15 @@ def already_text(b: dict) -> str:
     return f"이 채널은 이미 {name}에 연결돼 있습니다."
 
 
-def round_view(b: dict, png: bytes) -> ui.LayoutView:
-    """자동 갱신이 채널에 올리는 라운드 순위 이미지"""
+def round_view(b: dict, png: bytes, button: bool = True) -> ui.LayoutView:
+    """자동 갱신이 채널에 올리는 라운드 순위 이미지. button은 순위표 링크 버튼"""
     view = ui.LayoutView(timeout=None)
     children = [gallery(view, png)]
     if b.get('next') and not b['ended']:
         children.append(ui.TextDisplay('\n'.join(next_lines(b['next']))))
     view.add_item(ui.Container(*children, accent_colour=visual.colour('tournament')))
-    view.add_item(ui.ActionRow(link_button(b)))
+    if button:
+        view.add_item(ui.ActionRow(link_button(b)))
     return view
 
 
@@ -785,7 +783,8 @@ async def channel_list(client: discord.Client, user_id: int) -> dict:
 
 async def post_round(channel, b: dict, png: bytes, image_id: Optional[int]) -> int:
     """image_id 메시지를 새 이미지로 고침. 없거나 지워졌으면 새로 올림"""
-    view = round_view(b, png)
+    # 진행 중 라운드는 안내 메시지에 순위표 버튼이 있어 최종 결과에만 둠
+    view = round_view(b, png, button=b['ended'])
     if image_id:
         try:
             await channel.get_partial_message(image_id).edit(view=view, attachments=visual.files_of(view))

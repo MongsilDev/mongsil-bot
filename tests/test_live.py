@@ -82,6 +82,28 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
             await self.cog.refresh(mid)
         self.assertEqual(len(self.ch.edits), 2)
 
+    async def test_round_messages_leave_notice(self):
+        t.copy_set(101, 1, CODE, 'A')
+        mid = add_board(self.ch)
+        t.live_note(mid, t.notice_key(board(), linked=True))
+        nxt = {'roundNo': 2, 'main': '비', 'sub': None, 'bans': []}
+
+        def buttons(view):
+            return [i for i in view.walk_children() if isinstance(i, discord.ui.Button)]
+
+        with mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'png')):
+            with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=board(played=1, version=2, next=nxt))):
+                await self.cog.refresh(mid)
+            self.assertEqual(self.ch.edits, [])
+            view = self.ch.sent[-1][1]['view']
+            self.assertIn("다음 2라운드", text_of(view))
+            self.assertEqual(buttons(view), [])
+            with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=board(played=4, version=3, ended=True))):
+                await self.cog.refresh(mid)
+        self.assertEqual(len(self.ch.sent), 2)
+        self.assertEqual(len(buttons(self.ch.sent[-1][1]['view'])), 1)
+        self.assertIn("끝나", edited_text(self.ch, mid))
+
     async def test_stop_during_upload_keeps_stopped_notice(self):
         t.copy_set(101, 1, CODE, 'A')
         mid = add_board(self.ch)
