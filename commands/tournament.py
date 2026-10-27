@@ -974,13 +974,19 @@ class Tournament(commands.Cog):
                 live_drop(mid)
                 await notice.edit(view=notice_view(b, 'ended'), attachments=[])
                 return
-            live_save(mid, b, image_id, last_round)
-            # 안내 내용이 같으면 고치지 않음. 봇이 꺼진 사이 지워졌으면 NotFound로 끔
             image = has_image(row['notice'])
             key = notice_key(b, linked=is_linked, image=image)
+            fresh = None
+            if key != row['notice'] and image and not b['played']:
+                # 1라운드 전에 대회 정보가 바뀌면 빈 순위 이미지도 새로 그림. 못 받으면 version을 남기지 않아 다시 시도
+                try:
+                    fresh = await fetch_image(row['code'], row['grp'])
+                except (NotFoundError, ServiceDownError) as e:
+                    logger.warning(f"자동 갱신 안내 이미지 조회 실패 {row['code']}: {type(e).__name__}")
+                    return
+            live_save(mid, b, image_id, last_round)
+            # 안내 내용이 같으면 고치지 않음. 봇이 꺼진 사이 지워졌으면 NotFound로 끔
             if key != row['notice']:
-                # 1라운드 전에 대회 정보가 바뀌면 빈 순위 이미지도 새로 그림
-                fresh = await fetch_image(row['code'], row['grp']) if image and not b['played'] else None
                 view = notice_view(b, linked=is_linked, png=fresh, image=image)
                 if fresh is None:
                     await notice.edit(view=view)
