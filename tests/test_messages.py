@@ -286,6 +286,26 @@ class OnMessageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.ch.deleted, [500])
         self.assertEqual(t._pending, {})
 
+    async def test_retry_during_other_relay_keeps_message(self):
+        t.copy_set(101, 1, CODE, 'A')
+        message = csv_message(self.ch, attachments=[attachment(77, 'a.csv'), attachment(78, 'b.csv'), attachment(79, 'c.csv')])
+        interaction = self.retry_interaction()
+        results = [added(), None]
+
+        async def relay(*args):
+            if 'c.csv' in args:
+                # 셋째 파일을 보내는 사이 둘째 파일의 다시 보내기가 끝남
+                with mock.patch.object(t, 'relay', mock.AsyncMock(return_value=added(round=2))):
+                    await t.RelayRetryButton(78).callback(interaction)
+                return added(round=3)
+            return results.pop(0)
+
+        with mock.patch.object(t, 'relay', relay), mock.patch.object(self.cog, 'show_board', mock.AsyncMock(return_value=True)):
+            await self.cog.on_message(message)
+        self.assertEqual(self.ch.deleted, [])
+        message.delete.assert_not_called()
+        self.assertEqual(t._pending, {})
+
     async def test_waits_for_running_refresh(self):
         t.copy_set(101, 1, CODE, 'A')
         mid = add_board(self.ch)

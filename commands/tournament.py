@@ -1173,6 +1173,9 @@ class Tournament(commands.Cog):
                 complete = False
             if message.channel.id not in linked:
                 return
+        # 다른 첨부를 보내는 사이 다시 보내기가 끝난 파일은 결과를 알 수 없어 메시지를 남김
+        if kept - (_kept.keys() | _relaying):
+            complete = False
         # 이미지를 올리는 사이 다시 보내기가 끝나도 지울 수 있도록 먼저 등록
         if complete and kept:
             _pending[message.id] = kept
