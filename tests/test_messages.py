@@ -27,7 +27,8 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(t.notice_text(b, 'replaced'),
                          "### 테스트 대회 C조\n-# 이 채널을 다른 조에 연결해 자동 갱신을 멈췄습니다.")
         self.assertEqual(t.notice_text(b, 'nogroup'), "### 테스트 대회 C조\n-# C조가 없어져 자동 갱신을 멈췄습니다.")
-        self.assertIn("대회가 끝나", t.notice_text(b, 'ended'))
+        self.assertEqual(t.notice_text(b, 'ended'), "### 테스트 대회 C조\n-# C조 경기가 끝나 자동 갱신을 멈췄습니다.")
+        self.assertIn("대회가 끝나", t.notice_text(board(), 'ended'))
         self.assertIn("대회가 지워져", t.notice_text(b, 'gone'))
 
     async def test_only_rank_button(self):

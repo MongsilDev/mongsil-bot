@@ -272,6 +272,8 @@ def notice_text(b: dict, state: str = 'on', linked: bool = True) -> str:
     lines = [f"### {discord.utils.escape_markdown(title)}"]
     if state != 'on':
         stopped = {**STOPPED, 'nogroup': f"{b['group']}조가 없어져 자동 갱신을 멈췄습니다."}[state]
+        if state == 'ended' and many:
+            stopped = f"{b['group']}조 경기가 끝나 자동 갱신을 멈췄습니다."
         return '\n'.join([*lines, f"-# {stopped}"])
     rounds = (f"{b['played']}/{b['plannedRounds']}라운드" if b['mode'] == 'points' and not b['ended']
               else f"{b['played']}라운드")
