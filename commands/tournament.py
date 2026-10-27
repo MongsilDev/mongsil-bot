@@ -340,7 +340,7 @@ def card_view(b: dict, png: bytes) -> ui.LayoutView:
 def result_view(r: dict) -> ui.LayoutView:
     """relay 응답 added, duplicate, ended"""
     if r['status'] == 'added':
-        title = r['name'] + (f" {r['group']}조" if r['groupCount'] > 1 else '') + f" {r['round']}라운드"
+        title = r['name'] + (f" {r['group']}조" if r['groupCount'] > 1 else '') + f" {r['round']}라운드 게임 순위"
         lines = [f"### {discord.utils.escape_markdown(title)}"]
         lines += [f"{t['rank']}위 {discord.utils.escape_markdown(t['team'])} {t['score']}점" for t in r['ranking']]
         text = '\n'.join(lines)

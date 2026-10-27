@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from helpers import CODE, FakeChannel, FakeClient, board, reset, t
+from helpers import CODE, FakeChannel, FakeClient, board, reset, t, text_of
 
 import discord
 
@@ -35,6 +35,12 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
             view = t.notice_view(board(), state)
             buttons = [i for i in view.walk_children() if isinstance(i, discord.ui.Button)]
             self.assertEqual([(b.label, b.style) for b in buttons], [("순위표", discord.ButtonStyle.link)])
+
+    def test_result_titles_game_rank(self):
+        r = {'status': 'added', 'name': '테스트 대회', 'group': 'A', 'groupCount': 2, 'round': 1,
+             'url': f'https://labs.example/er/t/{CODE}/a',
+             'ranking': [{'rank': 1, 'team': '팀1', 'score': 13}, {'rank': 2, 'team': '팀2', 'score': 20}]}
+        self.assertEqual(text_of(t.result_view(r)), "### 테스트 대회 A조 1라운드 게임 순위\n1위 팀1 13점\n2위 팀2 20점")
 
     def test_already_linked(self):
         self.assertEqual(t.already_text(board()), "이 채널은 이미 테스트 대회에 연결돼 있습니다.")
