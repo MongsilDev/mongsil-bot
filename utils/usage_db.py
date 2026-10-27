@@ -1,6 +1,7 @@
 """
 명령어 사용, 이모지 확대, 서버 참가와 퇴장 기록. 대시보드용
 """
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -9,7 +10,8 @@ from utils.logging_config import get_logger
 
 logger = get_logger('기록')
 
-DB_PATH = Path('./data/dashboard.db')
+# 테스트는 MONGSIL_DB=:memory:로 파일을 만들지 않음
+DB_PATH = os.getenv('MONGSIL_DB') or './data/dashboard.db'
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS command_log (
@@ -52,7 +54,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 """
 
 # 쓰기가 명령 하나에 한 줄이라 이벤트 루프에서 직접 실행
-DB_PATH.parent.mkdir(exist_ok=True)
+if DB_PATH != ':memory:':
+    Path(DB_PATH).parent.mkdir(exist_ok=True)
 db = sqlite3.connect(DB_PATH, isolation_level=None)
 db.row_factory = sqlite3.Row
 db.executescript(SCHEMA)

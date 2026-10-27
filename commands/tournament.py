@@ -34,16 +34,19 @@ GROUPS = 'ABCDEFGH'
 MODE = {'points': '포인트제', 'checkpoint': '체크포인트', 'double': '더블 체크포인트'}
 
 LIVE_SECONDS = 30
-LIVE_PER_GUILD = 3
+LINKS_SECONDS = 60
+# 대회의 조는 8개까지라 서버 하나에서 모든 조를 켤 수 있게 함. 사람당 한도는 /대회로 켠 보드만 셈
+LIVE_PER_GUILD = 8
 LIVE_PER_USER = 3
 LIVE_TOTAL = 50
 REFRESH_GAP = 5.0
 TOO_SOON = "잠시 후 다시 눌러주세요."
 
-BAD_CODE = "대회 코드는 영문과 숫자 6자리입니다.\n-# Labs 대회 화면의 코드나 주소를 그대로 붙여 넣어도 됩니다."
-GONE = "없거나 지워진 대회입니다.\n-# 대회는 마지막 수정 뒤 24시간이 지나면 지워집니다."
+BAD_CODE = "대회 코드는 영문과 숫자 6자리입니다.\n받은 코드를 다시 확인해주세요."
+GONE = "없거나 지워진 대회입니다.\n-# 대회는 마지막으로 수정한 지 24시간이 지나면 자동으로 삭제됩니다."
 DOWN = "Labs에 연결하지 못했습니다.\n잠시 후 다시 시도해주세요."
-DUPLICATE = "이 채널에서 이미 이 조의 순위를 올리고 있습니다."
+OLD_RELAY_BUTTON = "이 버튼은 더 이상 쓰지 않습니다.\n채널을 연결하려면 이 채널에서 /대회를 다시 입력해주세요."
+OLD_OFF_BUTTON = "이 버튼은 더 이상 쓰지 않습니다.\n자동 갱신을 끄려면 Labs 관리 화면에서 연결을 해제해주세요."
 
 UNCHANGED = object()
 
@@ -59,7 +62,8 @@ CREATE TABLE IF NOT EXISTS live_boards (
     started_at INTEGER NOT NULL,
     board TEXT NOT NULL,
     image_id INTEGER,
-    last_round INTEGER NOT NULL DEFAULT 0
+    last_round INTEGER NOT NULL DEFAULT 0,
+    notice TEXT
 );
 """)
 _columns = {r[1] for r in db.execute("PRAGMA table_info(live_boards)")}
@@ -67,8 +71,11 @@ if 'image_id' not in _columns:
     db.execute("ALTER TABLE live_boards ADD COLUMN image_id INTEGER")
 if 'last_round' not in _columns:
     db.execute("ALTER TABLE live_boards ADD COLUMN last_round INTEGER NOT NULL DEFAULT 0")
+# 마지막으로 올린 안내 내용. 배포 전 보드는 비어 있어 첫 tick이 새 형식으로 고침
+if 'notice' not in _columns:
+    db.execute("ALTER TABLE live_boards ADD COLUMN notice TEXT")
 
-# 결과 받기. Labs와 같게 채널 하나는 대회 하나의 조 하나에만 연결
+# Labs discord_links의 사본. 채널 하나는 대회 하나의 조 하나에만, 조 하나에는 채널 하나만 연결
 db.executescript("""
 CREATE TABLE IF NOT EXISTS result_links (
     channel_id INTEGER PRIMARY KEY,
@@ -83,12 +90,17 @@ RELAY_MAX_BYTES = 200 * 1024
 RELAY_RETRY = (1, 3)
 RELAY_KEEP_SECONDS = 600
 RELAY_KEEP_MAX = 200
-NOT_CSV = "게임 결과 CSV가 아닙니다."
-LINK_FORBIDDEN = "이 대회의 개최자나 운영자만 연결할 수 있습니다."
-UPLOAD_FORBIDDEN = "이 대회의 운영자만 올릴 수 있습니다."
-REUPLOAD = "파일을 다시 올려주세요."
+ACTOR_NAME_MAX = 32
+NOT_CSV = "게임 결과 CSV가 아닙니다.\n게임 결과 CSV 파일을 올려주세요."
+LINK_FORBIDDEN = "이 대회의 개최자나 운영자만 채널을 연결할 수 있습니다."
+DOWNLOAD_FAILED = "파일을 받지 못했습니다.\n같은 파일을 이 채널에 다시 올려주세요."
+KEEP_EXPIRED = "보관한 파일이 없어 다시 보낼 수 없습니다.\n같은 파일을 이 채널에 다시 올려주세요."
 RELAY_DOWN = "Labs에 연결하지 못했습니다."
-RELAY_STATUSES = ('added', 'duplicate', 'ended', 'invalid', 'forbidden', 'unlinked')
+RELAY_STATUSES = ('added', 'duplicate', 'ended', 'invalid', 'unlinked')
+
+
+def no_group(group: Optional[str]) -> str:
+    return f"이 대회에는 {group}조가 없습니다.\n조를 다시 골라주세요."
 
 
 def parse_target(text: str) -> Optional[Tuple[str, Optional[str]]]:
@@ -115,7 +127,7 @@ async def _labs_get(code: str, path: str, params: dict, group: Optional[str], im
             if r.status == 404:
                 raise NotFoundError(f"대회 없음 {code}", GONE)
             if r.status == 400:
-                raise ValidationError(f"없는 조 {code} {group}", f"이 대회에는 {group}조가 없습니다.")
+                raise ValidationError(f"없는 조 {code} {group}", no_group(group))
             if r.status != 200:
                 raise ServiceDownError(f"Labs 응답 {r.status}", DOWN)
             return await (r.read() if image else r.json())
@@ -135,36 +147,54 @@ async def fetch_image(code: str, group: str) -> bytes:
     return await _labs_get(code, '/image', {'group': group}, group, image=True)
 
 
-async def put_links(code: str, actor: int, links: list) -> list:
-    """조와 채널 연결 저장. 응답은 대회의 현재 연결 전체"""
+async def _labs_links(method: str, path: str, code: str, group: Optional[str] = None,
+                      body: Optional[dict] = None) -> list:
     token = os.getenv('LABS_BOT_TOKEN')
     if not token:
         raise ServiceDownError("LABS_BOT_TOKEN 없음", DOWN)
     session = await api_client.get_session()
     try:
-        async with session.put(f"{API}/t/{code}/links", json={'actor': str(actor), 'links': links},
-                               headers={'x-bot-token': token}, timeout=aiohttp.ClientTimeout(total=8)) as r:
+        async with session.request(method, f"{API}{path}", json=body, headers={'x-bot-token': token},
+                                   timeout=aiohttp.ClientTimeout(total=8)) as r:
             if r.status == 403:
                 raise ValidationError(f"연결 권한 없음 {code}", LINK_FORBIDDEN)
             if r.status == 404:
                 raise NotFoundError(f"대회 없음 {code}", GONE)
             if r.status == 400:
-                raise ValidationError(f"없는 조 {code}", "이 대회에 없는 조입니다.")
+                raise ValidationError(f"없는 조 {code} {group}", no_group(group))
             if r.status != 200:
                 raise ServiceDownError(f"Labs 응답 {r.status}", DOWN)
-            return (await r.json())['links']
+            links = (await r.json())['links']
+            if not isinstance(links, list):
+                raise TypeError('links')
+            return links
     except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, KeyError, TypeError) as e:
         raise ServiceDownError(f"Labs 연결 실패: {type(e).__name__}", DOWN) from e
 
 
-async def relay(channel_id: int, actor: int, file_name: str, data: bytes) -> Optional[dict]:
+async def put_links(code: str, actor: int, links: list, group: Optional[str] = None) -> list:
+    """조와 채널 연결 저장. 응답은 대회의 현재 연결 전체"""
+    return await _labs_links('PUT', f"/t/{code}/links", code, group, {'actor': str(actor), 'links': links})
+
+
+async def fetch_links(code: str) -> list:
+    """대회의 현재 연결 전체. 없거나 지워진 대회면 NotFoundError"""
+    return await _labs_links('GET', f"/t/{code}/links", code)
+
+
+async def fetch_all_links() -> list:
+    """끝나지 않은 대회의 연결 전체"""
+    return await _labs_links('GET', "/links", '-')
+
+
+async def relay(channel_id: int, actor: int, actor_name: str, file_name: str, data: bytes) -> Optional[dict]:
     """게임 결과 CSV를 Labs로 보냄. 1초, 3초 뒤 다시 보내고 그래도 실패하면 None"""
     token = os.getenv('LABS_BOT_TOKEN')
     if not token:
         logger.warning("결과 전달 실패: LABS_BOT_TOKEN 없음")
         return None
-    body = {'channelId': str(channel_id), 'actor': str(actor), 'fileName': file_name,
-            'data': base64.b64encode(data).decode()}
+    body = {'channelId': str(channel_id), 'actor': str(actor), 'actorName': actor_name[:ACTOR_NAME_MAX],
+            'fileName': file_name, 'data': base64.b64encode(data).decode()}
     for wait in (0, *RELAY_RETRY):
         await asyncio.sleep(wait)
         try:
@@ -226,23 +256,58 @@ def gallery(view: ui.LayoutView, png: bytes) -> ui.MediaGallery:
     return ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'tournament.png', png)))
 
 
-def notice_view(b: dict, state: str = 'on') -> ui.LayoutView:
-    """자동 갱신 안내. state: 'on', 'off', 'ended', 'gone', 'nogroup'"""
-    title = b['name'] + (f" {b['group']}조" if b['groupCount'] > 1 else '')
-    if state == 'on':
-        rounds = (f"{b['played']}/{b['plannedRounds']}라운드" if b['mode'] == 'points' and not b['ended']
-                  else f"{b['played']}라운드")
-        line = f"{MODE.get(b['mode'], b['mode'])} | {rounds} | 자동 갱신 중"
-    else:
-        line = {'off': "자동 갱신을 껐습니다.", 'ended': "대회가 끝나 자동 갱신을 멈췄습니다.",
-                'gone': "대회가 지워져 자동 갱신을 멈췄습니다.",
-                'nogroup': f"{b['group']}조가 없어져 자동 갱신을 멈췄습니다."}[state]
+STOPPED = {
+    'ended': "대회가 끝나 자동 갱신을 멈췄습니다.",
+    'gone': "대회가 지워져 자동 갱신을 멈췄습니다.",
+    'unlinked': "연결을 해제해 자동 갱신을 멈췄습니다.",
+    'moved': "다른 채널로 연결을 옮겨 자동 갱신을 멈췄습니다.",
+    'replaced': "이 채널을 다른 조에 연결해 자동 갱신을 멈췄습니다.",
+}
+
+
+def notice_text(b: dict, state: str = 'on', linked: bool = True) -> str:
+    """안내 메시지 글. state: 'on'이나 멈춘 이유. linked는 이 채널이 이 조에 연결돼 있는지"""
+    many = b['groupCount'] > 1
+    title = b['name'] + (f" {b['group']}조" if many else '')
+    lines = [f"### {discord.utils.escape_markdown(title)}"]
+    if state != 'on':
+        stopped = {**STOPPED, 'nogroup': f"{b['group']}조가 없어져 자동 갱신을 멈췄습니다."}[state]
+        return '\n'.join([*lines, f"-# {stopped}"])
+    rounds = (f"{b['played']}/{b['plannedRounds']}라운드" if b['mode'] == 'points' and not b['ended']
+              else f"{b['played']}라운드")
+    lines.append(f"-# {MODE.get(b['mode'], b['mode'])} | {rounds}")
+    if b.get('next') and not b['ended']:
+        lines += next_lines(b['next'])
+    if linked:
+        lines.append(f"-# 이 채널에 올린 게임 결과 CSV는 {b['group']}조 순위에 들어갑니다." if many
+                     else "-# 이 채널에 올린 게임 결과 CSV는 순위에 들어갑니다.")
+    return '\n'.join(lines)
+
+
+def notice_key(b: dict, state: str = 'on', linked: bool = True) -> str:
+    return f"{notice_text(b, state, linked)}\n{b['url']}"
+
+
+def notice_view(b: dict, state: str = 'on', linked: bool = True) -> ui.LayoutView:
+    """자동 갱신 안내. state: 'on', 'ended', 'gone', 'nogroup', 'unlinked', 'moved', 'replaced'"""
     view = ui.LayoutView(timeout=None)
-    view.add_item(ui.Container(ui.TextDisplay(f"### {discord.utils.escape_markdown(title)}\n-# {line}"),
+    view.add_item(ui.Container(ui.TextDisplay(notice_text(b, state, linked)),
                                accent_colour=visual.colour('tournament')))
-    row = [LiveOffButton(b['code'], b['group']), RelayLinkButton(b['code'])] if state == 'on' else []
-    view.add_item(ui.ActionRow(*row, link_button(b)))
+    view.add_item(ui.ActionRow(link_button(b)))
     return view
+
+
+def info_view(text: str) -> ui.LayoutView:
+    view = ui.LayoutView(timeout=None)
+    view.add_item(ui.Container(ui.TextDisplay(text), accent_colour=visual.colour('tournament')))
+    return view
+
+
+def already_text(b: dict) -> str:
+    name = discord.utils.escape_markdown(b['name'])
+    if b['groupCount'] > 1:
+        return f"이 채널은 이미 {name} {b['group']}조에 연결돼 있습니다."
+    return f"이 채널은 이미 {name}에 연결돼 있습니다."
 
 
 def round_view(b: dict, png: bytes) -> ui.LayoutView:
@@ -256,8 +321,8 @@ def round_view(b: dict, png: bytes) -> ui.LayoutView:
     return view
 
 
-def card_view(b: dict, png: bytes, relay_button: bool = False) -> ui.LayoutView:
-    """자동 갱신 없이 한 번 보는 카드. relay_button은 개수 제한 때문에 운영자에게 보낸 카드"""
+def card_view(b: dict, png: bytes) -> ui.LayoutView:
+    """자동 갱신 없이 한 번 보는 카드"""
     view = ui.LayoutView(timeout=None)
     children = [gallery(view, png)]
     foot = next_lines(b['next']) if b.get('next') and not b['ended'] else []
@@ -268,8 +333,7 @@ def card_view(b: dict, png: bytes, relay_button: bool = False) -> ui.LayoutView:
     view.add_item(ui.Container(*children, accent_colour=visual.colour('tournament')))
     if b['groupCount'] > 1:
         view.add_item(ui.ActionRow(GroupSelect(b['code'], b['groups'], b['group'])))
-    row = [RelayLinkButton(b['code'])] if relay_button else []
-    view.add_item(ui.ActionRow(RefreshButton(b['code'], b['group']), *row, link_button(b)))
+    view.add_item(ui.ActionRow(RefreshButton(b['code'], b['group']), link_button(b)))
     return view
 
 
@@ -289,34 +353,29 @@ def result_view(r: dict) -> ui.LayoutView:
     return view
 
 
-def has_relay_button(components) -> bool:
-    for c in components or []:
-        if c is None:
-            continue
-        if (getattr(c, 'custom_id', None) or '').startswith('tl:'):
-            return True
-        if has_relay_button(getattr(c, 'children', None)) or has_relay_button([getattr(c, 'accessory', None)]):
-            return True
-    return False
-
-
-# 자동 갱신 기록. message_id는 안내 메시지, image_id는 마지막으로 올린 순위 이미지 메시지
+# 자동 갱신 기록. message_id는 안내 메시지, image_id는 마지막으로 올린 순위 이미지 메시지.
+# started_by는 /대회로 켠 사람이고, Labs 관리 화면 연결로 켠 보드는 0
 
 def live_get(message_id: int) -> Optional[sqlite3.Row]:
     return db.execute("SELECT * FROM live_boards WHERE message_id = ?", (message_id,)).fetchone()
 
 
-def live_put(message: discord.Message, guild_id: int, b: dict, user_id: int, image_id: Optional[int],
-             last_round: int) -> None:
+def live_put(message_id: int, channel_id: int, guild_id: int, b: dict, user_id: int, notice: str) -> None:
+    # version 0이면 다음 tick이 since 없이 조회해 첫 이미지를 못 올렸어도 다시 올림
     db.execute("INSERT OR REPLACE INTO live_boards (message_id, channel_id, guild_id, code, grp, version, "
-               "started_by, started_at, board, image_id, last_round) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-               (message.id, message.channel.id, guild_id, b['code'], b['group'], b['version'], user_id,
-                int(time.time()), json.dumps(b, ensure_ascii=False), image_id, last_round))
+               "started_by, started_at, board, image_id, last_round, notice) "
+               "VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, NULL, 0, ?)",
+               (message_id, channel_id, guild_id, b['code'], b['group'], user_id, int(time.time()),
+                json.dumps(b, ensure_ascii=False), notice))
 
 
 def live_save(message_id: int, b: dict, image_id: Optional[int], last_round: int) -> None:
     db.execute("UPDATE live_boards SET version = ?, board = ?, image_id = ?, last_round = ? WHERE message_id = ?",
                (b['version'], json.dumps(b, ensure_ascii=False), image_id, last_round, message_id))
+
+
+def live_note(message_id: int, notice: str) -> None:
+    db.execute("UPDATE live_boards SET notice = ? WHERE message_id = ?", (notice, message_id))
 
 
 def live_drop(message_id: int) -> None:
@@ -326,6 +385,16 @@ def live_drop(message_id: int) -> None:
 def live_running(channel_id: int, code: str, group: str) -> bool:
     return db.execute("SELECT 1 FROM live_boards WHERE channel_id = ? AND code = ? AND grp = ?",
                       (channel_id, code, group)).fetchone() is not None
+
+
+def boards_in(channel_id: int) -> List[sqlite3.Row]:
+    return db.execute("SELECT * FROM live_boards WHERE channel_id = ?", (channel_id,)).fetchall()
+
+
+def boards_of(code: str, group: Optional[str] = None) -> List[sqlite3.Row]:
+    if group is None:
+        return db.execute("SELECT * FROM live_boards WHERE code = ?", (code,)).fetchall()
+    return db.execute("SELECT * FROM live_boards WHERE code = ? AND grp = ?", (code, group)).fetchall()
 
 
 def is_operator(b: dict) -> bool:
@@ -340,11 +409,23 @@ async def reply_error(interaction: discord.Interaction, text: str) -> None:
         await interaction.response.send_message(view=view, ephemeral=True)
 
 
+async def reply_private(interaction: discord.Interaction, text: str) -> None:
+    """본인에게만 보이는 안내. 로딩 카드를 이미 채널에 올렸으면 지우고 보냄"""
+    if not interaction.response.is_done():
+        await interaction.response.send_message(view=info_view(text), ephemeral=True)
+        return
+    try:
+        await interaction.delete_original_response()
+    except discord.HTTPException:
+        pass
+    await interaction.followup.send(view=info_view(text), ephemeral=True)
+
+
 _last_refresh: Dict[object, float] = {}
 
 
 def too_soon(key) -> bool:
-    """새로고침과 조 선택은 메시지마다와 사람마다, 자동 갱신 끄기는 사람마다 REFRESH_GAP 간격"""
+    """새로고침과 조 선택은 메시지마다와 사람마다 REFRESH_GAP 간격"""
     now = time.monotonic()
     if now - _last_refresh.get(key, 0) < REFRESH_GAP:
         return True
@@ -366,12 +447,14 @@ async def card_too_soon(interaction: discord.Interaction) -> bool:
     return False
 
 
-def live_limit(guild_id: int, user_id: int) -> Optional[str]:
-    rows = db.execute("SELECT guild_id, started_by FROM live_boards").fetchall()
+def live_limit(guild_id: int, user_id: int, ignore: Tuple[int, ...] = ()) -> Optional[str]:
+    """자동 갱신 개수 제한. user_id 0은 관리 화면 연결이라 사람당 한도를 보지 않음. ignore는 곧 멈출 보드"""
+    rows = [r for r in db.execute("SELECT message_id, guild_id, started_by FROM live_boards")
+            if r['message_id'] not in ignore]
     if sum(r['guild_id'] == guild_id for r in rows) >= LIVE_PER_GUILD:
         return (f"이 서버에서는 자동 갱신을 {LIVE_PER_GUILD}개까지 켤 수 있습니다.\n"
                 "다른 카드의 자동 갱신을 끈 뒤 다시 시도해주세요.")
-    if sum(r['started_by'] == user_id for r in rows) >= LIVE_PER_USER:
+    if user_id and sum(r['started_by'] == user_id for r in rows) >= LIVE_PER_USER:
         return (f"자동 갱신은 한 사람이 {LIVE_PER_USER}개까지 켤 수 있습니다.\n"
                 "다른 카드의 자동 갱신을 끈 뒤 다시 시도해주세요.")
     if len(rows) >= LIVE_TOTAL:
@@ -379,17 +462,22 @@ def live_limit(guild_id: int, user_id: int) -> Optional[str]:
     return None
 
 
-def live_blocked(interaction: discord.Interaction) -> Optional[str]:
-    """자동 갱신을 켤 수 없는 이유. 봇 채널 권한과 개수 제한"""
-    perms = interaction.app_permissions
-    send = perms.send_messages_in_threads if isinstance(interaction.channel, discord.Thread) else perms.send_messages
-    missing = [name for name, ok in (('채널 보기', perms.view_channel), ('메시지 보내기', send),
-                                     ('파일 첨부', perms.attach_files)) if not ok]
+def missing_perms(perms: discord.Permissions, thread: bool = False) -> List[str]:
+    """자동 갱신과 결과 답장에 필요한 봇 채널 권한 가운데 빠진 것"""
+    send = perms.send_messages_in_threads if thread else perms.send_messages
+    return [name for name, ok in (('채널 보기', perms.view_channel), ('메시지 보내기', send),
+                                  ('파일 첨부', perms.attach_files),
+                                  ('메시지 기록 보기', perms.read_message_history)) if not ok]
+
+
+def live_blocked(interaction: discord.Interaction, ignore: Tuple[int, ...] = ()) -> Optional[str]:
+    """채널을 연결할 수 없는 이유. 봇 채널 권한과 개수 제한"""
+    missing = missing_perms(interaction.app_permissions, isinstance(interaction.channel, discord.Thread))
     if missing:
         names = ', '.join(missing)
         return (f"몽실봇에 이 채널의 {names} 권한이 없어 자동 갱신을 켤 수 없습니다.\n"
                 f"채널 권한에서 몽실봇에 {names}를 허용해주세요.")
-    return live_limit(interaction.guild.id, interaction.user.id)
+    return live_limit(interaction.guild.id, interaction.user.id, ignore)
 
 
 async def redraw(interaction: discord.Interaction, code: str, group: str) -> None:
@@ -397,7 +485,7 @@ async def redraw(interaction: discord.Interaction, code: str, group: str) -> Non
     await interaction.response.defer()
     try:
         b = await fetch_board(code, group)
-        view = card_view(b, await fetch_image(code, b['group']), has_relay_button(interaction.message.components))
+        view = card_view(b, await fetch_image(code, b['group']))
     except (NotFoundError, ServiceDownError, ValidationError) as e:
         await reply_error(interaction, e.user_message)
         return
@@ -406,7 +494,7 @@ async def redraw(interaction: discord.Interaction, code: str, group: str) -> Non
 
 class RefreshButton(ui.DynamicItem[ui.Button], template=r'tr:(?P<code>[0-9A-Z]{6,7}):(?P<g>[A-H])'):
     def __init__(self, code: str, group: str):
-        super().__init__(ui.Button(label="새로고침", emoji="🔄", style=discord.ButtonStyle.secondary,
+        super().__init__(ui.Button(label="새로고침", style=discord.ButtonStyle.secondary,
                                    custom_id=f"tr:{code}:{group}"))
         self.code, self.group = code, group
 
@@ -447,208 +535,114 @@ class LiveButton(ui.DynamicItem[ui.Button], template=r'ta:(?P<code>[0-9A-Z]{6,7}
         return cls(match['code'], match['g'])
 
     async def callback(self, interaction: discord.Interaction):
-        await reply_error(interaction, "/대회를 다시 입력하면 자동 갱신이 켜집니다.")
+        await reply_error(interaction, "자동 갱신을 켜려면 /대회를 다시 입력해주세요.")
 
 
 class LiveOffButton(ui.DynamicItem[ui.Button], template=r'tx:(?P<code>[0-9A-Z]{6,7}):(?P<g>[A-H])'):
+    """배포 전 안내 메시지에 남은 자동 갱신 끄기 버튼. 아무것도 바꾸지 않음"""
     def __init__(self, code: str, group: str):
         super().__init__(ui.Button(label="자동 갱신 끄기", style=discord.ButtonStyle.secondary,
                                    custom_id=f"tx:{code}:{group}"))
-        self.code, self.group = code, group
 
     @classmethod
     async def from_custom_id(cls, interaction, item, match):
         return cls(match['code'], match['g'])
 
     async def callback(self, interaction: discord.Interaction):
-        row = live_get(interaction.message.id)
-        allowed = row is None or row['started_by'] == interaction.user.id \
-            or interaction.permissions.manage_messages
-        await interaction.response.defer()
-        if not allowed and too_soon(('live', interaction.user.id)):
-            await reply_error(interaction, TOO_SOON)
-            return
-        try:
-            b = await fetch_board(self.code, self.group, None if allowed else interaction.user.id)
-        except (NotFoundError, ValidationError) as e:
-            live_drop(interaction.message.id)
-            if row:
-                state = 'gone' if isinstance(e, NotFoundError) else 'nogroup'
-                await interaction.edit_original_response(view=notice_view(json.loads(row['board']), state))
-            else:
-                await reply_error(interaction, e.user_message)
-            return
-        except ServiceDownError as e:
-            await reply_error(interaction, e.user_message)
-            return
-        if not allowed and not is_operator(b):
-            await reply_error(interaction, "자동 갱신은 켠 사람이나 이 대회의 운영자가 끌 수 있습니다.")
-            return
-        live_drop(interaction.message.id)
-        await interaction.edit_original_response(view=notice_view(b, 'off'))
-        logger.info(f"자동 갱신 끔 {self.code} {self.group}")
-
-
-# 결과 받기 연결. linked는 연결된 채널 ID로, 연결 안 된 채널의 메시지는 DB도 보지 않고 넘김
-
-def load_linked() -> set:
-    return {r[0] for r in db.execute("SELECT channel_id FROM result_links")}
-
-
-linked = load_linked()
-
-
-def link_rows(code: str) -> Dict[str, sqlite3.Row]:
-    return {r['grp']: r for r in db.execute("SELECT * FROM result_links WHERE code = ?", (code,))}
-
-
-def recent_link(guild_id: int, group: str) -> Optional[sqlite3.Row]:
-    return db.execute("SELECT * FROM result_links WHERE guild_id = ? AND grp = ? ORDER BY saved_at DESC LIMIT 1",
-                      (guild_id, group)).fetchone()
-
-
-def replace_links(code: str, rows: List[Tuple[int, int, str]]) -> None:
-    """대회 코드의 연결을 Labs 응답으로 바꿈. rows는 (채널 ID, 서버 ID, 조)"""
-    global linked
-    now = int(time.time())
-    db.execute("BEGIN")
-    try:
-        db.execute("DELETE FROM result_links WHERE code = ?", (code,))
-        db.executemany("INSERT OR REPLACE INTO result_links (channel_id, guild_id, code, grp, saved_at) "
-                       "VALUES (?, ?, ?, ?, ?)", [(c, g, code, grp, now) for c, g, grp in rows])
-        db.execute("COMMIT")
-    except sqlite3.Error:
-        db.execute("ROLLBACK")
-        raise
-    linked = load_linked()
-
-
-def unlink(channel_id: int) -> None:
-    db.execute("DELETE FROM result_links WHERE channel_id = ?", (channel_id,))
-    linked.discard(channel_id)
-
-
-class LinkSelect(ui.ChannelSelect):
-    """미리 고른 채널은 values에 들어오지 않아 고른 채널을 따로 들고 있음"""
-    def __init__(self, channel: Optional[discord.abc.GuildChannel]):
-        super().__init__(channel_types=[discord.ChannelType.text], min_values=0, max_values=1,
-                         default_values=[channel] if channel else [])
-        self.chosen: Optional[int] = channel.id if channel else None
-
-    async def callback(self, interaction: discord.Interaction):
-        self.chosen = self.values[0].id if self.values else None
-        await interaction.response.defer()
-
-
-class LinkView(ui.LayoutView):
-    """조마다 결과를 받을 채널을 고르는 나만 보이는 카드"""
-    def __init__(self, code: str, groups: List[str], guild: discord.Guild):
-        super().__init__(timeout=600)
-        self.code, self.guild = code, guild
-        self.rows = link_rows(code)
-        self.selects: Dict[str, LinkSelect] = {}
-        children = []
-        for g in groups:
-            row = self.rows.get(g)
-            if not row or row['guild_id'] != guild.id:
-                row = None if row else recent_link(guild.id, g)
-            channel = guild.get_channel(row['channel_id']) if row else None
-            select = LinkSelect(channel)
-            self.selects[g] = select
-            if len(groups) > 1:
-                children.append(ui.TextDisplay(f"{g}조"))
-            children.append(ui.ActionRow(select))
-        self.add_item(ui.Container(*children, accent_colour=visual.colour('tournament')))
-        save = ui.Button(label="저장", style=discord.ButtonStyle.primary)
-        save.callback = self.save
-        self.add_item(ui.ActionRow(save))
-
-    async def save(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        me = self.guild.me
-        chosen: Dict[str, Optional[discord.abc.GuildChannel]] = {}
-        missing_lines = []
-        for g, select in self.selects.items():
-            channel = self.guild.get_channel(select.chosen) if select.chosen else None
-            chosen[g] = channel
-            if channel is not None:
-                perms = channel.permissions_for(me)
-                # 결과는 답장으로 보내므로 메시지 기록 보기도 필요
-                missing = [n for n, ok in (('채널 보기', perms.view_channel), ('메시지 보내기', perms.send_messages),
-                                           ('메시지 기록 보기', perms.read_message_history)) if not ok]
-                if missing:
-                    name = discord.utils.escape_markdown(channel.name)
-                    missing_lines.append(f"몽실봇에 #{name}의 {', '.join(missing)} 권한이 없습니다.")
-        if missing_lines:
-            missing_lines.append("채널 권한에서 몽실봇에 이 권한을 허용해주세요.")
-            await reply_error(interaction, '\n'.join(missing_lines))
-            return
-        # 다른 서버에 연결된 조를 비워 두었으면 그 연결은 건드리지 않음
-        links = []
-        for g, channel in chosen.items():
-            row = self.rows.get(g)
-            if channel is None and row and row['guild_id'] != self.guild.id:
-                continue
-            links.append({'group': g, 'channelId': str(channel.id) if channel else None,
-                          'guild': self.guild.name, 'channel': channel.name if channel else ''})
-        try:
-            current = await put_links(self.code, interaction.user.id, links)
-        except (NotFoundError, ServiceDownError, ValidationError) as e:
-            await reply_error(interaction, e.user_message)
-            return
-        rows = []
-        for link in current:
-            if not link.get('channelId'):
-                continue
-            cid = int(link['channelId'])
-            channel = interaction.client.get_channel(cid)
-            old = next((r for r in self.rows.values() if r['channel_id'] == cid), None)
-            guild_id = channel.guild.id if channel else old['guild_id'] if old else self.guild.id
-            rows.append((cid, guild_id, link['group']))
-        replace_links(self.code, rows)
-        self.stop()
-        done = ui.LayoutView(timeout=None)
-        done.add_item(ui.Container(ui.TextDisplay("저장했습니다."), accent_colour=visual.colour('tournament')))
-        await interaction.edit_original_response(view=done)
-        logger.info(f"결과 받기 연결 {self.code} {','.join(r[2] for r in rows) or '없음'}")
+        await reply_error(interaction, OLD_OFF_BUTTON)
 
 
 class RelayLinkButton(ui.DynamicItem[ui.Button], template=r'tl:(?P<code>[0-9A-Z]{6,7})'):
+    """배포 전 안내 메시지에 남은 결과 받기 버튼. 아무것도 바꾸지 않음"""
     def __init__(self, code: str):
         super().__init__(ui.Button(label="결과 받기", style=discord.ButtonStyle.secondary, custom_id=f"tl:{code}"))
-        self.code = code
 
     @classmethod
     async def from_custom_id(cls, interaction, item, match):
         return cls(match['code'])
 
     async def callback(self, interaction: discord.Interaction):
-        if interaction.guild is None:
-            return await reply_error(interaction, LINK_FORBIDDEN)
-        if too_soon(('link', interaction.user.id)):
-            return await reply_error(interaction, TOO_SOON)
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        try:
-            b = await fetch_board(self.code, None, interaction.user.id)
-        except (NotFoundError, ServiceDownError, ValidationError) as e:
-            return await reply_error(interaction, e.user_message)
-        if not is_operator(b):
-            return await reply_error(interaction, LINK_FORBIDDEN)
-        groups = b.get('groups') or list(GROUPS[:b['groupCount']])
-        await interaction.followup.send(view=LinkView(self.code, groups, interaction.guild), ephemeral=True)
+        await reply_error(interaction, OLD_RELAY_BUTTON)
 
 
-_kept: Dict[int, Tuple[float, int, str, bytes]] = {}
+# 연결 사본. linked는 연결된 채널 ID로, 연결 안 된 채널의 메시지는 DB도 보지 않고 넘김.
+# /대회 연결, changed 알림, 60초 동기화는 links_lock 안에서 Labs 조회부터 사본 반영까지 한 번에 함
+
+Link = Tuple[str, str]
 
 
-def keep_file(key: int, channel_id: int, author_id: int, file_name: str, data: bytes) -> None:
+def load_linked() -> set:
+    return {r[0] for r in db.execute("SELECT channel_id FROM result_links")}
+
+
+linked = load_linked()
+links_lock = asyncio.Lock()
+# /대회가 안내 메시지를 올리는 중인 (채널, 대회, 조). changed 처리가 같은 안내를 또 올리지 않게 함
+_starting: set = set()
+
+
+def copy_rows(code: Optional[str] = None) -> Dict[int, Link]:
+    if code is None:
+        rows = db.execute("SELECT channel_id, code, grp FROM result_links")
+    else:
+        rows = db.execute("SELECT channel_id, code, grp FROM result_links WHERE code = ?", (code,))
+    return {r['channel_id']: (r['code'], r['grp']) for r in rows}
+
+
+def copy_guild(channel_id: int) -> Optional[int]:
+    row = db.execute("SELECT guild_id FROM result_links WHERE channel_id = ?", (channel_id,)).fetchone()
+    return row['guild_id'] if row else None
+
+
+def copy_set(channel_id: int, guild_id: int, code: str, group: str) -> None:
+    db.execute("INSERT OR REPLACE INTO result_links (channel_id, guild_id, code, grp, saved_at) VALUES (?, ?, ?, ?, ?)",
+               (channel_id, guild_id, code, group, int(time.time())))
+    linked.add(channel_id)
+
+
+def copy_drop(channel_id: int) -> None:
+    db.execute("DELETE FROM result_links WHERE channel_id = ?", (channel_id,))
+    linked.discard(channel_id)
+
+
+def links_map(links: list, code: Optional[str] = None) -> Dict[int, Link]:
+    """Labs 연결 목록을 채널 ID -> (대회, 조)로. code를 주면 대회별 목록"""
+    out = {}
+    for link in links:
+        cid = link.get('channelId')
+        if cid and str(cid).isdigit():
+            out[int(cid)] = (code or link['code'], link['group'])
+    return out
+
+
+def diff_links(old: Dict[int, Link], new: Dict[int, Link]) -> Tuple[Dict[int, Link], Dict[int, Link]]:
+    """새로 생긴 연결과 사라진 연결. 채널의 대회나 조가 바뀌면 양쪽에 다 들어감"""
+    added = {c: v for c, v in new.items() if old.get(c) != v}
+    removed = {c: v for c, v in old.items() if new.get(c) != v}
+    return added, removed
+
+
+def stop_state(channel_id: int, link: Link, links: Dict[int, Link]) -> str:
+    """사라진 연결의 보드를 멈춘 이유. links는 지금의 연결 전체"""
+    now = links.get(channel_id)
+    if now and now != link:
+        return 'replaced'
+    if any(v == link for c, v in links.items() if c != channel_id):
+        return 'moved'
+    return 'unlinked'
+
+
+_kept: Dict[int, Tuple[float, int, int, str, str, bytes]] = {}
+
+
+def keep_file(key: int, channel_id: int, author_id: int, author_name: str, file_name: str, data: bytes) -> None:
     """다시 보내기용 파일 바이트. RELAY_KEEP_SECONDS 동안 메모리에만"""
     now = time.monotonic()
     for k in [k for k, v in _kept.items() if v[0] < now]:
         del _kept[k]
     while len(_kept) >= RELAY_KEEP_MAX:
         del _kept[next(iter(_kept))]
-    _kept[key] = (now + RELAY_KEEP_SECONDS, channel_id, author_id, file_name, data)
+    _kept[key] = (now + RELAY_KEEP_SECONDS, channel_id, author_id, author_name, file_name, data)
 
 
 def retry_view(key: int) -> ui.LayoutView:
@@ -674,28 +668,80 @@ class RelayRetryButton(ui.DynamicItem[ui.Button], template=r'tq:(?P<key>[0-9]+)'
         kept = _kept.get(self.key)
         if not kept or kept[0] < time.monotonic():
             _kept.pop(self.key, None)
-            return await reply_error(interaction, REUPLOAD)
+            return await reply_error(interaction, KEEP_EXPIRED)
         if too_soon(('relay', interaction.user.id)):
             return await reply_error(interaction, TOO_SOON)
         await interaction.response.defer()
-        # 동시에 눌러도 한 번만 보내도록 먼저 꺼내고, 실패하면 되돌림. 권한은 누른 사람이 아닌 올린 사람 기준
+        # 동시에 눌러도 한 번만 보내도록 먼저 꺼내고, 실패하면 되돌림. 이름은 누른 사람이 아닌 올린 사람
         _kept.pop(self.key, None)
-        _, channel_id, author_id, file_name, data = kept
-        r = await relay(channel_id, author_id, file_name, data)
+        _, channel_id, author_id, author_name, file_name, data = kept
+        r = await relay(channel_id, author_id, author_name, file_name, data)
         if r is None:
             _kept[self.key] = kept
             return await reply_error(interaction, RELAY_DOWN)
         log_result(r)
+        cog = interaction.client.get_cog('Tournament')
         status = r['status']
-        if status == 'forbidden':
-            await interaction.edit_original_response(view=create_error_layout(UPLOAD_FORBIDDEN))
-        elif status == 'unlinked':
-            unlink(channel_id)
+        if status == 'unlinked':
+            if cog:
+                await cog.relay_unlinked(channel_id)
             await interaction.message.delete()
         elif status == 'invalid':
             await interaction.edit_original_response(view=create_error_layout(NOT_CSV))
         else:
             await interaction.edit_original_response(view=result_view(r))
+            if status == 'added' and cog and r.get('code'):
+                cog.refresh_soon(r['code'])
+
+
+# 채널 목록. Labs 관리 화면이 조마다 채널을 고를 때 씀
+
+CHANNELS_TTL = 60
+_channels: Dict[int, Tuple[float, dict]] = {}
+
+
+def channel_allowed(user: discord.Permissions, bot: discord.Permissions) -> bool:
+    return (user.view_channel and user.send_messages and bot.view_channel and bot.send_messages
+            and bot.read_message_history and bot.attach_files)
+
+
+def candidate_guilds(user_id: int) -> set:
+    """사용자가 명령을 쓴 서버, 켠 자동 갱신이 있는 서버, 연결이 남아 있는 서버"""
+    ids = {r[0] for r in db.execute("SELECT DISTINCT guild_id FROM command_log WHERE user_id = ? "
+                                    "AND guild_id IS NOT NULL", (user_id,))}
+    ids |= {r[0] for r in db.execute("SELECT DISTINCT guild_id FROM live_boards WHERE started_by = ?", (user_id,))}
+    ids |= {r[0] for r in db.execute("SELECT DISTINCT guild_id FROM result_links")}
+    return ids
+
+
+def guild_channels(guild: discord.Guild, member: discord.Member) -> List[dict]:
+    """텍스트와 공지 채널을 디스코드에 보이는 순서로"""
+    me = guild.me
+    return [{'id': str(c.id), 'name': c.name}
+            for _, channels in guild.by_category() for c in channels
+            if isinstance(c, discord.TextChannel) and channel_allowed(c.permissions_for(member), c.permissions_for(me))]
+
+
+async def channel_list(client: discord.Client, user_id: int) -> dict:
+    hit = _channels.get(user_id)
+    if hit and time.monotonic() - hit[0] < CHANNELS_TTL:
+        return hit[1]
+    guilds = [g for g in (client.get_guild(gid) for gid in candidate_guilds(user_id)) if g is not None]
+
+    async def one(guild: discord.Guild) -> Optional[dict]:
+        try:
+            member = await guild.fetch_member(user_id)
+        except (discord.HTTPException, asyncio.TimeoutError):
+            return None
+        channels = guild_channels(guild, member)
+        return {'id': str(guild.id), 'name': guild.name, 'channels': channels} if channels else None
+
+    found = [g for g in await asyncio.gather(*(one(g) for g in guilds)) if g]
+    result = {'guilds': sorted(found, key=lambda g: g['name'].casefold())}
+    if len(_channels) > 1000:
+        _channels.clear()
+    _channels[user_id] = (time.monotonic(), result)
+    return result
 
 
 async def post_round(channel, b: dict, png: bytes, image_id: Optional[int]) -> int:
@@ -710,38 +756,84 @@ async def post_round(channel, b: dict, png: bytes, image_id: Optional[int]) -> i
     return (await channel.send(view=view, files=visual.files_of(view))).id
 
 
+class AlreadyLinked(Exception):
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.text = text
+
+
 class Tournament(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
+        # 보드마다 갱신은 한 번에 하나. 값이 True면 갱신 중에 알림이 또 와서 끝난 뒤 한 번 더 돎
+        self._refreshing: Dict[int, bool] = {}
+        self._tasks: set = set()
 
     async def cog_load(self):
         self.client.add_dynamic_items(RefreshButton, GroupSelect, LiveButton, LiveOffButton, RelayLinkButton,
                                       RelayRetryButton)
         self.live.start()
+        self.links_loop.start()
 
     async def cog_unload(self):
         self.live.cancel()
+        self.links_loop.cancel()
+
+    def spawn(self, coro) -> None:
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    # 보드 갱신
 
     @tasks.loop(seconds=LIVE_SECONDS)
     async def live(self):
         try:
-            rows = db.execute("SELECT * FROM live_boards").fetchall()
+            rows = db.execute("SELECT message_id FROM live_boards").fetchall()
         except sqlite3.Error as e:
             logger.warning(f"자동 갱신 목록 조회 실패: {e}")
             return
         limit = asyncio.Semaphore(5)
 
-        async def one(row: sqlite3.Row):
+        async def one(mid: int):
             async with limit:
-                await self.tick(row)
+                await self.refresh(mid)
 
-        await asyncio.gather(*(one(r) for r in rows))
+        await asyncio.gather(*(one(r['message_id']) for r in rows))
+
+    @live.before_loop
+    async def _before_live(self):
+        await self.client.wait_until_ready()
+
+    async def refresh(self, mid: int) -> None:
+        if mid in self._refreshing:
+            self._refreshing[mid] = True
+            return
+        self._refreshing[mid] = False
+        try:
+            while True:
+                row = live_get(mid)
+                if row is None:
+                    return
+                await self.tick(row)
+                if not self._refreshing[mid]:
+                    return
+                self._refreshing[mid] = False
+        finally:
+            del self._refreshing[mid]
+
+    async def refresh_code(self, code: str) -> None:
+        await asyncio.gather(*(self.refresh(r['message_id']) for r in boards_of(code)))
+
+    def refresh_soon(self, code: str) -> None:
+        self.spawn(self.refresh_code(code))
 
     async def tick(self, row: sqlite3.Row):
         mid = row['message_id']
         channel = self.client.get_partial_messageable(row['channel_id'])
         notice = channel.get_partial_message(mid)
         image_id, last_round = row['image_id'], row['last_round']
+        is_linked = copy_rows(row['code']).get(row['channel_id']) == (row['code'], row['grp'])
         try:
             try:
                 b = await fetch_board(row['code'], row['grp'], since=row['version'])
@@ -750,15 +842,20 @@ class Tournament(commands.Cog):
                     if b is not UNCHANGED and (b['played'] or image_id) else None
             except (NotFoundError, ValidationError) as e:
                 if live_get(mid):
-                    live_drop(mid)
-                    state = 'gone' if isinstance(e, NotFoundError) else 'nogroup'
-                    await notice.edit(view=notice_view(json.loads(row['board']), state))
+                    await self.stop(row, 'gone' if isinstance(e, NotFoundError) else 'nogroup')
                 return
             except ServiceDownError as e:
                 logger.warning(f"자동 갱신 조회 실패 {row['code']}: {e.message}")
                 return
-            # 조회하는 사이 끄기를 눌렀으면 아무것도 올리지 않음
-            if b is UNCHANGED or not live_get(mid):
+            # 조회하는 사이 보드를 멈췄으면 아무것도 올리지 않음
+            if not live_get(mid):
+                return
+            if b is UNCHANGED:
+                # 배포 전 안내 메시지는 버튼이 남아 있어 한 번 새 형식으로 고침
+                if row['notice'] is None:
+                    old = json.loads(row['board'])
+                    await notice.edit(view=notice_view(old, linked=is_linked))
+                    live_note(mid, notice_key(old, linked=is_linked))
                 return
             if png is not None:
                 new_round = b['played'] > last_round
@@ -767,11 +864,13 @@ class Tournament(commands.Cog):
             if b['ended']:
                 live_drop(mid)
                 await notice.edit(view=notice_view(b, 'ended'))
-            else:
-                live_save(mid, b, image_id, last_round)
-                # 안내 메시지의 라운드 수를 맞추고, 봇이 꺼진 사이 지워졌으면 NotFound로 끔
-                if png is not None and new_round:
-                    await notice.edit(view=notice_view(b))
+                return
+            live_save(mid, b, image_id, last_round)
+            # 안내 내용이 같으면 고치지 않음. 봇이 꺼진 사이 지워졌으면 NotFound로 끔
+            key = notice_key(b, linked=is_linked)
+            if key != row['notice']:
+                await notice.edit(view=notice_view(b, linked=is_linked))
+                live_note(mid, key)
         except discord.NotFound:
             live_drop(mid)
             logger.info(f"자동 갱신 안내 메시지 없음, 끔 {row['code']} {mid}")
@@ -783,19 +882,150 @@ class Tournament(commands.Cog):
         except Exception:
             logger.error(f"자동 갱신 처리 실패 {row['code']} {mid}", exc_info=True)
 
-    @live.before_loop
-    async def _before_live(self):
+    async def stop(self, row: sqlite3.Row, state: str) -> None:
+        """보드를 멈추고 안내 메시지를 멈춘 이유로 고침"""
+        live_drop(row['message_id'])
+        notice = self.client.get_partial_messageable(row['channel_id']).get_partial_message(row['message_id'])
+        try:
+            await notice.edit(view=notice_view(json.loads(row['board']), state))
+        except discord.HTTPException as e:
+            logger.info(f"자동 갱신 안내 고치기 실패 {row['code']} {state}: {type(e).__name__}")
+        logger.info(f"자동 갱신 멈춤 {row['code']} {row['grp']} {state}")
+
+    async def start(self, channel, guild_id: int, b: dict, png: Optional[bytes], user_id: int,
+                    message_id: Optional[int] = None) -> None:
+        """안내 메시지와 첫 이미지를 올리고 자동 갱신을 켬. message_id는 /대회가 이미 올린 안내 메시지"""
+        if message_id is None:
+            message_id = (await channel.send(view=notice_view(b))).id
+        # 첫 이미지를 올리는 사이 보드가 멈출 수 있어 기록부터 남김
+        live_put(message_id, channel.id, guild_id, b, user_id, notice_key(b))
+        if png:
+            try:
+                image_id = await post_round(channel, b, png, None)
+            except discord.HTTPException as e:
+                logger.warning(f"자동 갱신 첫 이미지 실패 {b['code']}: {type(e).__name__}: {e}")
+            else:
+                if live_get(message_id):
+                    live_save(message_id, b, image_id, b['played'])
+        logger.info(f"자동 갱신 켬 {b['code']} {b['group']} 서버 {guild_id}")
+
+    async def start_linked(self, channel_id: int, link: Link) -> None:
+        """관리 화면에서 고른 연결의 안내 메시지. 권한이 없거나 한도에 걸리면 연결만 둠"""
+        code, group = link
+        channel = self.client.get_channel(channel_id)
+        guild = getattr(channel, 'guild', None)
+        if guild is None:
+            return
+        missing = missing_perms(channel.permissions_for(guild.me), isinstance(channel, discord.Thread))
+        ignore = tuple(r['message_id'] for r in boards_in(channel_id))
+        if missing or live_limit(guild.id, 0, ignore):
+            logger.info(f"연결 안내 생략 {code} {group}: {', '.join(missing) or '한도'}")
+            return
+        try:
+            b = await fetch_board(code, group)
+            if not b['ended']:
+                await self.start(channel, guild.id, b, await fetch_image(code, group) if b['played'] else None, 0)
+        except (NotFoundError, ServiceDownError, ValidationError) as e:
+            logger.info(f"연결 안내 실패 {code} {group}: {e.message}")
+        except discord.HTTPException as e:
+            logger.warning(f"연결 안내 메시지 실패 {code}: {type(e).__name__}: {e}")
+
+    # 연결 사본 맞추기. 모두 links_lock 안에서 부름
+
+    def guild_of(self, channel_id: int) -> int:
+        guild = getattr(self.client.get_channel(channel_id), 'guild', None)
+        return guild.id if guild else copy_guild(channel_id) or 0
+
+    async def apply(self, code: Optional[str], new: Dict[int, Link], post: bool, skip: Optional[int] = None) -> None:
+        """사본을 Labs 목록에 맞춤. code가 있으면 그 대회만. post면 새 연결에 안내 메시지를 올림"""
+        old = copy_rows(code)
+        current = new if code is None else {**{c: v for c, v in copy_rows().items() if v[0] != code}, **new}
+        added, removed = diff_links(old, new)
+        for cid, link in removed.items():
+            if cid not in added:
+                copy_drop(cid)
+            for row in boards_of(*link):
+                if row['channel_id'] != cid:
+                    continue
+                # 전체 목록에는 끝난 대회가 없어서 먼저 갱신해 끝남과 삭제를 가림
+                if code is None:
+                    await self.refresh(row['message_id'])
+                    if not live_get(row['message_id']):
+                        continue
+                await self.stop(row, stop_state(cid, link, current))
+        for cid, link in added.items():
+            copy_set(cid, self.guild_of(cid), *link)
+            for row in boards_in(cid):
+                if (row['code'], row['grp']) != link:
+                    await self.stop(row, 'replaced')
+            if post and cid != skip and not live_running(cid, *link) and (cid, *link) not in _starting:
+                await self.start_linked(cid, link)
+
+    async def sync_code(self, code: str) -> None:
+        async with links_lock:
+            try:
+                links = await fetch_links(code)
+            except NotFoundError:
+                for cid in copy_rows(code):
+                    copy_drop(cid)
+                for row in boards_of(code):
+                    await self.stop(row, 'gone')
+                return
+            except (ServiceDownError, ValidationError) as e:
+                logger.warning(f"연결 조회 실패 {code}: {e.message}")
+                return
+            await self.apply(code, links_map(links, code), post=True)
+
+    async def sync_all(self) -> None:
+        async with links_lock:
+            try:
+                links = await fetch_all_links()
+            except (NotFoundError, ServiceDownError, ValidationError) as e:
+                logger.warning(f"연결 전체 조회 실패: {e.message}")
+                return
+            try:
+                new = links_map(links)
+            except (KeyError, TypeError):
+                logger.warning("연결 전체 응답 형식 오류")
+                return
+            await self.apply(None, new, post=False)
+
+    async def on_changed(self, code: str) -> None:
+        """Labs 변경 알림. 연결을 맞추고 그 대회의 보드를 바로 갱신"""
+        try:
+            await self.sync_code(code)
+            await self.refresh_code(code)
+        except Exception:
+            logger.error(f"변경 알림 처리 실패 {code}", exc_info=True)
+
+    async def relay_unlinked(self, channel_id: int) -> None:
+        """Labs가 연결 없음으로 답한 채널. Labs 목록으로 사본을 다시 맞춤"""
+        link = copy_rows().get(channel_id)
+        if link:
+            await self.sync_code(link[0])
+
+    @tasks.loop(seconds=LINKS_SECONDS)
+    async def links_loop(self):
+        try:
+            await self.sync_all()
+        except Exception:
+            logger.error("연결 동기화 실패", exc_info=True)
+
+    @links_loop.before_loop
+    async def _before_links(self):
         await self.client.wait_until_ready()
 
     @commands.Cog.listener()
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
-        # tick은 안내 메시지를 끝날 때만 고쳐서 지워진 것을 따로 알아야 함
+        # 안내 메시지를 지우면 그 보드만 멈추고 연결은 남김
         live_drop(payload.message_id)
 
     @commands.Cog.listener()
     async def on_raw_bulk_message_delete(self, payload: discord.RawBulkMessageDeleteEvent):
         for mid in payload.message_ids:
             live_drop(mid)
+
+    # 결과 CSV 받기
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -815,7 +1045,7 @@ class Tournament(commands.Cog):
             except discord.HTTPException as e:
                 logger.warning(f"결과 파일 내려받기 실패: {type(e).__name__}")
                 try:
-                    await message.reply(view=create_error_layout(REUPLOAD), mention_author=False)
+                    await message.reply(view=create_error_layout(DOWNLOAD_FAILED), mention_author=False)
                 except discord.HTTPException:
                     pass
         for a, data in loaded:
@@ -835,21 +1065,24 @@ class Tournament(commands.Cog):
         if data is None:
             await reply(create_error_layout(NOT_CSV))
             return
-        r = await relay(message.channel.id, message.author.id, a.filename, data)
+        name = message.author.display_name[:ACTOR_NAME_MAX]
+        r = await relay(message.channel.id, message.author.id, name, a.filename, data)
         if r is None:
-            keep_file(a.id, message.channel.id, message.author.id, a.filename, data)
+            keep_file(a.id, message.channel.id, message.author.id, name, a.filename, data)
             await reply(retry_view(a.id))
             return
         log_result(r)
         status = r['status']
         if status == 'unlinked':
-            unlink(message.channel.id)
+            await self.relay_unlinked(message.channel.id)
         elif status == 'invalid':
             await reply(create_error_layout(NOT_CSV))
-        elif status == 'forbidden':
-            await reply(create_error_layout(UPLOAD_FORBIDDEN), delete_after=30)
         else:
             await reply(result_view(r))
+            if status == 'added' and r.get('code'):
+                self.refresh_soon(r['code'])
+
+    # /대회
 
     async def code_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         rows = await my_tournaments(interaction.user.id)
@@ -858,11 +1091,33 @@ class Tournament(commands.Cog):
         for t in rows:
             if q and q not in t['name'].lower() and q not in t['code'].lower():
                 continue
-            state = f"{t['played']}라운드 진행" if t['played'] else "결과 없음"
+            state = f"{t['played']}라운드 진행" if t['played'] else "경기 전"
             role = "개최자" if t['role'] == 'owner' else "운영자"
             name = f"{t['name']} | {t['code']} | {role} | {state}"
             choices.append(app_commands.Choice(name=name[:100], value=t['code']))
         return choices[:25]
+
+    async def link_here(self, interaction: discord.Interaction, b: dict, live: dict) -> None:
+        """/대회를 입력한 채널을 그 조에 연결. 안내 메시지는 부른 쪽이 올리고 live['key']를 _starting에서 뺌"""
+        channel, guild = interaction.channel, interaction.guild
+        code, group = b['code'], b['group']
+        if live_running(channel.id, code, group) or (channel.id, code, group) in _starting:
+            raise AlreadyLinked(already_text(b))
+        # 곧 멈출 보드는 한도에서 뺌. 이 채널의 다른 보드와 다른 채널의 같은 조 보드
+        ignore = tuple(r['message_id'] for r in boards_in(channel.id)) + \
+            tuple(r['message_id'] for r in boards_of(code, group) if r['channel_id'] != channel.id)
+        if reason := live_blocked(interaction, ignore):
+            raise ValidationError(f"연결 불가 {code} {group}", reason)
+        live['key'] = (channel.id, code, group)
+        _starting.add(live['key'])
+        async with links_lock:
+            # 기다리는 사이 changed 처리가 안내를 올렸을 수 있음
+            if live_running(channel.id, code, group):
+                raise AlreadyLinked(already_text(b))
+            link = {'group': group, 'channelId': str(channel.id), 'guild': guild.name,
+                    'channel': getattr(channel, 'name', '')}
+            links = await put_links(code, interaction.user.id, [link], group)
+            await self.apply(code, links_map(links, code), post=True, skip=channel.id)
 
     @app_commands.command(name="대회", description="Labs 대회 순위")
     @app_commands.describe(코드="대회 코드나 Labs 대회 주소", 조="여러 조로 나눈 대회의 조")
@@ -876,41 +1131,32 @@ class Tournament(commands.Cog):
         if not target:
             raise ValidationError(f"대회 코드 형식 {코드[:40]!r}", BAD_CODE)
         code, group = target
-        group = 조.value if 조 else group or 'A'
+        picked = 조.value if 조 else group
         channel = interaction.channel
         in_guild = interaction.guild is not None and channel is not None and code != 'EXAMPLE'
         live: dict = {}
 
         async def build():
-            b = await fetch_board(code, group, interaction.user.id if in_guild else None)
-            if not (in_guild and is_operator(b) and not b['ended']):
+            b = await fetch_board(code, picked or 'A', interaction.user.id if in_guild else None)
+            # 여러 조인 대회에서 조를 고르지 않았으면 연결하지 않고 카드만 보여 줌
+            if not (in_guild and is_operator(b) and not b['ended']) or (b['groupCount'] > 1 and not picked):
                 return card_view(b, await fetch_image(code, b['group']))
-            if live_running(channel.id, code, b['group']):
-                raise ValidationError(f"이미 자동 갱신 중 {code} {b['group']}", DUPLICATE)
-            if reason := live_blocked(interaction):
-                live['blocked'] = reason
-                return card_view(b, await fetch_image(code, b['group']), True)
-            live['board'] = b
-            live['png'] = await fetch_image(code, b['group']) if b['played'] else None
+            png = await fetch_image(code, b['group']) if b['played'] else None
+            await self.link_here(interaction, b, live)
+            live['board'], live['png'] = b, png
             return notice_view(b)
 
-        view, message = await send_card(interaction, "대회 순위 조회 중", build)
-        if live.get('blocked'):
-            await reply_error(interaction, live['blocked'])
-        if view is None or 'board' not in live:
-            return
-        b = live['board']
-        # 첫 이미지를 올리는 사이 끄기를 누를 수 있어 기록부터 남김. version 0이면 다음 tick이 since 없이 조회해 다시 올림
-        live_put(message, interaction.guild.id, {**b, 'version': 0}, interaction.user.id, None, 0)
-        if live['png']:
+        try:
             try:
-                image_id = await post_round(channel, b, live['png'], None)
-            except discord.HTTPException as e:
-                logger.warning(f"자동 갱신 첫 이미지 실패 {code}: {type(e).__name__}: {e}")
-            else:
-                if live_get(message.id):
-                    live_save(message.id, b, image_id, b['played'])
-        logger.info(f"자동 갱신 켬 {code} {b['group']} 서버 {interaction.guild.id}")
+                view, message = await send_card(interaction, "대회 순위 조회 중", build)
+            except AlreadyLinked as e:
+                await reply_private(interaction, e.text)
+                return
+            if view is None or 'board' not in live:
+                return
+            await self.start(channel, interaction.guild.id, live['board'], live['png'], interaction.user.id, message.id)
+        finally:
+            _starting.discard(live.get('key'))
 
     tournament_command.autocomplete('코드')(code_autocomplete)
 
