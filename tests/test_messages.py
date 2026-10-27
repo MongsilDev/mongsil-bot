@@ -16,8 +16,13 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
 
     def test_next_round_before_first_result(self):
         nxt = {'roundNo': 1, 'main': '비', 'sub': None, 'bans': []}
-        self.assertIn("-# 다음 1라운드 | 날씨 비", t.notice_text(board(next=nxt)))
+        self.assertIn("-# **다음 1라운드** | 날씨 비", t.notice_text(board(next=nxt)))
         self.assertNotIn("다음", t.notice_text(board(played=1, next={**nxt, 'roundNo': 2})))
+
+    def test_ban_faces(self):
+        with mock.patch.dict(t.app_emojis.EMOJI, {'Jackie': '<:Jackie:1>'}):
+            lines = t.next_lines({'roundNo': 2, 'main': None, 'sub': None, 'bans': ['재키', '없는 이름']})
+        self.assertEqual(lines[1], "-# 금지 실험체 <:Jackie:1> 재키, 없는 이름")
 
     def test_many_groups_other_mode(self):
         b = board(group='B', groups=3, mode='checkpoint', played=2,

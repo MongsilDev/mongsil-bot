@@ -16,9 +16,10 @@ from discord import app_commands, ui
 from discord.ext import commands, tasks
 
 from client import ERClient
-from utils import visual
+from utils import app_emojis, visual
 from utils.api_client import api_client
 from utils.config import config
+from utils.character_names import CHARACTER_NAMES
 from utils.errors import NotFoundError, ServiceDownError, ValidationError, handle_errors
 from utils.layouts import create_error_layout, send_card
 from utils.logging_config import get_logger
@@ -239,11 +240,18 @@ async def my_tournaments(user_id: int) -> list:
 
 # 메시지
 
+def ban_label(name: str) -> str:
+    """Labs는 금지 실험체를 한국어 이름으로 줘 이름으로 코드를 찾아 얼굴 이모지를 붙임"""
+    code = next((c for c, n in CHARACTER_NAMES.items() if n == name), None)
+    face = app_emojis.character(code) if code else ''
+    return f"{face} {name}" if face else name
+
+
 def next_lines(n: dict) -> List[str]:
     weather = ', '.join(w for w in (n.get('main'), n.get('sub')) if w)
-    lines = [f"-# 다음 {n['roundNo']}라운드" + (f" | 날씨 {weather}" if weather else '')]
+    lines = [f"-# **다음 {n['roundNo']}라운드**" + (f" | 날씨 {weather}" if weather else '')]
     if n.get('bans'):
-        lines.append('-# 금지 실험체 ' + ', '.join(n['bans']))
+        lines.append('-# 금지 실험체 ' + ', '.join(ban_label(x) for x in n['bans']))
     return lines
 
 
@@ -311,15 +319,14 @@ def already_text(b: dict) -> str:
     return f"이 채널은 이미 {name}에 연결돼 있습니다."
 
 
-def round_view(b: dict, png: bytes, button: bool = True) -> ui.LayoutView:
-    """자동 갱신이 채널에 올리는 라운드 순위 이미지. button은 순위표 링크 버튼"""
+def round_view(b: dict, png: bytes) -> ui.LayoutView:
+    """자동 갱신이 채널에 올리는 라운드 순위 이미지"""
     view = ui.LayoutView(timeout=None)
     children = [gallery(view, png)]
     if b.get('next') and not b['ended']:
         children.append(ui.TextDisplay('\n'.join(next_lines(b['next']))))
     view.add_item(ui.Container(*children, accent_colour=visual.colour('tournament')))
-    if button:
-        view.add_item(ui.ActionRow(link_button(b)))
+    view.add_item(ui.ActionRow(link_button(b)))
     return view
 
 
@@ -786,8 +793,7 @@ async def channel_list(client: discord.Client, user_id: int) -> dict:
 
 async def post_round(channel, b: dict, png: bytes, image_id: Optional[int]) -> int:
     """image_id 메시지를 새 이미지로 고침. 없거나 지워졌으면 새로 올림"""
-    # 진행 중 라운드는 안내 메시지에 순위표 버튼이 있어 최종 결과에만 둠
-    view = round_view(b, png, button=b['ended'])
+    view = round_view(b, png)
     if image_id:
         try:
             await channel.get_partial_message(image_id).edit(view=view, attachments=visual.files_of(view))
@@ -909,9 +915,7 @@ class Tournament(commands.Cog):
         try:
             try:
                 b = await fetch_board(row['code'], row['grp'], since=row['version'])
-                # 라운드를 모두 지웠으면 마지막 이미지만 빈 순위로 고침
-                png = await fetch_image(row['code'], row['grp']) \
-                    if b is not UNCHANGED and (b['played'] or image_id) else None
+                png = await fetch_image(row['code'], row['grp']) if b is not UNCHANGED and b['played'] else None
             except (NotFoundError, ValidationError) as e:
                 if live_get(mid):
                     await self.stop(row, 'gone' if isinstance(e, NotFoundError) else 'nogroup')
@@ -929,6 +933,10 @@ class Tournament(commands.Cog):
                     await notice.edit(view=notice_view(old, linked=is_linked))
                     live_note(mid, notice_key(old, linked=is_linked))
                 return
+            # 라운드를 모두 지웠으면 빈 순위표 대신 마지막 이미지를 지움
+            if not b['played'] and image_id:
+                await delete_quietly(channel.get_partial_message(image_id))
+                image_id, last_round = None, 0
             if png is not None:
                 new_round = b['played'] > last_round
                 image_id = await post_round(channel, b, png, None if new_round else image_id)
