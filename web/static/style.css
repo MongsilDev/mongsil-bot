@@ -968,6 +968,10 @@ a.grow:hover {
   font-size: 15px;
 }
 
+.setting-text:not(:has(p)) {
+  align-self: center;
+}
+
 .setting > :not(.setting-text, .switch, .select, .controls) {
   grid-column: 1 / -1;
 }

@@ -75,7 +75,7 @@ class SettingsView(CooldownLayoutView):
             here = bool(current) and current == self.channel_id
             button = ui.Button(style=discord.ButtonStyle.secondary,
                                label="끄기" if here else "이 채널로 받기", custom_id=f"alert:{key}")
-            container.add_item(ui.Section(ui.TextDisplay(f"**{name}** {where}\n-# {desc}"), accessory=button))
+            container.add_item(ui.Section(ui.TextDisplay(f"**{name}** {where}" + (f"\n-# {desc}" if desc else "")), accessory=button))
 
         usage = guild_usage(gid)
         if usage:
