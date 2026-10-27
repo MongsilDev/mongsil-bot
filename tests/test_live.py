@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from helpers import CODE, FakeChannel, FakeClient, FakeGuild, add_board, board, db, reset, t
+from helpers import CODE, FakeChannel, FakeClient, FakeGuild, add_board, board, db, edited_text, reset, t
 
 import discord
 
@@ -81,6 +81,20 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value={**b, 'version': 3, 'plannedRounds': 5})):
             await self.cog.refresh(mid)
         self.assertEqual(len(self.ch.edits), 2)
+
+    async def test_stop_during_upload_keeps_stopped_notice(self):
+        t.copy_set(101, 1, CODE, 'A')
+        mid = add_board(self.ch)
+
+        async def upload(channel, b, png, image_id):
+            await self.cog.stop(t.live_get(mid), 'unlinked')
+            return 900
+
+        with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=board(played=1, version=2))), \
+                mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'png')), \
+                mock.patch.object(t, 'post_round', upload):
+            await self.cog.refresh(mid)
+        self.assertIn("연결을 해제해", edited_text(self.ch, mid))
 
 
 def interaction(channel, user_id=5):

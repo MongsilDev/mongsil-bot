@@ -861,6 +861,9 @@ class Tournament(commands.Cog):
                 new_round = b['played'] > last_round
                 image_id = await post_round(channel, b, png, None if new_round else image_id)
                 last_round = b['played']
+                # 이미지를 올리는 사이 보드를 멈췄으면 안내 메시지를 고치지 않음
+                if not live_get(mid):
+                    return
             if b['ended']:
                 live_drop(mid)
                 await notice.edit(view=notice_view(b, 'ended'))
@@ -988,6 +991,16 @@ class Tournament(commands.Cog):
             except (KeyError, TypeError):
                 logger.warning("연결 전체 응답 형식 오류")
                 return
+            # 전체 목록에는 끝난 대회가 없어 사본에만 남은 대회는 대회별 목록으로 확인
+            for code in {v[0] for v in copy_rows().values()} - {v[0] for v in new.values()}:
+                try:
+                    for cid, link in links_map(await fetch_links(code), code).items():
+                        new.setdefault(cid, link)
+                except NotFoundError:
+                    continue
+                except (ServiceDownError, ValidationError) as e:
+                    logger.warning(f"연결 조회 실패 {code}: {e.message}")
+                    return
             await self.apply(None, new, post=False)
 
     async def on_changed(self, code: str) -> None:

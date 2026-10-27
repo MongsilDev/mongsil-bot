@@ -103,14 +103,24 @@ class LinkSyncTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(t.live_get(mid))
         self.assertIn("연결을 해제해", edited_text(self.ch2, mid))
 
-    async def test_full_sync_marks_ended_board(self):
+    async def test_full_sync_keeps_ended_link(self):
         t.copy_set(101, 1, CODE, 'A')
         mid = add_board(self.ch1)
-        ended = {**board(), 'ended': True, 'version': 2}
-        with mock.patch.object(t, 'fetch_all_links', mock.AsyncMock(return_value=[])), \
-                mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=ended)):
+        with mock.patch.object(t, 'fetch_all_links', mock.AsyncMock(return_value=[])), self.changed([link(101)]):
             await self.cog.sync_all()
-        self.assertIn("대회가 끝나", edited_text(self.ch1, mid))
+        self.assertEqual(t.copy_rows(), {101: (CODE, 'A')})
+        self.assertIn(101, t.linked)
+        self.assertIsNotNone(t.live_get(mid))
+
+    async def test_full_sync_drops_gone_link(self):
+        t.copy_set(101, 1, CODE, 'A')
+        mid = add_board(self.ch1)
+        gone = mock.AsyncMock(side_effect=t.NotFoundError('x', t.GONE))
+        with mock.patch.object(t, 'fetch_all_links', mock.AsyncMock(return_value=[])), \
+                mock.patch.object(t, 'fetch_links', gone), mock.patch.object(t, 'fetch_board', gone):
+            await self.cog.sync_all()
+        self.assertEqual(t.copy_rows(), {})
+        self.assertIn("대회가 지워져", edited_text(self.ch1, mid))
 
 
 if __name__ == '__main__':
