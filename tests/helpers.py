@@ -33,6 +33,8 @@ def reset() -> None:
     t._channels.clear()
     t._kept.clear()
     t._pending.clear()
+    t._relaying.clear()
+    t._last_refresh.clear()
     # 테스트마다 이벤트 루프가 달라 잠금도 새로 만듦
     t.links_lock = t.asyncio.Lock()
 
