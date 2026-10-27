@@ -935,7 +935,11 @@ class Tournament(commands.Cog):
                 return
             # 라운드를 모두 지웠으면 빈 순위표 대신 마지막 이미지를 지움
             if not b['played'] and image_id:
-                await delete_quietly(channel.get_partial_message(image_id))
+                # 지우지 못하면 기록을 남기지 않아 다음 tick에 다시 지움
+                try:
+                    await channel.get_partial_message(image_id).delete()
+                except discord.NotFound:
+                    pass
                 image_id, last_round = None, 0
                 if not live_get(mid):
                     return
