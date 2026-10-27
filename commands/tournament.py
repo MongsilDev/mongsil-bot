@@ -240,18 +240,20 @@ async def my_tournaments(user_id: int) -> list:
 
 # 메시지
 
-def ban_label(name: str) -> str:
-    """Labs는 금지 실험체를 한국어 이름으로 줘 이름으로 코드를 찾아 얼굴 이모지를 붙임"""
-    code = next((c for c, n in CHARACTER_NAMES.items() if n == name), None)
-    face = app_emojis.character(code) if code else ''
-    return f"{face} {name}" if face else name
+def ban_text(names: List[str]) -> str:
+    """Labs는 금지 실험체를 한국어 이름으로 줘 이름으로 코드를 찾아 얼굴 이모지를 붙임.
+    얼굴이 하나라도 없으면 띄어쓰기 든 이름끼리 이어져 쉼표로 나눔"""
+    faces = [app_emojis.character(next((c for c, n in CHARACTER_NAMES.items() if n == name), 0)) for name in names]
+    if all(faces):
+        return ' '.join(f"{face} {name}" for face, name in zip(faces, names))
+    return ', '.join(f"{face} {name}" if face else name for face, name in zip(faces, names))
 
 
 def next_lines(n: dict) -> List[str]:
     weather = ', '.join(w for w in (n.get('main'), n.get('sub')) if w)
     lines = [f"-# **다음 {n['roundNo']}라운드**" + (f" | 날씨 {weather}" if weather else '')]
     if n.get('bans'):
-        lines.append('-# 금지 실험체 ' + ', '.join(ban_label(x) for x in n['bans']))
+        lines.append('-# 금지 실험체 ' + ban_text(n['bans']))
     return lines
 
 

@@ -20,9 +20,11 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("다음", t.notice_text(board(played=1, next={**nxt, 'roundNo': 2})))
 
     def test_ban_faces(self):
-        with mock.patch.dict(t.app_emojis.EMOJI, {'Jackie': '<:Jackie:1>'}):
-            lines = t.next_lines({'roundNo': 2, 'main': None, 'sub': None, 'bans': ['재키', '없는 이름']})
-        self.assertEqual(lines[1], "-# 금지 실험체 <:Jackie:1> 재키, 없는 이름")
+        with mock.patch.dict(t.app_emojis.EMOJI, {'Jackie': '<:Jackie:1>', 'Aya': '<:Aya:2>'}):
+            both = t.next_lines({'roundNo': 2, 'main': None, 'sub': None, 'bans': ['재키', '아야']})
+            mixed = t.next_lines({'roundNo': 2, 'main': None, 'sub': None, 'bans': ['재키', '없는 이름']})
+        self.assertEqual(both[1], "-# 금지 실험체 <:Jackie:1> 재키 <:Aya:2> 아야")
+        self.assertEqual(mixed[1], "-# 금지 실험체 <:Jackie:1> 재키, 없는 이름")
 
     def test_many_groups_other_mode(self):
         b = board(group='B', groups=3, mode='checkpoint', played=2,
