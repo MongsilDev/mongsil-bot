@@ -339,10 +339,16 @@ def card_view(b: dict, png: bytes) -> ui.LayoutView:
 
 
 def result_view(r: dict) -> ui.LayoutView:
-    """relay 응답 duplicate, ended"""
+    """relay 응답 added, duplicate, ended"""
+    if r['status'] == 'added':
+        title = r['name'] + (f" {r['group']}조" if r['groupCount'] > 1 else '') + f" {r['round']}라운드 게임 순위"
+        lines = [f"### {discord.utils.escape_markdown(title)}"]
+        lines += [f"{t['rank']}위 {discord.utils.escape_markdown(t['team'])} {t['score']}점" for t in r['ranking']]
+        text = '\n'.join(lines)
+    else:
+        text = discord.utils.escape_markdown(r['message'])
     view = ui.LayoutView(timeout=None)
-    view.add_item(ui.Container(ui.TextDisplay(discord.utils.escape_markdown(r['message'])),
-                               accent_colour=visual.colour('tournament')))
+    view.add_item(ui.Container(ui.TextDisplay(text), accent_colour=visual.colour('tournament')))
     view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="Labs에서 보기", url=r['url'])))
     return view
 
@@ -631,6 +637,8 @@ def stop_state(channel_id: int, link: Link, links: Dict[int, Link]) -> str:
 _kept: Dict[int, Tuple[float, int, int, int, str, str, bytes]] = {}
 # 다시 보내기로 모두 반영되면 지울 원래 메시지 ID -> 아직 반영되지 않은 첨부 ID
 _pending: Dict[int, set] = {}
+# 다시 보내는 중이라 _kept에서 꺼낸 첨부 ID
+_relaying: set = set()
 
 
 def keep_file(key: int, channel_id: int, message_id: int, author_id: int, author_name: str, file_name: str,
@@ -642,7 +650,7 @@ def keep_file(key: int, channel_id: int, message_id: int, author_id: int, author
     while len(_kept) >= RELAY_KEEP_MAX:
         del _kept[next(iter(_kept))]
     # 보관이 끝난 첨부가 있는 메시지는 다시 모두 반영될 수 없음
-    for mid in [m for m, keys in _pending.items() if not keys <= _kept.keys()]:
+    for mid in [m for m, keys in _pending.items() if not keys <= _kept.keys() | _relaying]:
         del _pending[mid]
     _kept[key] = (now + RELAY_KEEP_SECONDS, channel_id, message_id, author_id, author_name, file_name, data)
 
@@ -686,10 +694,14 @@ class RelayRetryButton(ui.DynamicItem[ui.Button], template=r'tq:(?P<key>[0-9]+)'
         await interaction.response.defer()
         # 동시에 눌러도 한 번만 보내도록 먼저 꺼내고, 실패하면 되돌림. 이름은 누른 사람이 아닌 올린 사람
         _kept.pop(self.key, None)
+        _relaying.add(self.key)
         _, channel_id, message_id, author_id, author_name, file_name, data = kept
         cog = interaction.client.get_cog('Tournament')
         before = cog.posted_before(channel_id) if cog else None
-        r = await relay(channel_id, author_id, author_name, file_name, data)
+        try:
+            r = await relay(channel_id, author_id, author_name, file_name, data)
+        finally:
+            _relaying.discard(self.key)
         if r is None:
             _kept[self.key] = kept
             return await reply_error(interaction, RELAY_DOWN)
@@ -704,18 +716,18 @@ class RelayRetryButton(ui.DynamicItem[ui.Button], template=r'tq:(?P<key>[0-9]+)'
             _pending.pop(message_id, None)
             await interaction.edit_original_response(view=create_error_layout(NOT_CSV))
         elif status == 'added':
+            # 이미지를 올리는 사이 keep_file이 불려도 남도록 먼저 뺌
+            _pending.get(message_id, set()).discard(self.key)
             channel = interaction.client.get_partial_messageable(channel_id)
             shown = bool(cog) and await cog.show_board(channel, r, before)
-            await delete_quietly(interaction.message)
-            left = _pending.get(message_id)
             if not shown:
                 _pending.pop(message_id, None)
-            elif left is not None:
-                left.discard(self.key)
-                if not left:
-                    del _pending[message_id]
-                    if interaction.app_permissions.manage_messages:
-                        await delete_quietly(channel.get_partial_message(message_id))
+                return await interaction.edit_original_response(view=result_view(r))
+            await delete_quietly(interaction.message)
+            if _pending.get(message_id) == set():
+                del _pending[message_id]
+                if interaction.app_permissions.manage_messages:
+                    await delete_quietly(channel.get_partial_message(message_id))
         else:
             _pending.pop(message_id, None)
             await interaction.edit_original_response(view=result_view(r))
@@ -1142,8 +1154,9 @@ class Tournament(commands.Cog):
                 except discord.HTTPException:
                     pass
         before = self.posted_before(message.channel.id)
-        added, kept = None, set()
-        complete = len(loaded) == len(message.attachments)
+        added, kept = [], set()
+        # 본문이나 스티커가 있으면 CSV를 모두 반영해도 메시지를 남김
+        complete = len(loaded) == len(message.attachments) and not message.content and not message.stickers
         for a, data in loaded:
             r = None
             try:
@@ -1153,19 +1166,25 @@ class Tournament(commands.Cog):
             except Exception:
                 logger.error("결과 전달 처리 실패", exc_info=True)
             if r is not None and r['status'] == 'added':
-                added = r
+                added.append(r)
             elif a.id in _kept:
                 kept.add(a.id)
             else:
                 complete = False
             if message.channel.id not in linked:
                 return
-        shown = added is not None and await self.show_board(message.channel, added, before)
+        if added and not await self.show_board(message.channel, added[-1], before):
+            for r in added:
+                try:
+                    await message.reply(view=result_view(r), mention_author=False)
+                except discord.HTTPException as e:
+                    logger.warning(f"결과 전달 답장 실패: {type(e).__name__}: {e}")
+            return
         if not complete:
             return
         if kept:
             _pending[message.id] = kept
-        elif shown and message.channel.permissions_for(message.guild.me).manage_messages:
+        elif added and message.channel.permissions_for(message.guild.me).manage_messages:
             await delete_quietly(message)
 
     async def relay_one(self, message: discord.Message, a: discord.Attachment,
