@@ -1060,6 +1060,42 @@ async def api_cut(request: web.Request):
     return web.json_response(data, headers={'Cache-Control': 'public, max-age=300'})
 
 
+def bot_token_ok(request: web.Request) -> bool:
+    """Labs가 부르는 경로. 토큰이 없거나 틀리면 주소가 없는 것처럼 404"""
+    token = os.getenv('LABS_BOT_TOKEN') or ''
+    return bool(token) and same_token(request.headers.get('x-bot-token', ''), token)
+
+
+async def api_tournament_channels(request: web.Request):
+    """Labs 관리 화면이 조마다 고를 수 있는 채널 목록"""
+    if not bot_token_ok(request):
+        return web.Response(status=404)
+    from commands.tournament import channel_list
+    user = request.query.get('user', '')
+    if not re.fullmatch(r'[0-9]{1,20}', user):
+        return web.json_response({'error': 'user'}, status=400)
+    return web.json_response(await channel_list(client, int(user)))
+
+
+async def api_tournament_changed(request: web.Request):
+    """Labs 대회 변경 알림. 바로 답하고 연결 동기화와 보드 갱신은 뒤에서 함"""
+    if not bot_token_ok(request):
+        return web.Response(status=404)
+    from commands.tournament import CODE
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    code = str(body.get('code', '')).upper() if isinstance(body, dict) else ''
+    cog = client.get_cog('Tournament')
+    if not CODE.match(code) or cog is None:
+        return web.json_response({'error': 'code'}, status=400)
+    task = asyncio.create_task(cog.on_changed(code))
+    background.add(task)
+    task.add_done_callback(background.discard)
+    return web.Response(status=202)
+
+
 async def invite(request: web.Request):
     """봇 추가 링크. ?guild=서버ID면 그 서버를 미리 고름"""
     gid = request.query.get('guild', '')
@@ -1135,6 +1171,8 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
     app.router.add_get('/speculation.json', speculation)
     app.router.add_get('/health', health)
     app.router.add_get('/api/cut', api_cut)
+    app.router.add_get('/api/t/channels', api_tournament_channels)
+    app.router.add_post('/api/t/changed', api_tournament_changed)
     app.router.add_static('/static', ROOT / 'static')
     app.on_cleanup.append(lambda _: http.close())
     refresh = asyncio.create_task(previews.refresh_loop(client))
