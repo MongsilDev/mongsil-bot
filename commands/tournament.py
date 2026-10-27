@@ -658,7 +658,7 @@ def log_result(r: dict) -> None:
 
 
 async def delete_quietly(message) -> None:
-    """반영한 CSV 메시지 지우기. 이미 지워졌거나 권한이 없으면 넘어감"""
+    """이미 지워졌거나 권한이 없으면 넘어감"""
     try:
         await message.delete()
     except (discord.NotFound, discord.Forbidden):
@@ -706,7 +706,7 @@ class RelayRetryButton(ui.DynamicItem[ui.Button], template=r'tq:(?P<key>[0-9]+)'
         elif status == 'added':
             channel = interaction.client.get_partial_messageable(channel_id)
             shown = bool(cog) and await cog.show_board(channel, r, before)
-            await interaction.message.delete()
+            await delete_quietly(interaction.message)
             left = _pending.get(message_id)
             if not shown:
                 _pending.pop(message_id, None)
@@ -867,12 +867,13 @@ class Tournament(commands.Cog):
             return False
         key = (channel.id, code, group)
         count = before[1] if before[0] == (code, group) else self._posted.get(key, 0)
-        if self._posted.get(key, 0) > count:
-            return True
         rows = [row for row in boards_of(code, group) if row['channel_id'] == channel.id]
         if rows:
             await self.refresh(rows[0]['message_id'], wait=True)
             return self._posted.get(key, 0) > count
+        # 마지막 라운드면 다른 갱신이 마지막 이미지를 올리고 보드 행을 이미 지웠을 수 있음
+        if self._posted.get(key, 0) > count:
+            return True
         try:
             b = await fetch_board(code, group)
             view = round_view(b, await fetch_image(code, group))
