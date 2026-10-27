@@ -19,7 +19,6 @@ from client import ERClient
 from utils import visual
 from utils.api_client import api_client
 from utils.config import config
-from utils.emojis import EMOJIS
 from utils.errors import NotFoundError, ServiceDownError, ValidationError, handle_errors
 from utils.layouts import create_error_layout, send_card
 from utils.logging_config import get_logger
@@ -249,7 +248,7 @@ def next_lines(n: dict) -> List[str]:
 
 
 def link_button(b: dict) -> ui.Button:
-    return ui.Button(style=discord.ButtonStyle.link, label="순위표", emoji=EMOJIS['labs'], url=b['url'])
+    return ui.Button(style=discord.ButtonStyle.link, label="순위표", url=b['url'])
 
 
 def gallery(view: ui.LayoutView, png: bytes) -> ui.MediaGallery:
@@ -281,8 +280,8 @@ def notice_text(b: dict, state: str = 'on', linked: bool = True) -> str:
     if b.get('next') and not b['ended']:
         lines += next_lines(b['next'])
     if linked:
-        lines.append(f"-# 이 채널에 올린 게임 결과 CSV는 {b['group']}조 순위에 들어갑니다." if many
-                     else "-# 이 채널에 올린 게임 결과 CSV는 순위에 들어갑니다.")
+        lines.append(f"-# 이 채널에 올린 게임 결과 CSV는 {b['group']}조 순위에 반영됩니다." if many
+                     else "-# 이 채널에 올린 게임 결과 CSV는 순위에 반영됩니다.")
     return '\n'.join(lines)
 
 
@@ -340,18 +339,11 @@ def card_view(b: dict, png: bytes) -> ui.LayoutView:
 
 
 def result_view(r: dict) -> ui.LayoutView:
-    """relay 응답 added, duplicate, ended"""
-    if r['status'] == 'added':
-        title = r['name'] + (f" {r['group']}조" if r['groupCount'] > 1 else '') + f" {r['round']}라운드 게임 순위"
-        lines = [f"### {discord.utils.escape_markdown(title)}"]
-        lines += [f"{t['rank']}위 {discord.utils.escape_markdown(t['team'])} {t['score']}점" for t in r['ranking']]
-        text = '\n'.join(lines)
-    else:
-        text = discord.utils.escape_markdown(r['message'])
+    """relay 응답 duplicate, ended"""
     view = ui.LayoutView(timeout=None)
-    view.add_item(ui.Container(ui.TextDisplay(text), accent_colour=visual.colour('tournament')))
-    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="Labs에서 보기",
-                                         emoji=EMOJIS['labs'], url=r['url'])))
+    view.add_item(ui.Container(ui.TextDisplay(discord.utils.escape_markdown(r['message'])),
+                               accent_colour=visual.colour('tournament')))
+    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="Labs에서 보기", url=r['url'])))
     return view
 
 
@@ -636,17 +628,23 @@ def stop_state(channel_id: int, link: Link, links: Dict[int, Link]) -> str:
     return 'unlinked'
 
 
-_kept: Dict[int, Tuple[float, int, int, str, str, bytes]] = {}
+_kept: Dict[int, Tuple[float, int, int, int, str, str, bytes]] = {}
+# 다시 보내기로 모두 반영되면 지울 원래 메시지 ID -> 아직 반영되지 않은 첨부 ID
+_pending: Dict[int, set] = {}
 
 
-def keep_file(key: int, channel_id: int, author_id: int, author_name: str, file_name: str, data: bytes) -> None:
+def keep_file(key: int, channel_id: int, message_id: int, author_id: int, author_name: str, file_name: str,
+              data: bytes) -> None:
     """다시 보내기용 파일 바이트. RELAY_KEEP_SECONDS 동안 메모리에만"""
     now = time.monotonic()
     for k in [k for k, v in _kept.items() if v[0] < now]:
         del _kept[k]
     while len(_kept) >= RELAY_KEEP_MAX:
         del _kept[next(iter(_kept))]
-    _kept[key] = (now + RELAY_KEEP_SECONDS, channel_id, author_id, author_name, file_name, data)
+    # 보관이 끝난 첨부가 있는 메시지는 다시 모두 반영될 수 없음
+    for mid in [m for m, keys in _pending.items() if not keys <= _kept.keys()]:
+        del _pending[mid]
+    _kept[key] = (now + RELAY_KEEP_SECONDS, channel_id, message_id, author_id, author_name, file_name, data)
 
 
 def retry_view(key: int) -> ui.LayoutView:
@@ -657,6 +655,16 @@ def retry_view(key: int) -> ui.LayoutView:
 
 def log_result(r: dict) -> None:
     logger.info(f"결과 전달 {r.get('code') or '-'} {r.get('group') or '-'} {r['status']}")
+
+
+async def delete_quietly(message) -> None:
+    """반영한 CSV 메시지 지우기. 이미 지워졌거나 권한이 없으면 넘어감"""
+    try:
+        await message.delete()
+    except (discord.NotFound, discord.Forbidden):
+        pass
+    except discord.HTTPException as e:
+        logger.warning(f"결과 메시지 지우기 실패: {type(e).__name__}: {e}")
 
 
 class RelayRetryButton(ui.DynamicItem[ui.Button], template=r'tq:(?P<key>[0-9]+)'):
@@ -678,24 +686,39 @@ class RelayRetryButton(ui.DynamicItem[ui.Button], template=r'tq:(?P<key>[0-9]+)'
         await interaction.response.defer()
         # 동시에 눌러도 한 번만 보내도록 먼저 꺼내고, 실패하면 되돌림. 이름은 누른 사람이 아닌 올린 사람
         _kept.pop(self.key, None)
-        _, channel_id, author_id, author_name, file_name, data = kept
+        _, channel_id, message_id, author_id, author_name, file_name, data = kept
+        cog = interaction.client.get_cog('Tournament')
+        before = cog.posted_before(channel_id) if cog else None
         r = await relay(channel_id, author_id, author_name, file_name, data)
         if r is None:
             _kept[self.key] = kept
             return await reply_error(interaction, RELAY_DOWN)
         log_result(r)
-        cog = interaction.client.get_cog('Tournament')
         status = r['status']
         if status == 'unlinked':
+            _pending.pop(message_id, None)
             if cog:
                 await cog.relay_unlinked(channel_id)
             await interaction.message.delete()
         elif status == 'invalid':
+            _pending.pop(message_id, None)
             await interaction.edit_original_response(view=create_error_layout(NOT_CSV))
+        elif status == 'added':
+            channel = interaction.client.get_partial_messageable(channel_id)
+            shown = bool(cog) and await cog.show_board(channel, r, before)
+            await interaction.message.delete()
+            left = _pending.get(message_id)
+            if not shown:
+                _pending.pop(message_id, None)
+            elif left is not None:
+                left.discard(self.key)
+                if not left:
+                    del _pending[message_id]
+                    if interaction.app_permissions.manage_messages:
+                        await delete_quietly(channel.get_partial_message(message_id))
         else:
+            _pending.pop(message_id, None)
             await interaction.edit_original_response(view=result_view(r))
-            if status == 'added' and cog and r.get('code'):
-                cog.refresh_soon(r['code'])
 
 
 # 채널 목록. Labs 관리 화면이 조마다 채널을 고를 때 씀
@@ -771,7 +794,9 @@ class Tournament(commands.Cog):
         self.client = client
         # 보드마다 갱신은 한 번에 하나. 값이 True면 갱신 중에 알림이 또 와서 끝난 뒤 한 번 더 돎
         self._refreshing: Dict[int, bool] = {}
-        self._tasks: set = set()
+        self._idle: Dict[int, asyncio.Event] = {}
+        # (채널, 대회, 조)마다 올리거나 고친 순위 이미지 수. 마지막 라운드로 보드 행이 지워져도 남음
+        self._posted: Dict[Tuple[int, str, str], int] = {}
 
     async def cog_load(self):
         self.client.add_dynamic_items(RefreshButton, GroupSelect, LiveButton, LiveOffButton, RelayLinkButton,
@@ -782,11 +807,6 @@ class Tournament(commands.Cog):
     async def cog_unload(self):
         self.live.cancel()
         self.links_loop.cancel()
-
-    def spawn(self, coro) -> None:
-        task = asyncio.create_task(coro)
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
 
     # 보드 갱신
 
@@ -809,11 +829,15 @@ class Tournament(commands.Cog):
     async def _before_live(self):
         await self.client.wait_until_ready()
 
-    async def refresh(self, mid: int) -> None:
+    async def refresh(self, mid: int, wait: bool = False) -> None:
+        """wait면 이미 갱신 중일 때 그 갱신이 한 번 더 돌고 끝날 때까지 기다림"""
         if mid in self._refreshing:
             self._refreshing[mid] = True
+            if wait:
+                await self._idle[mid].wait()
             return
         self._refreshing[mid] = False
+        self._idle[mid] = idle = asyncio.Event()
         try:
             while True:
                 row = live_get(mid)
@@ -825,12 +849,41 @@ class Tournament(commands.Cog):
                 self._refreshing[mid] = False
         finally:
             del self._refreshing[mid]
+            del self._idle[mid]
+            idle.set()
 
     async def refresh_code(self, code: str) -> None:
         await asyncio.gather(*(self.refresh(r['message_id']) for r in boards_of(code)))
 
-    def refresh_soon(self, code: str) -> None:
-        self.spawn(self.refresh_code(code))
+    def posted_before(self, channel_id: int) -> Tuple[Optional[Link], int]:
+        """CSV를 Labs로 보내기 전 그 채널 조의 이미지 수. 보내는 사이 다른 갱신이 올린 이미지도 셈"""
+        link = copy_rows().get(channel_id)
+        return link, self._posted.get((channel_id, *link), 0) if link else 0
+
+    async def show_board(self, channel, r: dict, before: Tuple[Optional[Link], int]) -> bool:
+        """CSV를 반영한 조의 순위 이미지를 올림. 올린 것을 확인하면 True"""
+        code, group = r.get('code'), r.get('group')
+        if not code or not group:
+            return False
+        key = (channel.id, code, group)
+        count = before[1] if before[0] == (code, group) else self._posted.get(key, 0)
+        if self._posted.get(key, 0) > count:
+            return True
+        rows = [row for row in boards_of(code, group) if row['channel_id'] == channel.id]
+        if rows:
+            await self.refresh(rows[0]['message_id'], wait=True)
+            return self._posted.get(key, 0) > count
+        try:
+            b = await fetch_board(code, group)
+            view = round_view(b, await fetch_image(code, group))
+            await channel.send(view=view, files=visual.files_of(view))
+        except (NotFoundError, ServiceDownError, ValidationError) as e:
+            logger.warning(f"결과 순위 이미지 조회 실패 {code}: {e.message}")
+            return False
+        except discord.HTTPException as e:
+            logger.warning(f"결과 순위 이미지 실패 {code}: {type(e).__name__}: {e}")
+            return False
+        return True
 
     async def tick(self, row: sqlite3.Row):
         mid = row['message_id']
@@ -865,6 +918,8 @@ class Tournament(commands.Cog):
                 new_round = b['played'] > last_round
                 image_id = await post_round(channel, b, png, None if new_round else image_id)
                 last_round = b['played']
+                key = (row['channel_id'], row['code'], row['grp'])
+                self._posted[key] = self._posted.get(key, 0) + 1
                 # 이미지를 올리는 사이 보드를 멈췄으면 안내 메시지를 고치지 않음
                 if not live_get(mid):
                     return
@@ -1085,39 +1140,57 @@ class Tournament(commands.Cog):
                     await message.reply(view=create_error_layout(DOWNLOAD_FAILED), mention_author=False)
                 except discord.HTTPException:
                     pass
+        before = self.posted_before(message.channel.id)
+        added, kept = None, set()
+        complete = len(loaded) == len(message.attachments)
         for a, data in loaded:
+            r = None
             try:
-                await self.relay_one(message, a, data)
+                r = await self.relay_one(message, a, data)
             except discord.HTTPException as e:
                 logger.warning(f"결과 전달 답장 실패: {type(e).__name__}: {e}")
             except Exception:
                 logger.error("결과 전달 처리 실패", exc_info=True)
+            if r is not None and r['status'] == 'added':
+                added = r
+            elif a.id in _kept:
+                kept.add(a.id)
+            else:
+                complete = False
             if message.channel.id not in linked:
                 return
+        shown = added is not None and await self.show_board(message.channel, added, before)
+        if not complete:
+            return
+        if kept:
+            _pending[message.id] = kept
+        elif shown and message.channel.permissions_for(message.guild.me).manage_messages:
+            await delete_quietly(message)
 
-    async def relay_one(self, message: discord.Message, a: discord.Attachment, data: Optional[bytes]):
+    async def relay_one(self, message: discord.Message, a: discord.Attachment,
+                        data: Optional[bytes]) -> Optional[dict]:
+        """첨부 하나를 Labs로 보내고 relay 응답을 돌려줌. 반영되지 않았으면 이유를 답장"""
         def reply(view, **kwargs):
             return message.reply(view=view, mention_author=False, **kwargs)
 
         if data is None:
             await reply(create_error_layout(NOT_CSV))
-            return
+            return None
         name = message.author.display_name[:ACTOR_NAME_MAX]
         r = await relay(message.channel.id, message.author.id, name, a.filename, data)
         if r is None:
-            keep_file(a.id, message.channel.id, message.author.id, name, a.filename, data)
+            keep_file(a.id, message.channel.id, message.id, message.author.id, name, a.filename, data)
             await reply(retry_view(a.id))
-            return
+            return None
         log_result(r)
         status = r['status']
         if status == 'unlinked':
             await self.relay_unlinked(message.channel.id)
         elif status == 'invalid':
             await reply(create_error_layout(NOT_CSV))
-        else:
+        elif status != 'added':
             await reply(result_view(r))
-            if status == 'added' and r.get('code'):
-                self.refresh_soon(r['code'])
+        return r
 
     # /대회
 

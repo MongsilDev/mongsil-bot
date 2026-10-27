@@ -32,6 +32,7 @@ def reset() -> None:
     t._retry.clear()
     t._channels.clear()
     t._kept.clear()
+    t._pending.clear()
     # 테스트마다 이벤트 루프가 달라 잠금도 새로 만듦
     t.links_lock = t.asyncio.Lock()
 
@@ -49,6 +50,9 @@ class FakeMessage:
     async def edit(self, **kwargs):
         self.channel.edits.append((self.id, kwargs))
 
+    async def delete(self):
+        self.channel.deleted.append(self.id)
+
 
 class FakeGuild:
     def __init__(self, gid=1, name='서버'):
@@ -61,7 +65,7 @@ class FakeChannel:
         self.id, self.guild = cid, guild or FakeGuild()
         self.name = f'채널{cid}'
         self.perms = perms or discord.Permissions.all()
-        self.sent, self.edits = [], []
+        self.sent, self.edits, self.deleted = [], [], []
 
     async def send(self, **kwargs):
         mid = next(_ids)
