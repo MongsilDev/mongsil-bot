@@ -51,6 +51,24 @@ class LinkSyncTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(101, t.linked)
         self.assertIn("연결을 해제해 자동 갱신을 멈췄습니다.", edited_text(self.ch1, mid))
 
+    async def test_full_sync_retries_failed_notice(self):
+        down = mock.AsyncMock(side_effect=t.ServiceDownError('x', 'down'))
+        with self.changed([link(101)]), mock.patch.object(t, 'fetch_board', down):
+            await self.cog.sync_code(CODE)
+        self.assertEqual((self.ch1.sent, t.copy_rows()), ([], {101: (CODE, 'A')}))
+        with mock.patch.object(t, 'fetch_all_links', mock.AsyncMock(return_value=[{'code': CODE, **link(101)}])):
+            await self.cog.sync_all()
+        self.assertEqual(len(self.ch1.sent), 1)
+        self.assertEqual(t._retry, {})
+
+    async def test_full_sync_drops_retry_after_unlink(self):
+        down = mock.AsyncMock(side_effect=t.ServiceDownError('x', 'down'))
+        with self.changed([link(101)]), mock.patch.object(t, 'fetch_board', down):
+            await self.cog.sync_code(CODE)
+        with mock.patch.object(t, 'fetch_all_links', mock.AsyncMock(return_value=[])), self.changed([]):
+            await self.cog.sync_all()
+        self.assertEqual((self.ch1.sent, t._retry, t.copy_rows()), ([], {}, {}))
+
     async def test_same_link_does_nothing(self):
         t.copy_set(101, 1, CODE, 'A')
         mid = add_board(self.ch1)

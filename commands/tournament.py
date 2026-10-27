@@ -579,6 +579,8 @@ linked = load_linked()
 links_lock = asyncio.Lock()
 # /대회가 안내 메시지를 올리는 중인 (채널, 대회, 조). changed 처리가 같은 안내를 또 올리지 않게 함
 _starting: set = set()
+# 관리 화면 연결 중 일시 오류로 안내를 못 올린 채널. 다음 전체 동기화에서 다시 시도
+_retry: Dict[int, Link] = {}
 
 
 def copy_rows(code: Optional[str] = None) -> Dict[int, Link]:
@@ -914,6 +916,7 @@ class Tournament(commands.Cog):
 
     async def start_linked(self, channel_id: int, link: Link) -> None:
         """관리 화면에서 고른 연결의 안내 메시지. 권한이 없거나 한도에 걸리면 연결만 둠"""
+        _retry.pop(channel_id, None)
         code, group = link
         channel = self.client.get_channel(channel_id)
         guild = getattr(channel, 'guild', None)
@@ -930,8 +933,12 @@ class Tournament(commands.Cog):
                 await self.start(channel, guild.id, b, await fetch_image(code, group) if b['played'] else None, 0)
         except (NotFoundError, ServiceDownError, ValidationError) as e:
             logger.info(f"연결 안내 실패 {code} {group}: {e.message}")
+            if isinstance(e, ServiceDownError):
+                _retry[channel_id] = link
         except discord.HTTPException as e:
             logger.warning(f"연결 안내 메시지 실패 {code}: {type(e).__name__}: {e}")
+            if e.status >= 500:
+                _retry[channel_id] = link
 
     # 연결 사본 맞추기. 모두 links_lock 안에서 부름
 
@@ -1002,6 +1009,11 @@ class Tournament(commands.Cog):
                     logger.warning(f"연결 조회 실패 {code}: {e.message}")
                     return
             await self.apply(None, new, post=False)
+            for cid, link in list(_retry.items()):
+                if new.get(cid) == link and not live_running(cid, *link) and (cid, *link) not in _starting:
+                    await self.start_linked(cid, link)
+                else:
+                    _retry.pop(cid, None)
 
     async def on_changed(self, code: str) -> None:
         """Labs 변경 알림. 연결을 맞추고 그 대회의 보드를 바로 갱신"""
@@ -1110,8 +1122,8 @@ class Tournament(commands.Cog):
             choices.append(app_commands.Choice(name=name[:100], value=t['code']))
         return choices[:25]
 
-    async def link_here(self, interaction: discord.Interaction, b: dict, live: dict) -> None:
-        """/대회를 입력한 채널을 그 조에 연결. 안내 메시지는 부른 쪽이 올리고 live['key']를 _starting에서 뺌"""
+    async def link_here(self, interaction: discord.Interaction, b: dict, live: dict) -> Optional[str]:
+        """/대회를 입력한 채널을 그 조에 연결하고, 막히면 이유를 돌려줌. 안내 메시지는 부른 쪽이 올리고 live['key']를 _starting에서 뺌"""
         channel, guild = interaction.channel, interaction.guild
         code, group = b['code'], b['group']
         if live_running(channel.id, code, group) or (channel.id, code, group) in _starting:
@@ -1120,7 +1132,7 @@ class Tournament(commands.Cog):
         ignore = tuple(r['message_id'] for r in boards_in(channel.id)) + \
             tuple(r['message_id'] for r in boards_of(code, group) if r['channel_id'] != channel.id)
         if reason := live_blocked(interaction, ignore):
-            raise ValidationError(f"연결 불가 {code} {group}", reason)
+            return reason
         live['key'] = (channel.id, code, group)
         _starting.add(live['key'])
         async with links_lock:
@@ -1155,7 +1167,9 @@ class Tournament(commands.Cog):
             if not (in_guild and is_operator(b) and not b['ended']) or (b['groupCount'] > 1 and not picked):
                 return card_view(b, await fetch_image(code, b['group']))
             png = await fetch_image(code, b['group']) if b['played'] else None
-            await self.link_here(interaction, b, live)
+            if reason := await self.link_here(interaction, b, live):
+                live['blocked'] = reason
+                return card_view(b, png or await fetch_image(code, b['group']))
             live['board'], live['png'] = b, png
             return notice_view(b)
 
@@ -1165,6 +1179,8 @@ class Tournament(commands.Cog):
             except AlreadyLinked as e:
                 await reply_private(interaction, e.text)
                 return
+            if live.get('blocked'):
+                await reply_error(interaction, live['blocked'])
             if view is None or 'board' not in live:
                 return
             await self.start(channel, interaction.guild.id, live['board'], live['png'], interaction.user.id, message.id)

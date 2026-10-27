@@ -29,6 +29,7 @@ def reset() -> None:
         db.execute(f"DELETE FROM {table}")
     t.linked.clear()
     t._starting.clear()
+    t._retry.clear()
     t._channels.clear()
     t._kept.clear()
     # 테스트마다 이벤트 루프가 달라 잠금도 새로 만듦

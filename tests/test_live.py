@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from helpers import CODE, FakeChannel, FakeClient, FakeGuild, add_board, board, db, edited_text, reset, t
+from helpers import CODE, FakeChannel, FakeClient, FakeGuild, add_board, board, db, edited_text, reset, t, text_of
 
 import discord
 
@@ -95,6 +95,43 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
                 mock.patch.object(t, 'post_round', upload):
             await self.cog.refresh(mid)
         self.assertIn("연결을 해제해", edited_text(self.ch, mid))
+
+
+class CommandTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        reset()
+        self.ch = FakeChannel(101)
+        self.cog = t.Tournament(FakeClient(self.ch))
+
+    async def test_blocked_operator_gets_card(self):
+        sent, private = [], []
+
+        async def send_message(**kwargs):
+            sent.append(kwargs)
+            response.is_done = lambda: True
+            return SimpleNamespace(resource=None)
+
+        async def followup_send(**kwargs):
+            private.append(kwargs)
+
+        response = SimpleNamespace(is_done=lambda: False, send_message=send_message)
+        inter = SimpleNamespace(channel=self.ch, guild=self.ch.guild, user=SimpleNamespace(id=5),
+                                app_permissions=discord.Permissions.none(), response=response,
+                                followup=SimpleNamespace(send=followup_send), extras={},
+                                created_at=discord.utils.utcnow(),
+                                original_response=mock.AsyncMock(return_value=SimpleNamespace(id=900)))
+        put = mock.AsyncMock()
+        with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=board())), \
+                mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'png')), \
+                mock.patch.object(t, 'put_links', put):
+            await self.cog.tournament_command.callback(self.cog, inter, CODE)
+        self.assertEqual(len(sent), 1)
+        self.assertTrue(any(isinstance(i, discord.ui.MediaGallery) for i in sent[0]['view'].walk_children()))
+        self.assertTrue(private[0]['ephemeral'])
+        self.assertIn("권한이 없어", text_of(private[0]['view']))
+        put.assert_not_awaited()
+        self.assertEqual(t.copy_rows(), {})
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM live_boards").fetchone()[0], 0)
 
 
 def interaction(channel, user_id=5):
