@@ -937,6 +937,8 @@ class Tournament(commands.Cog):
             if not b['played'] and image_id:
                 await delete_quietly(channel.get_partial_message(image_id))
                 image_id, last_round = None, 0
+                if not live_get(mid):
+                    return
             if png is not None:
                 new_round = b['played'] > last_round
                 image_id = await post_round(channel, b, png, None if new_round else image_id)
