@@ -1254,7 +1254,7 @@ class Tournament(commands.Cog):
     @app_commands.choices(조=[app_commands.Choice(name=f"{g}조", value=g) for g in GROUPS])
     # Labs 봇 토큰 한도(분당 1200회)를 모든 서버가 나눠 씀
     @app_commands.checks.cooldown(3, 10)
-    @handle_errors(user_message="대회 순위를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
+    @handle_errors(user_message="대회 순위를 가져오지 못했습니다.\n잠시 후 다시 시도해주세요.")
     async def tournament_command(self, interaction: discord.Interaction, 코드: str,
                                  조: Optional[app_commands.Choice[str]] = None):
         target = parse_target(코드)
