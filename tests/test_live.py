@@ -118,6 +118,12 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
         edit = [e for e in self.ch.edits if e[0] == mid][-1][1]
         self.assertTrue(any(isinstance(i, discord.ui.MediaGallery) for i in edit['view'].walk_children()))
         self.assertNotIn('attachments', edit)
+        # 1라운드 전으로 돌아가 라운드 수가 바뀌면 이미지를 다시 그림
+        with mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'new')) as image, \
+                mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=board(played=0, version=3, planned=5))):
+            await self.cog.refresh(mid)
+        image.assert_awaited_once()
+        self.assertEqual(len([e for e in self.ch.edits if e[0] == mid][-1][1]['attachments']), 1)
         await self.cog.stop(t.live_get(mid), 'unlinked')
         self.assertEqual([e for e in self.ch.edits if e[0] == mid][-1][1]['attachments'], [])
 

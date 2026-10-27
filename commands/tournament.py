@@ -979,7 +979,13 @@ class Tournament(commands.Cog):
             image = has_image(row['notice'])
             key = notice_key(b, linked=is_linked, image=image)
             if key != row['notice']:
-                await notice.edit(view=notice_view(b, linked=is_linked, image=image))
+                # 1라운드 전에 대회 정보가 바뀌면 빈 순위 이미지도 새로 그림
+                fresh = await fetch_image(row['code'], row['grp']) if image and not b['played'] else None
+                view = notice_view(b, linked=is_linked, png=fresh, image=image)
+                if fresh is None:
+                    await notice.edit(view=view)
+                else:
+                    await notice.edit(view=view, attachments=visual.files_of(view))
                 live_note(mid, key)
         except discord.NotFound:
             live_drop(mid)
