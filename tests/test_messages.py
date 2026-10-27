@@ -1,8 +1,9 @@
+import asyncio
 import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from helpers import CODE, FakeChannel, FakeClient, board, reset, t, text_of
+from helpers import CODE, FakeChannel, FakeClient, add_board, board, reset, t, text_of
 
 import discord
 
@@ -11,14 +12,14 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
     def test_single_group_points(self):
         self.assertEqual(t.notice_text(board(played=1)),
                          "### 테스트 대회\n-# 포인트제 | 1/4라운드\n"
-                         "-# 이 채널에 올린 게임 결과 CSV는 순위에 들어갑니다.")
+                         "-# 이 채널에 올린 게임 결과 CSV는 순위에 반영됩니다.")
 
     def test_many_groups_other_mode(self):
         b = board(group='B', groups=3, mode='checkpoint', played=2,
                   next={'roundNo': 3, 'main': '비', 'sub': None, 'bans': ['재키']})
         self.assertEqual(t.notice_text(b),
                          "### 테스트 대회 B조\n-# 체크포인트 | 2라운드\n-# 다음 3라운드 | 날씨 비\n-# 금지 실험체 재키\n"
-                         "-# 이 채널에 올린 게임 결과 CSV는 B조 순위에 들어갑니다.")
+                         "-# 이 채널에 올린 게임 결과 CSV는 B조 순위에 반영됩니다.")
 
     def test_stopped_states(self):
         b = board(group='C', groups=2)
@@ -35,30 +36,49 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
         for state in ('on', 'unlinked'):
             view = t.notice_view(board(), state)
             buttons = [i for i in view.walk_children() if isinstance(i, discord.ui.Button)]
-            self.assertEqual([(b.label, b.style) for b in buttons], [("순위표", discord.ButtonStyle.link)])
+            self.assertEqual([(b.label, b.style, b.emoji) for b in buttons],
+                             [("순위표", discord.ButtonStyle.link, None)])
 
-    def test_result_titles_game_rank(self):
-        r = {'status': 'added', 'name': '테스트 대회', 'group': 'A', 'groupCount': 2, 'round': 1,
-             'url': f'https://labs.example/er/t/{CODE}/a',
-             'ranking': [{'rank': 1, 'team': '팀1', 'score': 13}, {'rank': 2, 'team': '팀2', 'score': 20}]}
-        self.assertEqual(text_of(t.result_view(r)), "### 테스트 대회 A조 1라운드 게임 순위\n1위 팀1 13점\n2위 팀2 20점")
+    async def test_result_button_without_emoji(self):
+        r = {'status': 'duplicate', 'message': '이미 올린 결과입니다.', 'url': 'https://labs.example/x'}
+        buttons = [i for i in t.result_view(r).walk_children() if isinstance(i, discord.ui.Button)]
+        self.assertEqual([(b.label, b.emoji) for b in buttons], [("Labs에서 보기", None)])
 
     def test_already_linked(self):
         self.assertEqual(t.already_text(board()), "이 채널은 이미 테스트 대회에 연결돼 있습니다.")
         self.assertEqual(t.already_text(board(group='B', groups=2)), "이 채널은 이미 테스트 대회 B조에 연결돼 있습니다.")
 
 
-def csv_message(channel_id, name='올린사람' * 10):
-    attachment = SimpleNamespace(id=77, filename='game.csv', size=10, read=mock.AsyncMock(return_value=b'a,b'))
-    return SimpleNamespace(guild=object(), author=SimpleNamespace(bot=False, id=42, display_name=name),
-                           channel=SimpleNamespace(id=channel_id), attachments=[attachment],
-                           reply=mock.AsyncMock())
+def attachment(aid=77, filename='game.csv'):
+    return SimpleNamespace(id=aid, filename=filename, size=10, read=mock.AsyncMock(return_value=b'a,b'))
+
+
+def csv_message(channel, name='올린사람' * 10, attachments=None):
+    channel = channel if isinstance(channel, FakeChannel) else FakeChannel(channel)
+    return SimpleNamespace(id=500, guild=channel.guild, author=SimpleNamespace(bot=False, id=42, display_name=name),
+                           channel=channel, attachments=attachments or [attachment()],
+                           reply=mock.AsyncMock(), delete=mock.AsyncMock())
+
+
+def added(**kw):
+    return {'status': 'added', 'code': CODE, 'group': 'A', 'groupCount': 1, 'name': '테스트 대회', 'round': 1,
+            'ranking': [], 'url': 'https://labs.example/x', **kw}
+
+
+NOT_FOUND = discord.NotFound(SimpleNamespace(status=404, reason=''), '')
 
 
 class OnMessageTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         reset()
-        self.cog = t.Tournament(FakeClient(FakeChannel(101)))
+        self.ch = FakeChannel(101)
+        self.cog = t.Tournament(FakeClient(self.ch))
+
+    def labs(self, *results, b=None):
+        """relay 응답과 순위표 조회를 바꿔 끼움"""
+        return mock.patch.multiple(t, relay=mock.AsyncMock(side_effect=list(results)),
+                                   fetch_board=mock.AsyncMock(return_value=b or board(played=1)),
+                                   fetch_image=mock.AsyncMock(return_value=b'png'))
 
     async def test_unlinked_channel_is_silent(self):
         message = csv_message(101)
@@ -83,20 +103,118 @@ class OnMessageTest(unittest.IsolatedAsyncioTestCase):
         message = csv_message(101, '처음올린사람')
         with mock.patch.object(t, 'relay', mock.AsyncMock(return_value=None)):
             await self.cog.on_message(message)
-        self.assertEqual(t._kept[77][3], '처음올린사람')
+        self.assertEqual(t._kept[77][4], '처음올린사람')
         view = message.reply.call_args.kwargs['view']
         self.assertTrue(any(isinstance(i, t.RelayRetryButton) for i in view.walk_children()))
 
-    async def test_added_refreshes_boards(self):
+    async def test_added_posts_image_then_deletes(self):
         t.copy_set(101, 1, CODE, 'A')
-        result = {'status': 'added', 'code': CODE, 'group': 'A', 'groupCount': 1, 'name': '테스트 대회', 'round': 1,
-                  'ranking': [], 'url': 'https://labs.example/x'}
-        with mock.patch.object(t, 'relay', mock.AsyncMock(return_value=result)), \
-                mock.patch.object(self.cog, 'refresh_code', mock.AsyncMock()) as refresh:
-            await self.cog.on_message(csv_message(101))
-            for task in list(self.cog._tasks):
-                await task
-        refresh.assert_awaited_once_with(CODE)
+        message = csv_message(self.ch)
+        message.delete.side_effect = lambda: self.assertEqual(len(self.ch.sent), 1)
+        with self.labs(added()):
+            await self.cog.on_message(message)
+        message.reply.assert_not_called()
+        self.assertEqual(len(self.ch.sent), 1)
+        self.assertIn('tournament.png', [f.filename for f in self.ch.sent[0][1]['files']])
+        message.delete.assert_awaited_once()
+
+    async def test_one_failed_of_two(self):
+        t.copy_set(101, 1, CODE, 'A')
+        message = csv_message(self.ch, attachments=[attachment(77), attachment(78, 'b.csv')])
+        dup = {'status': 'duplicate', 'message': '이미 올린 결과입니다.', 'url': 'https://labs.example/x'}
+        with self.labs(added(), dup):
+            await self.cog.on_message(message)
+        message.reply.assert_called_once()
+        self.assertEqual(text_of(message.reply.call_args.kwargs['view']), '이미 올린 결과입니다.')
+        self.assertEqual(len(self.ch.sent), 1)
+        message.delete.assert_not_called()
+
+    async def test_other_attachment_keeps_message(self):
+        t.copy_set(101, 1, CODE, 'A')
+        message = csv_message(self.ch, attachments=[attachment(), attachment(78, 'shot.png')])
+        with self.labs(added()):
+            await self.cog.on_message(message)
+        self.assertEqual(len(self.ch.sent), 1)
+        message.delete.assert_not_called()
+
+    async def test_no_manage_permission_keeps_message(self):
+        perms = discord.Permissions.all()
+        perms.manage_messages = False
+        self.ch.perms = perms
+        t.copy_set(101, 1, CODE, 'A')
+        message = csv_message(self.ch)
+        with self.labs(added()):
+            await self.cog.on_message(message)
+        message.reply.assert_not_called()
+        self.assertEqual(len(self.ch.sent), 1)
+        message.delete.assert_not_called()
+
+    async def test_image_failed_keeps_message(self):
+        t.copy_set(101, 1, CODE, 'A')
+        message = csv_message(self.ch)
+        with self.labs(added()), mock.patch.object(
+                t, 'fetch_board', mock.AsyncMock(side_effect=t.ServiceDownError('Labs 응답 500', t.DOWN))):
+            await self.cog.on_message(message)
+        self.assertEqual(self.ch.sent, [])
+        message.delete.assert_not_called()
+
+    async def test_already_deleted_is_quiet(self):
+        t.copy_set(101, 1, CODE, 'A')
+        message = csv_message(self.ch)
+        message.delete.side_effect = NOT_FOUND
+        with self.labs(added()):
+            await self.cog.on_message(message)
+        message.delete.assert_awaited_once()
+
+    async def test_retry_added_deletes_reply_and_original(self):
+        t.copy_set(101, 1, CODE, 'A')
+        message = csv_message(self.ch, attachments=[attachment(77), attachment(78, 'b.csv')])
+        with self.labs(added(), None):
+            await self.cog.on_message(message)
+        self.assertEqual(len(self.ch.sent), 1)
+        message.delete.assert_not_called()
+        self.assertEqual(t._pending, {500: {78}})
+
+        client = self.cog.client
+        client.get_cog = lambda name: self.cog
+        interaction = SimpleNamespace(
+            client=client, user=SimpleNamespace(id=4242), app_permissions=self.ch.perms,
+            response=SimpleNamespace(defer=mock.AsyncMock()), edit_original_response=mock.AsyncMock(),
+            message=SimpleNamespace(delete=mock.AsyncMock()))
+        with self.labs(added(round=2), b=board(played=2)):
+            await t.RelayRetryButton(78).callback(interaction)
+        self.assertEqual(len(self.ch.sent), 2)
+        interaction.message.delete.assert_awaited_once()
+        interaction.edit_original_response.assert_not_called()
+        self.assertEqual(self.ch.deleted, [500])
+        self.assertEqual(t._pending, {})
+
+    async def test_waits_for_running_refresh(self):
+        t.copy_set(101, 1, CODE, 'A')
+        mid = add_board(self.ch)
+        gate, calls = asyncio.Event(), []
+
+        async def tick(row):
+            calls.append(row['message_id'])
+            if len(calls) == 1:
+                await gate.wait()
+                await self.ch.send(view=None, files=[])
+                key = (101, CODE, 'A')
+                self.cog._posted[key] = self.cog._posted.get(key, 0) + 1
+
+        message = csv_message(self.ch)
+        with mock.patch.object(self.cog, 'tick', tick), self.labs(added()):
+            running = asyncio.create_task(self.cog.refresh(mid))
+            await asyncio.sleep(0)
+            handling = asyncio.create_task(self.cog.on_message(message))
+            for _ in range(5):
+                await asyncio.sleep(0)
+            message.delete.assert_not_called()
+            gate.set()
+            await asyncio.gather(running, handling)
+        self.assertEqual(calls, [mid, mid])
+        self.assertEqual(len(self.ch.sent), 1)
+        message.delete.assert_awaited_once()
 
     def test_reupload_phrases(self):
         self.assertTrue(t.DOWNLOAD_FAILED.startswith("파일을 받지 못했습니다."))
