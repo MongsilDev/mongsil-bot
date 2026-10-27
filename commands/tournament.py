@@ -147,6 +147,31 @@ async def fetch_image(code: str, group: str) -> bytes:
     return await _labs_get(code, '/image', {'group': group}, group, image=True)
 
 
+async def host_name(b: dict, guild: Optional[discord.Guild]) -> str:
+    """개최자의 이 서버 표시 이름. 서버에 없으면 Labs에 저장된 디스코드 이름"""
+    host = b.get('host')
+    if not host:
+        return ''
+    if guild is not None:
+        member = guild.get_member(int(host['id']))
+        if member is None:
+            try:
+                member = await guild.fetch_member(int(host['id']))
+            except discord.HTTPException:
+                member = None
+        if member is not None:
+            return member.display_name
+    return host['name']
+
+
+async def fetch_info_image(b: dict, guild: Optional[discord.Guild]) -> bytes:
+    """안내 메시지에 둘 대회 정보 PNG. 순위 없이 방식과 개최자만 그림"""
+    params = {'group': b['group'], 'info': '1'}
+    if name := await host_name(b, guild):
+        params['host'] = name
+    return await _labs_get(b['code'], '/image', params, b['group'], image=True)
+
+
 async def _labs_links(method: str, path: str, code: str, group: Optional[str] = None,
                       body: Optional[dict] = None) -> list:
     token = os.getenv('LABS_BOT_TOKEN')
@@ -310,7 +335,7 @@ def has_image(key: Optional[str]) -> bool:
 def notice_view(b: dict, state: str = 'on', linked: bool = True, png: Optional[bytes] = None,
                 image: bool = False) -> ui.LayoutView:
     """자동 갱신 안내. state: 'on', 'ended', 'gone', 'nogroup', 'unlinked', 'moved', 'replaced'.
-    1라운드 전에 올린 안내는 빈 순위 이미지를 둠. png 없이 image면 이미 올린 이미지를 그대로 씀"""
+    png는 대회 정보 이미지. png 없이 image면 이미 올린 이미지를 그대로 씀"""
     view = ui.LayoutView(timeout=None)
     image = state == 'on' and (image or png is not None)
     children: list = []
@@ -945,11 +970,19 @@ class Tournament(commands.Cog):
             if not live_get(mid):
                 return
             if b is UNCHANGED:
-                # 배포 전 안내 메시지는 버튼이 남아 있어 한 번 새 형식으로 고침
-                if row['notice'] is None:
-                    old = json.loads(row['board'])
-                    await notice.edit(view=notice_view(old, linked=is_linked))
-                    live_note(mid, notice_key(old, linked=is_linked))
+                # 배포 전 글만 있는 안내 메시지는 한 번 대회 정보 이미지 형식으로 고침
+                if not has_image(row['notice']):
+                    try:
+                        old = await fetch_board(row['code'], row['grp'])
+                        if old is UNCHANGED:
+                            old = json.loads(row['board'])
+                        info = await fetch_info_image(old, self.client.get_guild(row['guild_id']))
+                    except (NotFoundError, ServiceDownError, ValidationError) as e:
+                        logger.warning(f"자동 갱신 안내 이미지 조회 실패 {row['code']}: {type(e).__name__}")
+                        return
+                    view = notice_view(old, linked=is_linked, png=info)
+                    await notice.edit(view=view, attachments=visual.files_of(view))
+                    live_note(mid, notice_key(old, linked=is_linked, image=True))
                 return
             # 라운드를 모두 지웠으면 빈 순위표 대신 마지막 이미지를 지움
             if not b['played'] and image_id:
@@ -974,24 +1007,20 @@ class Tournament(commands.Cog):
                 live_drop(mid)
                 await notice.edit(view=notice_view(b, 'ended'), attachments=[])
                 return
-            image = has_image(row['notice'])
-            key = notice_key(b, linked=is_linked, image=image)
+            key = notice_key(b, linked=is_linked, image=True)
             fresh = None
-            if key != row['notice'] and image and not b['played']:
-                # 1라운드 전에 대회 정보가 바뀌면 빈 순위 이미지도 새로 그림. 못 받으면 version을 남기지 않아 다시 시도
+            if key != row['notice']:
+                # 대회 정보가 바뀌면 안내 이미지도 새로 그림. 못 받으면 version을 남기지 않아 다시 시도
                 try:
-                    fresh = await fetch_image(row['code'], row['grp'])
+                    fresh = await fetch_info_image(b, self.client.get_guild(row['guild_id']))
                 except (NotFoundError, ServiceDownError) as e:
                     logger.warning(f"자동 갱신 안내 이미지 조회 실패 {row['code']}: {type(e).__name__}")
                     return
             live_save(mid, b, image_id, last_round)
             # 안내 내용이 같으면 고치지 않음. 봇이 꺼진 사이 지워졌으면 NotFound로 끔
             if key != row['notice']:
-                view = notice_view(b, linked=is_linked, png=fresh, image=image)
-                if fresh is None:
-                    await notice.edit(view=view)
-                else:
-                    await notice.edit(view=view, attachments=visual.files_of(view))
+                view = notice_view(b, linked=is_linked, png=fresh)
+                await notice.edit(view=view, attachments=visual.files_of(view))
                 live_note(mid, key)
         except discord.NotFound:
             live_drop(mid)
@@ -1015,16 +1044,20 @@ class Tournament(commands.Cog):
         logger.info(f"자동 갱신 멈춤 {row['code']} {row['grp']} {state}")
 
     async def start(self, channel, guild_id: int, b: dict, png: Optional[bytes], user_id: int,
-                    message_id: Optional[int] = None) -> None:
-        """안내 메시지와 첫 이미지를 올리고 자동 갱신을 켬. message_id는 /대회가 이미 올린 안내 메시지.
-        1라운드 전이면 png는 안내 메시지의 빈 순위 이미지"""
-        image = bool(png) and not b['played']
+                    message_id: Optional[int] = None, image: bool = False) -> None:
+        """안내 메시지와 첫 이미지를 올리고 자동 갱신을 켬. message_id는 /대회가 이미 올린 안내 메시지,
+        image는 그 메시지에 대회 정보 이미지가 있는지. 이미지를 못 받으면 글로 올리고 tick이 나중에 고침"""
         if message_id is None:
-            view = notice_view(b, png=png if image else None)
+            try:
+                info = await fetch_info_image(b, getattr(channel, 'guild', None))
+            except (NotFoundError, ServiceDownError):
+                info = None
+            view = notice_view(b, png=info)
             message_id = (await channel.send(view=view, files=visual.files_of(view))).id
+            image = info is not None
         # 첫 이미지를 올리는 사이 보드가 멈출 수 있어 기록부터 남김
         live_put(message_id, channel.id, guild_id, b, user_id, notice_key(b, image=image))
-        if png and b['played']:
+        if png:
             try:
                 image_id = await post_round(channel, b, png, None)
             except discord.HTTPException as e:
@@ -1050,7 +1083,7 @@ class Tournament(commands.Cog):
         try:
             b = await fetch_board(code, group)
             if not b['ended']:
-                await self.start(channel, guild.id, b, await fetch_image(code, group), 0)
+                await self.start(channel, guild.id, b, await fetch_image(code, group) if b['played'] else None, 0)
         except (NotFoundError, ServiceDownError, ValidationError) as e:
             logger.info(f"연결 안내 실패 {code} {group}: {e.message}")
             if isinstance(e, ServiceDownError):
@@ -1324,12 +1357,17 @@ class Tournament(commands.Cog):
             # 여러 조인 대회에서 조를 고르지 않았으면 연결하지 않고 카드만 보여 줌
             if not (in_guild and is_operator(b) and not b['ended']) or (b['groupCount'] > 1 and not picked):
                 return card_view(b, await fetch_image(code, b['group']))
-            png = await fetch_image(code, b['group'])
+            png = await fetch_image(code, b['group']) if b['played'] else None
             if reason := await self.link_here(interaction, b, live):
                 live['blocked'] = reason
-                return card_view(b, png)
+                return card_view(b, png or await fetch_image(code, b['group']))
             live['board'], live['png'] = b, png
-            return notice_view(b, png=None if b['played'] else png)
+            # 연결은 이미 끝나 이미지를 못 받아도 글로 안내하고 tick이 나중에 고침
+            try:
+                live['image'] = await fetch_info_image(b, interaction.guild)
+            except (NotFoundError, ServiceDownError):
+                live['image'] = None
+            return notice_view(b, png=live['image'])
 
         try:
             try:
@@ -1341,7 +1379,8 @@ class Tournament(commands.Cog):
                 await reply_error(interaction, live['blocked'])
             if view is None or 'board' not in live:
                 return
-            await self.start(channel, interaction.guild.id, live['board'], live['png'], interaction.user.id, message.id)
+            await self.start(channel, interaction.guild.id, live['board'], live['png'], interaction.user.id, message.id,
+                             image=live['image'] is not None)
         finally:
             _starting.discard(live.get('key'))
 

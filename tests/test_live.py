@@ -48,6 +48,9 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
         reset()
         self.ch = FakeChannel(101)
         self.cog = t.Tournament(FakeClient(self.ch))
+        patcher = mock.patch.object(t, 'fetch_info_image', mock.AsyncMock(return_value=b'info'))
+        self.info = patcher.start()
+        self.addCleanup(patcher.stop)
 
     async def test_one_refresh_per_board(self):
         mid = add_board(self.ch)
@@ -85,7 +88,7 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
     async def test_round_messages_leave_notice(self):
         t.copy_set(101, 1, CODE, 'A')
         mid = add_board(self.ch)
-        t.live_note(mid, t.notice_key(board(), linked=True))
+        t.live_note(mid, t.notice_key(board(), linked=True, image=True))
         nxt = {'roundNo': 2, 'main': '비', 'sub': None, 'bans': []}
 
         def buttons(view):
@@ -104,28 +107,33 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(buttons(self.ch.sent[-1][1]['view'])), 1)
         self.assertIn("끝나", edited_text(self.ch, mid))
 
-    async def test_notice_image_before_first_round(self):
+    async def test_notice_info_image(self):
         t.copy_set(101, 1, CODE, 'A')
         nxt = {'roundNo': 1, 'main': '비', 'sub': None, 'bans': []}
-        await self.cog.start(self.ch, 1, board(next=nxt), b'png', 5)
+        await self.cog.start(self.ch, 1, board(next=nxt), None, 5)
         mid, kwargs = self.ch.sent[0]
         galleries = [i for i in kwargs['view'].walk_children() if isinstance(i, discord.ui.MediaGallery)]
         self.assertEqual((len(self.ch.sent), len(galleries), len(kwargs['files'])), (1, 1, 1))
         self.assertNotIn("포인트제", text_of(kwargs['view']))
+        # 다음 라운드 줄이 빠지면 안내 이미지를 다시 받아 고침
         with mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'png')), \
                 mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=board(played=1, version=2))):
             await self.cog.refresh(mid)
         edit = [e for e in self.ch.edits if e[0] == mid][-1][1]
-        self.assertTrue(any(isinstance(i, discord.ui.MediaGallery) for i in edit['view'].walk_children()))
-        self.assertNotIn('attachments', edit)
-        # 1라운드 전으로 돌아가 라운드 수가 바뀌면 이미지를 다시 그림
-        with mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'new')) as image, \
-                mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=board(played=0, version=3, planned=5))):
-            await self.cog.refresh(mid)
-        image.assert_awaited_once()
-        self.assertEqual(len([e for e in self.ch.edits if e[0] == mid][-1][1]['attachments']), 1)
+        self.assertEqual(len(edit['attachments']), 1)
+        self.assertEqual(self.info.await_count, 2)
         await self.cog.stop(t.live_get(mid), 'unlinked')
         self.assertEqual([e for e in self.ch.edits if e[0] == mid][-1][1]['attachments'], [])
+
+    async def test_text_notice_gets_image_once(self):
+        t.copy_set(101, 1, CODE, 'A')
+        mid = add_board(self.ch)
+        with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=t.UNCHANGED)):
+            await self.cog.refresh(mid)
+            await self.cog.refresh(mid)
+        self.assertEqual(len(self.ch.edits), 1)
+        self.assertEqual(len(self.ch.edits[0][1]['attachments']), 1)
+        self.assertTrue(t.has_image(t.live_get(mid)['notice']))
 
     async def test_rounds_cleared_deletes_last_image(self):
         t.copy_set(101, 1, CODE, 'A')
