@@ -265,6 +265,27 @@ class OnMessageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(t._pending, {})
         self.assertEqual(t._relaying, set())
 
+    async def test_retry_during_image_still_deletes(self):
+        t.copy_set(101, 1, CODE, 'A')
+        message = csv_message(self.ch, attachments=[attachment(77), attachment(78, 'b.csv')])
+        interaction = self.retry_interaction()
+        calls = []
+
+        async def show_board(*args):
+            # 첫 이미지를 올리는 사이 다시 보내기가 끝남
+            calls.append(args)
+            if len(calls) == 1:
+                with mock.patch.object(t, 'relay', mock.AsyncMock(return_value=added(round=2))):
+                    await t.RelayRetryButton(78).callback(interaction)
+            return True
+
+        with self.labs(added(), None), mock.patch.object(self.cog, 'show_board', show_board):
+            await self.cog.on_message(message)
+        self.assertEqual(len(calls), 2)
+        interaction.message.delete.assert_awaited_once()
+        self.assertEqual(self.ch.deleted, [500])
+        self.assertEqual(t._pending, {})
+
     async def test_waits_for_running_refresh(self):
         t.copy_set(101, 1, CODE, 'A')
         mid = add_board(self.ch)

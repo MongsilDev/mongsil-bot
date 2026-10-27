@@ -1173,18 +1173,18 @@ class Tournament(commands.Cog):
                 complete = False
             if message.channel.id not in linked:
                 return
+        # 이미지를 올리는 사이 다시 보내기가 끝나도 지울 수 있도록 먼저 등록
+        if complete and kept:
+            _pending[message.id] = kept
         if added and not await self.show_board(message.channel, added[-1], before):
+            _pending.pop(message.id, None)
             for r in added:
                 try:
                     await message.reply(view=result_view(r), mention_author=False)
                 except discord.HTTPException as e:
                     logger.warning(f"결과 전달 답장 실패: {type(e).__name__}: {e}")
             return
-        if not complete:
-            return
-        if kept:
-            _pending[message.id] = kept
-        elif added and message.channel.permissions_for(message.guild.me).manage_messages:
+        if complete and not kept and added and message.channel.permissions_for(message.guild.me).manage_messages:
             await delete_quietly(message)
 
     async def relay_one(self, message: discord.Message, a: discord.Attachment,
