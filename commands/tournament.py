@@ -35,6 +35,8 @@ MODE = {'points': '포인트제', 'checkpoint': '체크포인트', 'double': '�
 
 LIVE_SECONDS = 30
 LINKS_SECONDS = 60
+# 안내 이미지를 못 받은 보드는 이만큼 지나서 다시 시도
+INFO_RETRY_SECONDS = 300
 # 대회의 조는 8개까지라 서버 하나에서 모든 조를 켤 수 있게 함. 사람당 한도는 /대회로 켠 보드만 셈
 LIVE_PER_GUILD = 8
 LIVE_PER_USER = 3
@@ -860,6 +862,7 @@ class Tournament(commands.Cog):
         self._idle: Dict[int, asyncio.Event] = {}
         # (채널, 대회, 조)마다 올리거나 고친 순위 이미지 수. 마지막 라운드로 보드 행이 지워져도 남음
         self._posted: Dict[Tuple[int, str, str], int] = {}
+        self._info_failed: Dict[int, float] = {}
 
     async def cog_load(self):
         self.client.add_dynamic_items(RefreshButton, GroupSelect, LiveButton, LiveOffButton, RelayLinkButton,
@@ -970,19 +973,19 @@ class Tournament(commands.Cog):
             if not live_get(mid):
                 return
             if b is UNCHANGED:
-                # 배포 전 글만 있는 안내 메시지는 한 번 대회 정보 이미지 형식으로 고침
-                if not has_image(row['notice']):
-                    try:
-                        old = await fetch_board(row['code'], row['grp'])
-                        if old is UNCHANGED:
-                            old = json.loads(row['board'])
-                        info = await fetch_info_image(old, self.client.get_guild(row['guild_id']))
-                    except (NotFoundError, ServiceDownError, ValidationError) as e:
-                        logger.warning(f"자동 갱신 안내 이미지 조회 실패 {row['code']}: {type(e).__name__}")
-                        return
-                    view = notice_view(old, linked=is_linked, png=info)
-                    await notice.edit(view=view, attachments=visual.files_of(view))
-                    live_note(mid, notice_key(old, linked=is_linked, image=True))
+                # 배포 전 글만 있는 안내나 이미지를 못 받은 안내는 바뀐 것이 없어도 다시 고침
+                old = json.loads(row['board'])
+                if notice_key(old, linked=is_linked, image=True) != row['notice'] \
+                        and time.time() - self._info_failed.get(mid, 0) >= INFO_RETRY_SECONDS:
+                    # 배포 전 기록에는 개최자가 없어 한 번 새로 받음
+                    if 'host' not in old:
+                        try:
+                            full = await fetch_board(row['code'], row['grp'])
+                            old = old if full is UNCHANGED else full
+                        except (NotFoundError, ServiceDownError, ValidationError):
+                            self._info_failed[mid] = time.time()
+                            return
+                    await self.fix_notice(row, notice, old, is_linked)
                 return
             # 라운드를 모두 지웠으면 빈 순위표 대신 마지막 이미지를 지움
             if not b['played'] and image_id:
@@ -1007,21 +1010,10 @@ class Tournament(commands.Cog):
                 live_drop(mid)
                 await notice.edit(view=notice_view(b, 'ended'), attachments=[])
                 return
-            key = notice_key(b, linked=is_linked, image=True)
-            fresh = None
-            if key != row['notice']:
-                # 대회 정보가 바뀌면 안내 이미지도 새로 그림. 못 받으면 version을 남기지 않아 다시 시도
-                try:
-                    fresh = await fetch_info_image(b, self.client.get_guild(row['guild_id']))
-                except (NotFoundError, ServiceDownError) as e:
-                    logger.warning(f"자동 갱신 안내 이미지 조회 실패 {row['code']}: {type(e).__name__}")
-                    return
             live_save(mid, b, image_id, last_round)
             # 안내 내용이 같으면 고치지 않음. 봇이 꺼진 사이 지워졌으면 NotFound로 끔
-            if key != row['notice']:
-                view = notice_view(b, linked=is_linked, png=fresh)
-                await notice.edit(view=view, attachments=visual.files_of(view))
-                live_note(mid, key)
+            if notice_key(b, linked=is_linked, image=True) != row['notice']:
+                await self.fix_notice(row, notice, b, is_linked)
         except discord.NotFound:
             live_drop(mid)
             logger.info(f"자동 갱신 안내 메시지 없음, 끔 {row['code']} {mid}")
@@ -1032,6 +1024,24 @@ class Tournament(commands.Cog):
             logger.warning(f"자동 갱신 메시지 실패 {row['code']}: {type(e).__name__}: {e}")
         except Exception:
             logger.error(f"자동 갱신 처리 실패 {row['code']} {mid}", exc_info=True)
+
+    async def fix_notice(self, row: sqlite3.Row, notice, b: dict, is_linked: bool) -> None:
+        """안내 메시지를 대회 정보 이미지와 함께 다시 씀. 이미지를 못 받으면 기록을 그대로 둬 뒤의 tick이 다시 시도"""
+        mid = row['message_id']
+        if time.time() - self._info_failed.get(mid, 0) < INFO_RETRY_SECONDS:
+            return
+        try:
+            info = await fetch_info_image(b, self.client.get_guild(row['guild_id']))
+        except (NotFoundError, ServiceDownError, ValidationError) as e:
+            self._info_failed[mid] = time.time()
+            logger.warning(f"자동 갱신 안내 이미지 조회 실패 {row['code']}: {type(e).__name__}")
+            return
+        self._info_failed.pop(mid, None)
+        if not live_get(mid):
+            return
+        view = notice_view(b, linked=is_linked, png=info)
+        await notice.edit(view=view, attachments=visual.files_of(view))
+        live_note(mid, notice_key(b, linked=is_linked, image=True))
 
     async def stop(self, row: sqlite3.Row, state: str) -> None:
         """보드를 멈추고 안내 메시지를 멈춘 이유로 고침"""
@@ -1050,7 +1060,7 @@ class Tournament(commands.Cog):
         if message_id is None:
             try:
                 info = await fetch_info_image(b, getattr(channel, 'guild', None))
-            except (NotFoundError, ServiceDownError):
+            except (NotFoundError, ServiceDownError, ValidationError):
                 info = None
             view = notice_view(b, png=info)
             message_id = (await channel.send(view=view, files=visual.files_of(view))).id
@@ -1365,7 +1375,7 @@ class Tournament(commands.Cog):
             # 연결은 이미 끝나 이미지를 못 받아도 글로 안내하고 tick이 나중에 고침
             try:
                 live['image'] = await fetch_info_image(b, interaction.guild)
-            except (NotFoundError, ServiceDownError):
+            except (NotFoundError, ServiceDownError, ValidationError):
                 live['image'] = None
             return notice_view(b, png=live['image'])
 

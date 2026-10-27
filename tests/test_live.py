@@ -125,6 +125,17 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
         await self.cog.stop(t.live_get(mid), 'unlinked')
         self.assertEqual([e for e in self.ch.edits if e[0] == mid][-1][1]['attachments'], [])
 
+    async def test_info_image_failure_keeps_round_state(self):
+        t.copy_set(101, 1, CODE, 'A')
+        mid = add_board(self.ch)
+        self.info.side_effect = t.ServiceDownError("down", "down")
+        with mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'png')), \
+                mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=board(played=1, version=2))):
+            await self.cog.refresh(mid)
+            await self.cog.refresh(mid)
+        self.assertEqual(len(self.ch.sent), 1)
+        self.assertEqual(t.live_get(mid)['last_round'], 1)
+
     async def test_text_notice_gets_image_once(self):
         t.copy_set(101, 1, CODE, 'A')
         mid = add_board(self.ch)
