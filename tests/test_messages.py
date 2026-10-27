@@ -14,6 +14,11 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
                          "### 테스트 대회\n-# 포인트제 | 4라운드\n"
                          "-# 이 채널에 올린 게임 결과 CSV는 순위에 반영됩니다.")
 
+    def test_next_round_before_first_result(self):
+        nxt = {'roundNo': 1, 'main': '비', 'sub': None, 'bans': []}
+        self.assertIn("-# 다음 1라운드 | 날씨 비", t.notice_text(board(next=nxt)))
+        self.assertNotIn("다음", t.notice_text(board(played=1, next={**nxt, 'roundNo': 2})))
+
     def test_many_groups_other_mode(self):
         b = board(group='B', groups=3, mode='checkpoint', played=2,
                   next={'roundNo': 3, 'main': '비', 'sub': None, 'bans': ['재키']})

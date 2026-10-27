@@ -276,6 +276,9 @@ def notice_text(b: dict, state: str = 'on', linked: bool = True) -> str:
         return '\n'.join([*lines, f"-# {stopped}"])
     mode = MODE.get(b['mode'], b['mode'])
     lines.append(f"-# {mode} | {b['plannedRounds']}라운드" if b['mode'] == 'points' else f"-# {mode}")
+    # 1라운드 결과가 오기 전에는 라운드 메시지가 없어 다음 라운드를 여기에 둠
+    if not b['played'] and b.get('next') and not b['ended']:
+        lines += next_lines(b['next'])
     if linked:
         lines.append(f"-# 이 채널에 올린 게임 결과 CSV는 {b['group']}조 순위에 반영됩니다." if many
                      else "-# 이 채널에 올린 게임 결과 CSV는 순위에 반영됩니다.")
