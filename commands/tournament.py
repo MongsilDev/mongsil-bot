@@ -970,8 +970,17 @@ class Tournament(commands.Cog):
             for row in boards_in(cid):
                 if (row['code'], row['grp']) != link:
                     await self.stop(row, 'replaced')
-            if post and cid != skip and not live_running(cid, *link) and (cid, *link) not in _starting:
+            if cid == skip or live_running(cid, *link) or (cid, *link) in _starting:
+                continue
+            if post:
                 await self.start_linked(cid, link)
+            else:
+                # 60초 동기화가 changed 알림보다 먼저 받은 연결은 안내를 미뤄 둠
+                _retry[cid] = link
+        if post:
+            for cid, link in list(_retry.items()):
+                if cid not in added and cid != skip and new.get(cid) == link and not live_running(cid, *link) and (cid, *link) not in _starting:
+                    await self.start_linked(cid, link)
 
     async def sync_code(self, code: str) -> None:
         async with links_lock:
@@ -1010,12 +1019,13 @@ class Tournament(commands.Cog):
                 except (ServiceDownError, ValidationError) as e:
                     logger.warning(f"연결 조회 실패 {code}: {e.message}")
                     return
+            pending = dict(_retry)
             await self.apply(None, new, post=False)
-            for cid, link in list(_retry.items()):
+            for cid, link in pending.items():
                 if new.get(cid) == link and not live_running(cid, *link) and (cid, *link) not in _starting:
                     await self.start_linked(cid, link)
-                else:
-                    _retry.pop(cid, None)
+                elif _retry.get(cid) == link:
+                    _retry.pop(cid)
 
     async def on_changed(self, code: str) -> None:
         """Labs 변경 알림. 연결을 맞추고 그 대회의 보드를 바로 갱신"""

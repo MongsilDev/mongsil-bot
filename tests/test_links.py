@@ -118,8 +118,27 @@ class LinkSyncTest(unittest.IsolatedAsyncioTestCase):
             await self.cog.sync_all()
         self.assertEqual((self.ch1.sent, self.ch2.sent), ([], []))
         self.assertEqual(t.copy_rows(), {101: (CODE, 'A')})
+        self.assertEqual(t._retry, {101: (CODE, 'A')})
         self.assertIsNone(t.live_get(mid))
         self.assertIn("연결을 해제해", edited_text(self.ch2, mid))
+
+    async def test_changed_after_full_sync_posts_notice(self):
+        all_links = [{'code': CODE, **link(101)}]
+        with mock.patch.object(t, 'fetch_all_links', mock.AsyncMock(return_value=all_links)):
+            await self.cog.sync_all()
+        self.assertEqual(self.ch1.sent, [])
+        with self.changed([link(101)]):
+            await self.cog.sync_code(CODE)
+            await self.cog.sync_code(CODE)
+        self.assertEqual((len(self.ch1.sent), t._retry), (1, {}))
+
+    async def test_full_sync_posts_missed_notice_next_time(self):
+        all_links = [{'code': CODE, **link(101)}]
+        with mock.patch.object(t, 'fetch_all_links', mock.AsyncMock(return_value=all_links)):
+            await self.cog.sync_all()
+            self.assertEqual(self.ch1.sent, [])
+            await self.cog.sync_all()
+        self.assertEqual((len(self.ch1.sent), t._retry), (1, {}))
 
     async def test_full_sync_keeps_ended_link(self):
         t.copy_set(101, 1, CODE, 'A')
