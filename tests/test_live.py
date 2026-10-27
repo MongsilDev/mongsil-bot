@@ -88,7 +88,7 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
     async def test_round_messages_leave_notice(self):
         t.copy_set(101, 1, CODE, 'A')
         mid = add_board(self.ch)
-        t.live_note(mid, t.notice_key(board(), linked=True, image=True))
+        t.live_note(mid, t.notice_key(board()))
         nxt = {'roundNo': 2, 'main': '비', 'sub': None, 'bans': []}
 
         def buttons(view):
@@ -99,13 +99,17 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
                 await self.cog.refresh(mid)
             self.assertEqual(self.ch.edits, [])
             view = self.ch.sent[-1][1]['view']
-            self.assertIn("다음 2라운드", text_of(view))
+            self.assertIn("2라운드 | 날씨 비", text_of(view))
             self.assertEqual(len(buttons(view)), 1)
             with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=board(played=4, version=3, ended=True))):
                 await self.cog.refresh(mid)
         self.assertEqual(len(self.ch.sent), 2)
         self.assertEqual(len(buttons(self.ch.sent[-1][1]['view'])), 1)
-        self.assertIn("끝나", edited_text(self.ch, mid))
+        # 끝나면 정보 이미지와 순위표 버튼만 남김
+        ended = [e for e in self.ch.edits if e[0] == mid][-1][1]
+        self.assertNotIn('attachments', ended)
+        self.assertEqual(text_of(ended['view']), "")
+        self.assertTrue(any(isinstance(i, discord.ui.MediaGallery) for i in ended['view'].walk_children()))
 
     async def test_notice_info_image(self):
         t.copy_set(101, 1, CODE, 'A')
@@ -123,7 +127,9 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(edit['attachments']), 1)
         self.assertEqual(self.info.await_count, 2)
         await self.cog.stop(t.live_get(mid), 'unlinked')
-        self.assertEqual([e for e in self.ch.edits if e[0] == mid][-1][1]['attachments'], [])
+        stopped = [e for e in self.ch.edits if e[0] == mid][-1][1]
+        self.assertNotIn('attachments', stopped)
+        self.assertEqual(text_of(stopped['view']), "-# 이 채널에는 더 이상 순위를 올리지 않습니다.")
 
     async def test_info_image_failure_keeps_round_state(self):
         t.copy_set(101, 1, CODE, 'A')
@@ -135,6 +141,29 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
             await self.cog.refresh(mid)
         self.assertEqual(len(self.ch.sent), 1)
         self.assertEqual(t.live_get(mid)['last_round'], 1)
+
+    async def test_text_fixed_while_info_image_fails(self):
+        t.copy_set(101, 1, CODE, 'A')
+        mid = add_board(self.ch)
+        t.live_note(mid, t.notice_key(board(), t.IMAGE))
+        self.info.side_effect = t.ServiceDownError("down", "down")
+        nxt = {'roundNo': 1, 'main': '비', 'sub': None, 'bans': []}
+        with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=board(version=2, next=nxt))):
+            await self.cog.refresh(mid)
+        with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=t.UNCHANGED)):
+            await self.cog.refresh(mid)
+        # 이미지는 못 받아도 글은 한 번 고치고 옛 이미지는 그대로 둠
+        self.assertEqual(len(self.ch.edits), 1)
+        self.assertNotIn('attachments', self.ch.edits[0][1])
+        self.assertEqual(text_of(self.ch.edits[0][1]['view']), "-# 1라운드 | 날씨 비")
+        self.assertEqual(t.notice_mark(t.live_get(mid)['notice']), t.IMAGE)
+        # 기다린 뒤에는 정보 이미지로 바꿈
+        self.info.side_effect = None
+        self.cog._info_failed[mid] = 0
+        with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=t.UNCHANGED)):
+            await self.cog.refresh(mid)
+        self.assertEqual(len(self.ch.edits[-1][1]['attachments']), 1)
+        self.assertEqual(t.notice_mark(t.live_get(mid)['notice']), t.INFO)
 
     async def test_text_notice_gets_image_once(self):
         t.copy_set(101, 1, CODE, 'A')
@@ -172,7 +201,7 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
                 mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'png')), \
                 mock.patch.object(t, 'post_round', upload):
             await self.cog.refresh(mid)
-        self.assertIn("연결을 해제해", edited_text(self.ch, mid))
+        self.assertIn("더 이상 순위를 올리지", edited_text(self.ch, mid))
 
 
 class CommandTest(unittest.IsolatedAsyncioTestCase):

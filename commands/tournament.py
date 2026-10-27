@@ -35,6 +35,8 @@ MODE = {'points': '포인트제', 'checkpoint': '체크포인트', 'double': '�
 
 LIVE_SECONDS = 30
 LINKS_SECONDS = 60
+# 다음 라운드 줄이 이 글자 수를 넘으면 금지 실험체를 다음 줄로 내림. 휴대폰 한 줄 기준
+NEXT_LINE_WIDTH = 36
 # 안내 이미지를 못 받은 보드는 이만큼 지나서 다시 시도
 INFO_RETRY_SECONDS = 300
 # 대회의 조는 8개까지라 서버 하나에서 모든 조를 켤 수 있게 함. 사람당 한도는 /대회로 켠 보드만 셈
@@ -97,7 +99,7 @@ NOT_CSV = "게임 결과 CSV가 아닙니다.\n게임 결과 CSV 파일을 올�
 LINK_FORBIDDEN = "이 대회의 개최자나 운영자만 채널을 연결할 수 있습니다."
 DOWNLOAD_FAILED = "파일을 받지 못했습니다.\n같은 파일을 이 채널에 다시 올려주세요."
 KEEP_EXPIRED = "보관한 파일이 없어 다시 보낼 수 없습니다.\n같은 파일을 이 채널에 다시 올려주세요."
-RELAY_DOWN = "Labs에 연결하지 못했습니다."
+RELAY_DOWN = "Labs에 연결하지 못했습니다.\n잠시 후 다시 눌러주세요."
 RELAY_STATUSES = ('added', 'duplicate', 'ended', 'invalid', 'unlinked')
 
 
@@ -277,11 +279,19 @@ def ban_text(names: List[str]) -> str:
 
 
 def next_lines(n: dict) -> List[str]:
+    """다음 라운드의 날씨와 금지 실험체. 둘 다 없으면 라운드 번호는 이미지에 있어 줄을 두지 않음"""
     weather = ', '.join(w for w in (n.get('main'), n.get('sub')) if w)
-    lines = [f"-# **다음 {n['roundNo']}라운드**" + (f" | 날씨 {weather}" if weather else '')]
-    if n.get('bans'):
-        lines.append('-# 금지 실험체 ' + ban_text(n['bans']))
-    return lines
+    bans = n.get('bans') or []
+    if not weather and not bans:
+        return []
+    head = f"-# {n['roundNo']}라운드" + (f" | 날씨 {weather}" if weather else '')
+    if not bans:
+        return [head]
+    # 얼굴 이모지는 화면에서 두 글자 폭
+    width = len(head) + 6 + sum(len(name) + 3 for name in bans)
+    if width > NEXT_LINE_WIDTH:
+        return [head, '-# 금지 ' + ban_text(bans)]
+    return [f"{head} | 금지 {ban_text(bans)}"]
 
 
 def link_button(b: dict) -> ui.Button:
@@ -292,63 +302,74 @@ def gallery(view: ui.LayoutView, png: bytes) -> ui.MediaGallery:
     return ui.MediaGallery(discord.MediaGalleryItem(visual.attach(view, 'tournament.png', png)))
 
 
+# 멈춘 안내의 한 줄. 끝난 대회는 최종 순위 메시지가 따로 있어 이미지가 있으면 줄을 두지 않음
 STOPPED = {
-    'ended': "대회가 끝나 자동 갱신을 멈췄습니다.",
-    'gone': "대회가 지워져 자동 갱신을 멈췄습니다.",
-    'unlinked': "연결을 해제해 자동 갱신을 멈췄습니다.",
-    'moved': "다른 채널로 연결을 옮겨 자동 갱신을 멈췄습니다.",
-    'replaced': "이 채널을 다른 조에 연결해 자동 갱신을 멈췄습니다.",
+    'gone': "삭제된 대회입니다.",
+    'nogroup': "삭제된 조입니다.",
+    'unlinked': "이 채널에는 더 이상 순위를 올리지 않습니다.",
+    'moved': "이 채널에는 더 이상 순위를 올리지 않습니다.",
+    'replaced': "이 채널에는 더 이상 순위를 올리지 않습니다.",
 }
+# 안내 기록 끝의 표시. INFO는 지금 대회 정보 이미지, IMAGE는 배포 전 이미지나 못 바꾼 옛 이미지
+INFO, IMAGE = '\ninfo', '\nimage'
 
 
-def notice_text(b: dict, state: str = 'on', linked: bool = True, image: bool = False) -> str:
-    """안내 메시지 글. state: 'on'이나 멈춘 이유. linked는 이 채널이 이 조에 연결돼 있는지.
-    image면 대회 이름과 방식은 이미지 머리글에 있어 뺌"""
-    many = b['groupCount'] > 1
-    title = b['name'] + (f" {b['group']}조" if many else '')
-    lines = [f"### {discord.utils.escape_markdown(title)}"]
+def notice_text(b: dict, state: str = 'on', image: bool = False) -> str:
+    """안내 메시지 글. state: 'on'이나 멈춘 이유. image면 대회 이름과 방식은 이미지 머리글에 있어 뺌"""
+    lines = []
+    if not image:
+        title = b['name'] + (f" {b['group']}조" if b['groupCount'] > 1 else '')
+        lines.append(f"### {discord.utils.escape_markdown(title)}")
+    if state == 'ended':
+        return "\n".join(lines if image else [*lines, "-# 경기가 끝났습니다."])
     if state != 'on':
-        stopped = {**STOPPED, 'nogroup': f"{b['group']}조가 없어져 자동 갱신을 멈췄습니다."}[state]
-        if state == 'ended' and many:
-            stopped = f"{b['group']}조 경기가 끝나 자동 갱신을 멈췄습니다."
-        return '\n'.join([*lines, f"-# {stopped}"])
-    mode = MODE.get(b['mode'], b['mode'])
-    if image:
-        lines = []
-    else:
+        return '\n'.join([*lines, f"-# {STOPPED[state]}"])
+    if not image:
+        mode = MODE.get(b['mode'], b['mode'])
         lines.append(f"-# {mode} | {b['plannedRounds']}라운드" if b['mode'] == 'points' else f"-# {mode}")
     # 1라운드 결과가 오기 전에는 라운드 메시지가 없어 다음 라운드를 여기에 둠
     if not b['played'] and b.get('next') and not b['ended']:
         lines += next_lines(b['next'])
-    if linked:
-        lines.append(f"-# 이 채널에 올린 결과 CSV는 {b['group']}조 순위에 반영됩니다." if many
-                     else "-# 이 채널에 올린 결과 CSV는 순위에 반영됩니다.")
     return '\n'.join(lines)
 
 
-def notice_key(b: dict, state: str = 'on', linked: bool = True, image: bool = False) -> str:
-    return f"{notice_text(b, state, linked)}\n{b['url']}" + ('\nimage' if image else '')
+def notice_key(b: dict, mark: str = INFO) -> str:
+    """안내 메시지 기록. 이미지에 그리는 이름과 방식이 바뀌어도 달라지게 글만 있는 형식으로 씀.
+    mark는 붙은 이미지의 종류이고 글만 있으면 빈 문자열"""
+    return f"{notice_text(b)}\n{b['url']}{mark}"
+
+
+def notice_mark(key: Optional[str]) -> str:
+    return next((m for m in (INFO, IMAGE) if key and key.endswith(m)), '')
 
 
 def has_image(key: Optional[str]) -> bool:
-    return bool(key) and key.endswith('\nimage')
+    return bool(notice_mark(key))
 
 
-def notice_view(b: dict, state: str = 'on', linked: bool = True, png: Optional[bytes] = None,
-                image: bool = False) -> ui.LayoutView:
+def notice_view(b: dict, state: str = 'on', png: Optional[bytes] = None, image: bool = False) -> ui.LayoutView:
     """자동 갱신 안내. state: 'on', 'ended', 'gone', 'nogroup', 'unlinked', 'moved', 'replaced'.
     png는 대회 정보 이미지. png 없이 image면 이미 올린 이미지를 그대로 씀"""
     view = ui.LayoutView(timeout=None)
-    image = state == 'on' and (image or png is not None)
+    image = image or png is not None
     children: list = []
     if image:
         children.append(gallery(view, png) if png is not None
                         else ui.MediaGallery(discord.MediaGalleryItem('attachment://tournament.png')))
-    if text := notice_text(b, state, linked, image):
+    if text := notice_text(b, state, image):
         children.append(ui.TextDisplay(text))
     view.add_item(ui.Container(*children, accent_colour=visual.colour('tournament')))
-    view.add_item(ui.ActionRow(link_button(b)))
+    # 삭제된 대회는 순위표 주소가 열리지 않음
+    if state != 'gone':
+        view.add_item(ui.ActionRow(link_button(b)))
     return view
+
+
+def csv_text(b: dict) -> str:
+    """/대회로 연결한 사람에게만 보내는 CSV 안내"""
+    if b['groupCount'] > 1:
+        return f"이 채널에 올린 결과 CSV는 {b['group']}조 순위에 반영됩니다."
+    return "이 채널에 올린 결과 CSV는 순위에 반영됩니다."
 
 
 def info_view(text: str) -> ui.LayoutView:
@@ -368,8 +389,8 @@ def round_view(b: dict, png: bytes) -> ui.LayoutView:
     """자동 갱신이 채널에 올리는 라운드 순위 이미지"""
     view = ui.LayoutView(timeout=None)
     children = [gallery(view, png)]
-    if b.get('next') and not b['ended']:
-        children.append(ui.TextDisplay('\n'.join(next_lines(b['next']))))
+    if b.get('next') and not b['ended'] and (lines := next_lines(b['next'])):
+        children.append(ui.TextDisplay('\n'.join(lines)))
     view.add_item(ui.Container(*children, accent_colour=visual.colour('tournament')))
     view.add_item(ui.ActionRow(link_button(b)))
     return view
@@ -402,7 +423,7 @@ def result_view(r: dict) -> ui.LayoutView:
         text = discord.utils.escape_markdown(r['message'])
     view = ui.LayoutView(timeout=None)
     view.add_item(ui.Container(ui.TextDisplay(text), accent_colour=visual.colour('tournament')))
-    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="Labs에서 보기", url=r['url'])))
+    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="순위표", url=r['url'])))
     return view
 
 
@@ -506,10 +527,10 @@ def live_limit(guild_id: int, user_id: int, ignore: Tuple[int, ...] = ()) -> Opt
             if r['message_id'] not in ignore]
     if sum(r['guild_id'] == guild_id for r in rows) >= LIVE_PER_GUILD:
         return (f"이 서버에서는 자동 갱신을 {LIVE_PER_GUILD}개까지 켤 수 있습니다.\n"
-                "다른 카드의 자동 갱신을 끈 뒤 다시 시도해주세요.")
+                "Labs 관리 화면에서 다른 채널의 연결을 해제한 뒤 다시 시도해주세요.")
     if user_id and sum(r['started_by'] == user_id for r in rows) >= LIVE_PER_USER:
         return (f"자동 갱신은 한 사람이 {LIVE_PER_USER}개까지 켤 수 있습니다.\n"
-                "다른 카드의 자동 갱신을 끈 뒤 다시 시도해주세요.")
+                "Labs 관리 화면에서 다른 채널의 연결을 해제한 뒤 다시 시도해주세요.")
     if len(rows) >= LIVE_TOTAL:
         return "지금은 자동 갱신을 더 켤 수 없습니다.\n잠시 후 다시 시도해주세요."
     return None
@@ -957,7 +978,6 @@ class Tournament(commands.Cog):
         channel = self.client.get_partial_messageable(row['channel_id'])
         notice = channel.get_partial_message(mid)
         image_id, last_round = row['image_id'], row['last_round']
-        is_linked = copy_rows(row['code']).get(row['channel_id']) == (row['code'], row['grp'])
         try:
             try:
                 b = await fetch_board(row['code'], row['grp'], since=row['version'])
@@ -973,10 +993,9 @@ class Tournament(commands.Cog):
             if not live_get(mid):
                 return
             if b is UNCHANGED:
-                # 배포 전 글만 있는 안내나 이미지를 못 받은 안내는 바뀐 것이 없어도 다시 고침
+                # 배포 전 안내나 이미지를 못 받은 안내는 바뀐 것이 없어도 다시 고침
                 old = json.loads(row['board'])
-                if notice_key(old, linked=is_linked, image=True) != row['notice'] \
-                        and time.time() - self._info_failed.get(mid, 0) >= INFO_RETRY_SECONDS:
+                if notice_key(old) != row['notice'] and not self.info_waiting(mid):
                     # 배포 전 기록에는 개최자가 없어 한 번 새로 받음
                     if 'host' not in old:
                         try:
@@ -985,7 +1004,7 @@ class Tournament(commands.Cog):
                         except (NotFoundError, ServiceDownError, ValidationError):
                             self._info_failed[mid] = time.time()
                             return
-                    await self.fix_notice(row, notice, old, is_linked)
+                    await self.fix_notice(row, notice, old)
                 return
             # 라운드를 모두 지웠으면 빈 순위표 대신 마지막 이미지를 지움
             if not b['played'] and image_id:
@@ -1008,12 +1027,12 @@ class Tournament(commands.Cog):
                     return
             if b['ended']:
                 live_drop(mid)
-                await notice.edit(view=notice_view(b, 'ended'), attachments=[])
+                await notice.edit(view=notice_view(b, 'ended', image=has_image(row['notice'])))
                 return
             live_save(mid, b, image_id, last_round)
             # 안내 내용이 같으면 고치지 않음. 봇이 꺼진 사이 지워졌으면 NotFound로 끔
-            if notice_key(b, linked=is_linked, image=True) != row['notice']:
-                await self.fix_notice(row, notice, b, is_linked)
+            if notice_key(b) != row['notice']:
+                await self.fix_notice(row, notice, b)
         except discord.NotFound:
             live_drop(mid)
             logger.info(f"자동 갱신 안내 메시지 없음, 끔 {row['code']} {mid}")
@@ -1025,30 +1044,39 @@ class Tournament(commands.Cog):
         except Exception:
             logger.error(f"자동 갱신 처리 실패 {row['code']} {mid}", exc_info=True)
 
-    async def fix_notice(self, row: sqlite3.Row, notice, b: dict, is_linked: bool) -> None:
-        """안내 메시지를 대회 정보 이미지와 함께 다시 씀. 이미지를 못 받으면 기록을 그대로 둬 뒤의 tick이 다시 시도"""
+    def info_waiting(self, mid: int) -> bool:
+        return time.time() - self._info_failed.get(mid, 0) < INFO_RETRY_SECONDS
+
+    async def fix_notice(self, row: sqlite3.Row, notice, b: dict) -> None:
+        """안내 메시지를 대회 정보 이미지와 함께 다시 씀.
+        이미지를 못 받으면 글만 고치고 옛 이미지 표시로 남겨 뒤의 tick이 다시 시도"""
         mid = row['message_id']
-        if time.time() - self._info_failed.get(mid, 0) < INFO_RETRY_SECONDS:
-            return
-        try:
-            info = await fetch_info_image(b, self.client.get_guild(row['guild_id']))
-        except (NotFoundError, ServiceDownError, ValidationError) as e:
-            self._info_failed[mid] = time.time()
-            logger.warning(f"자동 갱신 안내 이미지 조회 실패 {row['code']}: {type(e).__name__}")
-            return
-        self._info_failed.pop(mid, None)
+        info = None
+        if not self.info_waiting(mid):
+            try:
+                info = await fetch_info_image(b, self.client.get_guild(row['guild_id']))
+                self._info_failed.pop(mid, None)
+            except (NotFoundError, ServiceDownError, ValidationError) as e:
+                self._info_failed[mid] = time.time()
+                logger.warning(f"자동 갱신 안내 이미지 조회 실패 {row['code']}: {type(e).__name__}")
         if not live_get(mid):
             return
-        view = notice_view(b, linked=is_linked, png=info)
-        await notice.edit(view=view, attachments=visual.files_of(view))
-        live_note(mid, notice_key(b, linked=is_linked, image=True))
+        if info is not None:
+            view = notice_view(b, png=info)
+            await notice.edit(view=view, attachments=visual.files_of(view))
+            live_note(mid, notice_key(b))
+            return
+        mark = IMAGE if has_image(row['notice']) else ''
+        if notice_key(b, mark) != row['notice']:
+            await notice.edit(view=notice_view(b, image=bool(mark)))
+            live_note(mid, notice_key(b, mark))
 
     async def stop(self, row: sqlite3.Row, state: str) -> None:
         """보드를 멈추고 안내 메시지를 멈춘 이유로 고침"""
         live_drop(row['message_id'])
         notice = self.client.get_partial_messageable(row['channel_id']).get_partial_message(row['message_id'])
         try:
-            await notice.edit(view=notice_view(json.loads(row['board']), state), attachments=[])
+            await notice.edit(view=notice_view(json.loads(row['board']), state, image=has_image(row['notice'])))
         except discord.HTTPException as e:
             logger.info(f"자동 갱신 안내 고치기 실패 {row['code']} {state}: {type(e).__name__}")
         logger.info(f"자동 갱신 멈춤 {row['code']} {row['grp']} {state}")
@@ -1066,7 +1094,7 @@ class Tournament(commands.Cog):
             message_id = (await channel.send(view=view, files=visual.files_of(view))).id
             image = info is not None
         # 첫 이미지를 올리는 사이 보드가 멈출 수 있어 기록부터 남김
-        live_put(message_id, channel.id, guild_id, b, user_id, notice_key(b, image=image))
+        live_put(message_id, channel.id, guild_id, b, user_id, notice_key(b, INFO if image else ''))
         if png:
             try:
                 image_id = await post_round(channel, b, png, None)
@@ -1391,6 +1419,7 @@ class Tournament(commands.Cog):
                 return
             await self.start(channel, interaction.guild.id, live['board'], live['png'], interaction.user.id, message.id,
                              image=live['image'] is not None)
+            await interaction.followup.send(view=info_view(csv_text(live['board'])), ephemeral=True)
         finally:
             _starting.discard(live.get('key'))
 

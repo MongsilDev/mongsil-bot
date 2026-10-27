@@ -49,7 +49,7 @@ class LinkSyncTest(unittest.IsolatedAsyncioTestCase):
             await self.cog.sync_code(CODE)
         self.assertIsNone(t.live_get(mid))
         self.assertNotIn(101, t.linked)
-        self.assertIn("연결을 해제해 자동 갱신을 멈췄습니다.", edited_text(self.ch1, mid))
+        self.assertIn("더 이상 순위를 올리지 않습니다.", edited_text(self.ch1, mid))
 
     async def test_full_sync_retries_failed_notice(self):
         down = mock.AsyncMock(side_effect=t.ServiceDownError('x', 'down'))
@@ -82,7 +82,7 @@ class LinkSyncTest(unittest.IsolatedAsyncioTestCase):
         mid = add_board(self.ch1)
         with self.changed([link(102)]):
             await self.cog.sync_code(CODE)
-        self.assertIn("다른 채널로 연결을 옮겨", edited_text(self.ch1, mid))
+        self.assertIn("더 이상 순위를 올리지", edited_text(self.ch1, mid))
         self.assertEqual(len(self.ch2.sent), 1)
 
     async def test_replaced_by_other_tournament(self):
@@ -90,7 +90,7 @@ class LinkSyncTest(unittest.IsolatedAsyncioTestCase):
         mid = add_board(self.ch1, OTHER, 'B')
         with self.changed([link(101)]):
             await self.cog.sync_code(CODE)
-        self.assertIn("이 채널을 다른 조에 연결해", edited_text(self.ch1, mid))
+        self.assertIn("더 이상 순위를 올리지", edited_text(self.ch1, mid))
         self.assertEqual(t.copy_rows(), {101: (CODE, 'A')})
         self.assertEqual(len(self.ch1.sent), 1)
 
@@ -106,7 +106,7 @@ class LinkSyncTest(unittest.IsolatedAsyncioTestCase):
         mid = add_board(self.ch1)
         with mock.patch.object(t, 'fetch_links', mock.AsyncMock(side_effect=t.NotFoundError('x', t.GONE))):
             await self.cog.sync_code(CODE)
-        self.assertIn("대회가 지워져", edited_text(self.ch1, mid))
+        self.assertIn("삭제된 대회입니다.", edited_text(self.ch1, mid))
         self.assertNotIn(101, t.linked)
 
     async def test_full_sync_never_posts(self):
@@ -120,7 +120,7 @@ class LinkSyncTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(t.copy_rows(), {101: (CODE, 'A')})
         self.assertEqual(t._retry, {101: (CODE, 'A')})
         self.assertIsNone(t.live_get(mid))
-        self.assertIn("연결을 해제해", edited_text(self.ch2, mid))
+        self.assertIn("더 이상 순위를 올리지", edited_text(self.ch2, mid))
 
     async def test_changed_after_full_sync_posts_notice(self):
         all_links = [{'code': CODE, **link(101)}]
@@ -157,7 +157,7 @@ class LinkSyncTest(unittest.IsolatedAsyncioTestCase):
                 mock.patch.object(t, 'fetch_links', gone), mock.patch.object(t, 'fetch_board', gone):
             await self.cog.sync_all()
         self.assertEqual(t.copy_rows(), {})
-        self.assertIn("대회가 지워져", edited_text(self.ch1, mid))
+        self.assertIn("삭제된 대회입니다.", edited_text(self.ch1, mid))
 
 
 if __name__ == '__main__':
