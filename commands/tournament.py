@@ -274,8 +274,9 @@ STOPPED = {
 }
 
 
-def notice_text(b: dict, state: str = 'on', linked: bool = True) -> str:
-    """안내 메시지 글. state: 'on'이나 멈춘 이유. linked는 이 채널이 이 조에 연결돼 있는지"""
+def notice_text(b: dict, state: str = 'on', linked: bool = True, image: bool = False) -> str:
+    """안내 메시지 글. state: 'on'이나 멈춘 이유. linked는 이 채널이 이 조에 연결돼 있는지.
+    image면 대회 이름과 방식은 이미지 머리글에 있어 뺌"""
     many = b['groupCount'] > 1
     title = b['name'] + (f" {b['group']}조" if many else '')
     lines = [f"### {discord.utils.escape_markdown(title)}"]
@@ -285,25 +286,40 @@ def notice_text(b: dict, state: str = 'on', linked: bool = True) -> str:
             stopped = f"{b['group']}조 경기가 끝나 자동 갱신을 멈췄습니다."
         return '\n'.join([*lines, f"-# {stopped}"])
     mode = MODE.get(b['mode'], b['mode'])
-    lines.append(f"-# {mode} | {b['plannedRounds']}라운드" if b['mode'] == 'points' else f"-# {mode}")
+    if image:
+        lines = []
+    else:
+        lines.append(f"-# {mode} | {b['plannedRounds']}라운드" if b['mode'] == 'points' else f"-# {mode}")
     # 1라운드 결과가 오기 전에는 라운드 메시지가 없어 다음 라운드를 여기에 둠
     if not b['played'] and b.get('next') and not b['ended']:
         lines += next_lines(b['next'])
     if linked:
-        lines.append(f"-# 이 채널에 올린 게임 결과 CSV는 {b['group']}조 순위에 반영됩니다." if many
-                     else "-# 이 채널에 올린 게임 결과 CSV는 순위에 반영됩니다.")
+        lines.append(f"-# 이 채널에 올린 결과 CSV는 {b['group']}조 순위에 반영됩니다." if many
+                     else "-# 이 채널에 올린 결과 CSV는 순위에 반영됩니다.")
     return '\n'.join(lines)
 
 
-def notice_key(b: dict, state: str = 'on', linked: bool = True) -> str:
-    return f"{notice_text(b, state, linked)}\n{b['url']}"
+def notice_key(b: dict, state: str = 'on', linked: bool = True, image: bool = False) -> str:
+    return f"{notice_text(b, state, linked)}\n{b['url']}" + ('\nimage' if image else '')
 
 
-def notice_view(b: dict, state: str = 'on', linked: bool = True) -> ui.LayoutView:
-    """자동 갱신 안내. state: 'on', 'ended', 'gone', 'nogroup', 'unlinked', 'moved', 'replaced'"""
+def has_image(key: Optional[str]) -> bool:
+    return bool(key) and key.endswith('\nimage')
+
+
+def notice_view(b: dict, state: str = 'on', linked: bool = True, png: Optional[bytes] = None,
+                image: bool = False) -> ui.LayoutView:
+    """자동 갱신 안내. state: 'on', 'ended', 'gone', 'nogroup', 'unlinked', 'moved', 'replaced'.
+    1라운드 전에 올린 안내는 빈 순위 이미지를 둠. png 없이 image면 이미 올린 이미지를 그대로 씀"""
     view = ui.LayoutView(timeout=None)
-    view.add_item(ui.Container(ui.TextDisplay(notice_text(b, state, linked)),
-                               accent_colour=visual.colour('tournament')))
+    image = state == 'on' and (image or png is not None)
+    children: list = []
+    if image:
+        children.append(gallery(view, png) if png is not None
+                        else ui.MediaGallery(discord.MediaGalleryItem('attachment://tournament.png')))
+    if text := notice_text(b, state, linked, image):
+        children.append(ui.TextDisplay(text))
+    view.add_item(ui.Container(*children, accent_colour=visual.colour('tournament')))
     view.add_item(ui.ActionRow(link_button(b)))
     return view
 
@@ -956,13 +972,14 @@ class Tournament(commands.Cog):
                     return
             if b['ended']:
                 live_drop(mid)
-                await notice.edit(view=notice_view(b, 'ended'))
+                await notice.edit(view=notice_view(b, 'ended'), attachments=[])
                 return
             live_save(mid, b, image_id, last_round)
             # 안내 내용이 같으면 고치지 않음. 봇이 꺼진 사이 지워졌으면 NotFound로 끔
-            key = notice_key(b, linked=is_linked)
+            image = has_image(row['notice'])
+            key = notice_key(b, linked=is_linked, image=image)
             if key != row['notice']:
-                await notice.edit(view=notice_view(b, linked=is_linked))
+                await notice.edit(view=notice_view(b, linked=is_linked, image=image))
                 live_note(mid, key)
         except discord.NotFound:
             live_drop(mid)
@@ -980,19 +997,22 @@ class Tournament(commands.Cog):
         live_drop(row['message_id'])
         notice = self.client.get_partial_messageable(row['channel_id']).get_partial_message(row['message_id'])
         try:
-            await notice.edit(view=notice_view(json.loads(row['board']), state))
+            await notice.edit(view=notice_view(json.loads(row['board']), state), attachments=[])
         except discord.HTTPException as e:
             logger.info(f"자동 갱신 안내 고치기 실패 {row['code']} {state}: {type(e).__name__}")
         logger.info(f"자동 갱신 멈춤 {row['code']} {row['grp']} {state}")
 
     async def start(self, channel, guild_id: int, b: dict, png: Optional[bytes], user_id: int,
                     message_id: Optional[int] = None) -> None:
-        """안내 메시지와 첫 이미지를 올리고 자동 갱신을 켬. message_id는 /대회가 이미 올린 안내 메시지"""
+        """안내 메시지와 첫 이미지를 올리고 자동 갱신을 켬. message_id는 /대회가 이미 올린 안내 메시지.
+        1라운드 전이면 png는 안내 메시지의 빈 순위 이미지"""
+        image = bool(png) and not b['played']
         if message_id is None:
-            message_id = (await channel.send(view=notice_view(b))).id
+            view = notice_view(b, png=png if image else None)
+            message_id = (await channel.send(view=view, files=visual.files_of(view))).id
         # 첫 이미지를 올리는 사이 보드가 멈출 수 있어 기록부터 남김
-        live_put(message_id, channel.id, guild_id, b, user_id, notice_key(b))
-        if png:
+        live_put(message_id, channel.id, guild_id, b, user_id, notice_key(b, image=image))
+        if png and b['played']:
             try:
                 image_id = await post_round(channel, b, png, None)
             except discord.HTTPException as e:
@@ -1018,7 +1038,7 @@ class Tournament(commands.Cog):
         try:
             b = await fetch_board(code, group)
             if not b['ended']:
-                await self.start(channel, guild.id, b, await fetch_image(code, group) if b['played'] else None, 0)
+                await self.start(channel, guild.id, b, await fetch_image(code, group), 0)
         except (NotFoundError, ServiceDownError, ValidationError) as e:
             logger.info(f"연결 안내 실패 {code} {group}: {e.message}")
             if isinstance(e, ServiceDownError):
@@ -1292,12 +1312,12 @@ class Tournament(commands.Cog):
             # 여러 조인 대회에서 조를 고르지 않았으면 연결하지 않고 카드만 보여 줌
             if not (in_guild and is_operator(b) and not b['ended']) or (b['groupCount'] > 1 and not picked):
                 return card_view(b, await fetch_image(code, b['group']))
-            png = await fetch_image(code, b['group']) if b['played'] else None
+            png = await fetch_image(code, b['group'])
             if reason := await self.link_here(interaction, b, live):
                 live['blocked'] = reason
-                return card_view(b, png or await fetch_image(code, b['group']))
+                return card_view(b, png)
             live['board'], live['png'] = b, png
-            return notice_view(b)
+            return notice_view(b, png=None if b['played'] else png)
 
         try:
             try:

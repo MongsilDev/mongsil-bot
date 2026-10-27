@@ -104,6 +104,23 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(buttons(self.ch.sent[-1][1]['view'])), 1)
         self.assertIn("끝나", edited_text(self.ch, mid))
 
+    async def test_notice_image_before_first_round(self):
+        t.copy_set(101, 1, CODE, 'A')
+        nxt = {'roundNo': 1, 'main': '비', 'sub': None, 'bans': []}
+        await self.cog.start(self.ch, 1, board(next=nxt), b'png', 5)
+        mid, kwargs = self.ch.sent[0]
+        galleries = [i for i in kwargs['view'].walk_children() if isinstance(i, discord.ui.MediaGallery)]
+        self.assertEqual((len(self.ch.sent), len(galleries), len(kwargs['files'])), (1, 1, 1))
+        self.assertNotIn("포인트제", text_of(kwargs['view']))
+        with mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'png')), \
+                mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=board(played=1, version=2))):
+            await self.cog.refresh(mid)
+        edit = [e for e in self.ch.edits if e[0] == mid][-1][1]
+        self.assertTrue(any(isinstance(i, discord.ui.MediaGallery) for i in edit['view'].walk_children()))
+        self.assertNotIn('attachments', edit)
+        await self.cog.stop(t.live_get(mid), 'unlinked')
+        self.assertEqual([e for e in self.ch.edits if e[0] == mid][-1][1]['attachments'], [])
+
     async def test_rounds_cleared_deletes_last_image(self):
         t.copy_set(101, 1, CODE, 'A')
         mid = add_board(self.ch)
