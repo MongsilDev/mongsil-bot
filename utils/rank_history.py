@@ -23,8 +23,11 @@ KEEP_CUTS = 120 * 86400
 KEEP_PLAYERS = 14 * 86400
 DORMANT_DAYS = 7
 GRACE = 12
-# 정기 점검은 2026-08-13부터 격주 목요일
-PATCH_ANCHOR = datetime(2026, 8, 13).date()
+# 12.7 점검 뒤 유예 상한. 이터니티 300위, 데미갓 1000위 안. 남은 유예가 상한보다 많으면 바로 상한으로 줄어듦
+GRACE_CAPS = ((300, 8), (1000, 10))
+GRACE_FROM = datetime(2026, 10, 29, 15, tzinfo=timezone(timedelta(hours=9))).timestamp()
+# 정기 점검은 2026-08-20(12.2)부터 격주 목요일
+PATCH_ANCHOR = datetime(2026, 8, 20).date()
 # 휴면 강등은 메테오라이트 4 아래로 내려가지 않음
 DECAY_FLOOR = 6400
 # 시즌 12 09-01~10-19 오전 9시 컷 백테스트로 고른 감쇠 추세 계수
@@ -181,23 +184,37 @@ def last_active(p: list) -> Optional[float]:
     return max(seen) if seen else None
 
 
-def decay_ticks(last: float, until: float) -> int:
+def grace_cap(rank: int, now: float) -> int:
+    """유예 상한. 티어는 지금 순위로 정하고 감점으로 순위가 내려가도 다시 정하지 않음"""
+    if now < GRACE_FROM:
+        return GRACE
+    return next((cap for place, cap in GRACE_CAPS if rank <= place), GRACE)
+
+
+def decay_ticks(last: float, until: float, cap: int = GRACE) -> int:
     """마지막 랭크 게임 뒤 until까지 휴면 강등으로 100점씩 깎인 횟수. 시즌 12 게임 기록 398건으로 맞춘 규칙:
-    다음 오전 9시부터 하루가 비면 그다음 15시에 유예 1을 쓰고, 유예 12를 다 쓰면 100점. 격주 목요일 패치 날은 건너뜀"""
+    다음 오전 9시부터 하루가 비면 그다음 15시에 유예 1을 쓰고, 유예 12를 다 쓰면 100점. 격주 목요일 패치 날은 건너뜀.
+    GRACE_FROM 뒤에는 남은 유예를 cap으로 줄임"""
     day = datetime.fromtimestamp(last, KST).replace(hour=9, minute=0, second=0, microsecond=0)
     if day.timestamp() <= last:
         day += timedelta(days=1)
-    empty = 0
+    grace, ticks = GRACE, 0
     while True:
         day += timedelta(days=1)
         if day.replace(hour=15).timestamp() >= until:
             break
-        if not (day.weekday() == 3 and (day.date() - PATCH_ANCHOR).days % 14 == 0):
-            empty += 1
-    return max(0, empty - GRACE)
+        if day.weekday() == 3 and (day.date() - PATCH_ANCHOR).days % 14 == 0:
+            continue
+        if day.replace(hour=15).timestamp() >= GRACE_FROM:
+            grace = min(grace, cap)
+        if grace:
+            grace -= 1
+        else:
+            ticks += 1
+    return ticks
 
 
-def projected_rp(p: list, mmr: int, now: float, end: float) -> Optional[int]:
+def projected_rp(p: list, mmr: int, now: float, end: float, cap: int = GRACE) -> Optional[int]:
     """7일 넘게 쉰 계정이 end까지 랭크 게임을 하지 않으면 남을 RP. 이미 깎인 만큼은 mmr에 반영돼 있음. 활동 중이면 mmr"""
     at = last_active(p)
     if at is None:
@@ -206,7 +223,7 @@ def projected_rp(p: list, mmr: int, now: float, end: float) -> Optional[int]:
         return mmr
     # 게임 기록 끝까지 랭크 게임이 없으면 유예를 다 쓴 것으로 간주
     at = at if at > 0 else now - 60 * 86400
-    return max(mmr - 100 * (decay_ticks(at, end) - decay_ticks(at, now)), min(mmr, DECAY_FLOOR))
+    return max(mmr - 100 * (decay_ticks(at, end, cap) - decay_ticks(at, now, cap)), min(mmr, DECAY_FLOOR))
 
 
 def active_cut(season_id: int, top_ranks: List[dict], place: int, end: Optional[float] = None) -> Optional[Tuple[int, int, bool]]:
@@ -226,7 +243,7 @@ def active_cut(season_id: int, top_ranks: List[dict], place: int, end: Optional[
     for r in ranked:
         mmr = int(r['mmr'])
         p = players.get(r.get('nickname'))
-        value = projected_rp(p, mmr, now, end) if p else None
+        value = projected_rp(p, mmr, now, end, grace_cap(r.get('rank', 0), now)) if p else None
         if value is None:
             # 기록을 시작한 뒤 목록에 처음 나타난 계정은 순위가 올랐거나 닉네임을 바꾼 것이라 활동으로 간주
             if p and p[FIRST] - since < 3600:
@@ -264,12 +281,13 @@ def decay_schedule(season_id: int, top_ranks: List[dict], cut: float, end: float
         if mmr < cut or at is None or now - at <= DORMANT_DAYS * 86400:
             continue
         at = at if at > 0 else now - 60 * 86400
+        cap = grace_cap(r.get('rank', 0), now)
         # 차감은 15시라 날마다 16시에 확인
         day = datetime.fromtimestamp(now, KST).replace(hour=16, minute=0, second=0, microsecond=0)
         if day.timestamp() <= now:
             day += timedelta(days=1)
         while day.timestamp() <= end:
-            if max(mmr - 100 * (decay_ticks(at, day.timestamp()) - decay_ticks(at, now)), min(mmr, DECAY_FLOOR)) < cut:
+            if max(mmr - 100 * (decay_ticks(at, day.timestamp(), cap) - decay_ticks(at, now, cap)), min(mmr, DECAY_FLOOR)) < cut:
                 key = day.strftime('%Y-%m-%d')
                 days[key] = days.get(key, 0) + 1
                 break

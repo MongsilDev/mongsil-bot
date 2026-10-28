@@ -136,6 +136,8 @@ async def cut_snapshot(client: ERClient) -> Optional[dict]:
     history = rank_history.cut_history(season_id)
     now = datetime.now(timezone.utc)
     stamp = lambda t: round(t.timestamp()) if isinstance(t, datetime) else round(t)
+    # default는 1000위 밖
+    places = (('eternity', 300), ('demigod', 1000), ('default', 1001))
     tiers = {}
     for key, (tier, icon, place, rp, official, found, start, outlook) in zip(
             ('eternity', 'demigod'), tier_cuts(season_id, ranked, history, end, cut_rp(rank_300), cut_rp(rank_1000), now)):
@@ -156,9 +158,12 @@ async def cut_snapshot(client: ERClient) -> Optional[dict]:
         'season': {'id': season_id, 'name': season_name, 'end': stamp(end) if end else None},
         'rps': [int(r['mmr']) for r in sorted(ranked, key=lambda r: r.get('rank', 0))],
         'tiers': tiers,
-        # 지금부터 랭크 게임을 안 하면 시즌 끝까지 깎이는 횟수. 유예 12 가정
-        'quitTicks': rank_history.decay_ticks(now.timestamp(), end.timestamp()) if end else None,
-        'rule': {'grace': rank_history.GRACE, 'step': 100, 'floor': rank_history.DECAY_FLOOR, 'dormantDays': rank_history.DORMANT_DAYS},
+        # 지금부터 랭크 게임을 안 하면 시즌 끝까지 깎이는 횟수. 유예를 다 채운 상태 가정
+        'quitTicks': {key: rank_history.decay_ticks(now.timestamp(), end.timestamp(), rank_history.grace_cap(place, now.timestamp()))
+                      for key, place in places} if end else None,
+        'rule': {'grace': {key: rank_history.grace_cap(place, rank_history.GRACE_FROM) for key, place in places},
+                 'graceFrom': round(rank_history.GRACE_FROM), 'step': 100, 'floor': rank_history.DECAY_FLOOR,
+                 'dormantDays': rank_history.DORMANT_DAYS},
     }
 
 
