@@ -47,6 +47,15 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(text_of(gone), "-# 삭제된 대회입니다.")
         self.assertFalse(any(isinstance(i, discord.ui.Button) for i in gone.walk_children()))
 
+    def test_replay_codes(self):
+        replays = [{'roundNo': 1, 'gameId': 12345678}, {'roundNo': 2, 'gameId': 23456789}]
+        one = {**board(ended=True), 'name': '몽실*컵', 'replays': replays}
+        self.assertEqual(t.replay_text(one), "### 리플레이 코드\n-# 몽실\\*컵\n1R `12345678`\n2R `23456789`")
+        many = {**board(group='B', groups=3, ended=True), 'replays': replays[:1]}
+        self.assertEqual(t.replay_text(many), "### 리플레이 코드 B조\n-# 테스트 대회\n1R `12345678`")
+        buttons = [i for i in t.replay_view(one).walk_children() if isinstance(i, discord.ui.Button)]
+        self.assertEqual([(b.label, b.url) for b in buttons], [("순위표", one['url'])])
+
     async def test_only_rank_button(self):
         for state in ('on', 'unlinked'):
             view = t.notice_view(board(), state)
