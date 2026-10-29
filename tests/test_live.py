@@ -111,21 +111,22 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(text_of(ended['view']), "")
         self.assertTrue(any(isinstance(i, discord.ui.MediaGallery) for i in ended['view'].walk_children()))
 
-    async def test_replay_codes_once_when_ended(self):
+    async def test_replay_codes_under_final_ranking(self):
         mid = add_board(self.ch)
-        replays = [{'roundNo': 1, 'gameId': 12345678}]
+        replays = [{'roundNo': 1, 'gameId': 12345678}, {'roundNo': 2, 'gameId': 23456789}]
         ended = {**board(played=4, version=3, ended=True), 'replays': replays}
         with mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'png')):
             with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=ended)):
                 await self.cog.refresh(mid)
                 await self.cog.refresh(mid)
-        self.assertEqual(len(self.ch.sent), 2)
-        self.assertEqual(text_of(self.ch.sent[-1][1]['view']), t.replay_text(ended))
+        # 최종 순위 이미지 한 장에 게임 ID를 붙이고 따로 보내지 않음
+        self.assertEqual(len(self.ch.sent), 1)
+        self.assertEqual(text_of(self.ch.sent[-1][1]['view']), "-# 리플레이 코드\n1R `12345678`\n2R `23456789`")
         self.assertIsNone(t.live_get(mid))
         self.assertEqual(edited_text(self.ch, mid), "### 테스트 대회\n-# 경기가 끝났습니다.")
 
     async def test_no_replay_codes_without_replays(self):
-        for replays in (None, []):
+        for replays in (None, [], [{'roundNo': 1, 'gameId': None}]):
             mid = add_board(self.ch)
             sent = len(self.ch.sent)
             ended = {**board(played=4, version=3, ended=True), 'replays': replays}
@@ -135,17 +136,8 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
                 with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=ended)):
                     await self.cog.refresh(mid)
             self.assertEqual(len(self.ch.sent), sent + 1)
+            self.assertEqual(text_of(self.ch.sent[-1][1]['view']), "")
             self.assertIsNone(t.live_get(mid))
-
-    async def test_replay_failure_still_ends(self):
-        mid = add_board(self.ch)
-        ended = {**board(ended=True, version=3), 'replays': [{'roundNo': 1, 'gameId': 1}]}
-        error = discord.Forbidden(SimpleNamespace(status=403, reason=''), '')
-        with mock.patch.object(self.ch, 'send', mock.AsyncMock(side_effect=error)):
-            with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=ended)):
-                await self.cog.refresh(mid)
-        self.assertIsNone(t.live_get(mid))
-        self.assertEqual(edited_text(self.ch, mid), "### 테스트 대회\n-# 경기가 끝났습니다.")
 
     async def test_notice_info_image(self):
         t.copy_set(101, 1, CODE, 'A')

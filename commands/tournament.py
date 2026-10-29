@@ -383,17 +383,9 @@ def replays_of(b: dict) -> list:
     return [r for r in rows if isinstance(r, dict) and r.get('gameId') and isinstance(r.get('roundNo'), int)] if isinstance(rows, list) else []
 
 
-def replay_text(b: dict) -> str:
-    title = "### 리플레이 코드" + (f" {b['group']}조" if b['groupCount'] > 1 else '')
-    lines = [title, f"-# {discord.utils.escape_markdown(b['name'])}"]
-    lines += [f"{r['roundNo']}R `{r['gameId']}`" for r in replays_of(b)]
-    return '\n'.join(lines)
-
-
-def replay_view(b: dict) -> ui.LayoutView:
-    view = info_view(replay_text(b))
-    view.add_item(ui.ActionRow(link_button(b)))
-    return view
+def replay_lines(b: dict) -> list:
+    rows = replays_of(b)
+    return ["-# 리플레이 코드", *(f"{r['roundNo']}R `{r['gameId']}`" for r in rows)] if rows else []
 
 
 def already_text(b: dict) -> str:
@@ -404,10 +396,11 @@ def already_text(b: dict) -> str:
 
 
 def round_view(b: dict, png: bytes) -> ui.LayoutView:
-    """자동 갱신이 채널에 올리는 라운드 순위 이미지"""
+    """자동 갱신이 채널에 올리는 라운드 순위 이미지. 끝난 대회는 최종 순위 아래에 라운드별 게임 ID를 둠"""
     view = ui.LayoutView(timeout=None)
     children = [gallery(view, png)]
-    if b.get('next') and not b['ended'] and (lines := next_lines(b['next'])):
+    lines = replay_lines(b) if b['ended'] else next_lines(b['next']) if b.get('next') else []
+    if lines:
         children.append(ui.TextDisplay('\n'.join(lines)))
     view.add_item(ui.Container(*children, accent_colour=visual.colour('tournament')))
     view.add_item(ui.ActionRow(link_button(b)))
@@ -1045,12 +1038,6 @@ class Tournament(commands.Cog):
                     return
             if b['ended']:
                 live_drop(mid)
-                if replays_of(b):
-                    # 보드 기록을 이미 지워 여기서 멈추면 안내가 종료 상태로 바뀌지 않음
-                    try:
-                        await channel.send(view=replay_view(b))
-                    except Exception as e:
-                        logger.warning(f"리플레이 코드 메시지 실패 {row['code']}: {type(e).__name__}: {e}")
                 await notice.edit(view=notice_view(b, 'ended', image=has_image(row['notice'])))
                 return
             live_save(mid, b, image_id, last_round)

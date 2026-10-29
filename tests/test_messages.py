@@ -49,12 +49,13 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
 
     def test_replay_codes(self):
         replays = [{'roundNo': 1, 'gameId': 12345678}, {'roundNo': 2, 'gameId': 23456789}]
-        one = {**board(ended=True), 'name': '몽실*컵', 'replays': replays}
-        self.assertEqual(t.replay_text(one), "### 리플레이 코드\n-# 몽실\\*컵\n1R `12345678`\n2R `23456789`")
-        many = {**board(group='B', groups=3, ended=True), 'replays': replays[:1]}
-        self.assertEqual(t.replay_text(many), "### 리플레이 코드 B조\n-# 테스트 대회\n1R `12345678`")
-        buttons = [i for i in t.replay_view(one).walk_children() if isinstance(i, discord.ui.Button)]
-        self.assertEqual([(b.label, b.url) for b in buttons], [("순위표", one['url'])])
+        self.assertEqual(t.replay_lines({'replays': replays}), ["-# 리플레이 코드", "1R `12345678`", "2R `23456789`"])
+        self.assertEqual(t.replay_lines({'replays': []}), [])
+        ended = t.round_view({**board(ended=True), 'replays': replays, 'next': {'roundNo': 5, 'main': '비'}}, b'png')
+        texts = [i.content for i in ended.walk_children() if isinstance(i, discord.ui.TextDisplay)]
+        self.assertEqual(texts, ["-# 리플레이 코드\n1R `12345678`\n2R `23456789`"])
+        live = t.round_view({**board(), 'replays': replays}, b'png')
+        self.assertFalse(any('리플레이' in i.content for i in live.walk_children() if isinstance(i, discord.ui.TextDisplay)))
 
     def test_replay_codes_skip_bad_rows(self):
         rows = [{'roundNo': 1, 'gameId': None}, {'roundNo': 2}, {'gameId': 5}, 'x', {'roundNo': 3, 'gameId': 7}]
