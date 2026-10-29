@@ -384,8 +384,10 @@ def replays_of(b: dict) -> list:
 
 
 def replay_lines(b: dict) -> list:
-    rows = replays_of(b)
-    return ["-# 리플레이 코드", *(f"{r['roundNo']}R `{r['gameId']}`" for r in rows)] if rows else []
+    """라운드별 게임 ID를 한 줄에 두 개씩"""
+    codes = [f"{r['roundNo']}R `{r['gameId']}`" for r in replays_of(b)]
+    pairs = ["   ".join(codes[i:i + 2]) for i in range(0, len(codes), 2)]
+    return ["-# 리플레이 코드", *pairs] if codes else []
 
 
 def already_text(b: dict) -> str:

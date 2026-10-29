@@ -49,11 +49,13 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
 
     def test_replay_codes(self):
         replays = [{'roundNo': 1, 'gameId': 12345678}, {'roundNo': 2, 'gameId': 23456789}]
-        self.assertEqual(t.replay_lines({'replays': replays}), ["-# 리플레이 코드", "1R `12345678`", "2R `23456789`"])
+        self.assertEqual(t.replay_lines({'replays': replays}), ["-# 리플레이 코드", "1R `12345678`   2R `23456789`"])
+        three = [*replays, {'roundNo': 3, 'gameId': 34567890}]
+        self.assertEqual(t.replay_lines({'replays': three}), ["-# 리플레이 코드", "1R `12345678`   2R `23456789`", "3R `34567890`"])
         self.assertEqual(t.replay_lines({'replays': []}), [])
         ended = t.round_view({**board(ended=True), 'replays': replays, 'next': {'roundNo': 5, 'main': '비'}}, b'png')
         texts = [i.content for i in ended.walk_children() if isinstance(i, discord.ui.TextDisplay)]
-        self.assertEqual(texts, ["-# 리플레이 코드\n1R `12345678`\n2R `23456789`"])
+        self.assertEqual(texts, ["-# 리플레이 코드\n1R `12345678`   2R `23456789`"])
         live = t.round_view({**board(), 'replays': replays}, b'png')
         self.assertFalse(any('리플레이' in i.content for i in live.walk_children() if isinstance(i, discord.ui.TextDisplay)))
 

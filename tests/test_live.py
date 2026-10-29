@@ -121,7 +121,7 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
                 await self.cog.refresh(mid)
         # 최종 순위 이미지 한 장에 게임 ID를 붙이고 따로 보내지 않음
         self.assertEqual(len(self.ch.sent), 1)
-        self.assertEqual(text_of(self.ch.sent[-1][1]['view']), "-# 리플레이 코드\n1R `12345678`\n2R `23456789`")
+        self.assertEqual(text_of(self.ch.sent[-1][1]['view']), "-# 리플레이 코드\n1R `12345678`   2R `23456789`")
         self.assertIsNone(t.live_get(mid))
         self.assertEqual(edited_text(self.ch, mid), "### 테스트 대회\n-# 경기가 끝났습니다.")
 
