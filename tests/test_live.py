@@ -111,6 +111,42 @@ class RefreshTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(text_of(ended['view']), "")
         self.assertTrue(any(isinstance(i, discord.ui.MediaGallery) for i in ended['view'].walk_children()))
 
+    async def test_replay_codes_once_when_ended(self):
+        mid = add_board(self.ch)
+        replays = [{'roundNo': 1, 'gameId': 12345678}]
+        ended = {**board(played=4, version=3, ended=True), 'replays': replays}
+        with mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'png')):
+            with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=ended)):
+                await self.cog.refresh(mid)
+                await self.cog.refresh(mid)
+        self.assertEqual(len(self.ch.sent), 2)
+        self.assertEqual(text_of(self.ch.sent[-1][1]['view']), t.replay_text(ended))
+        self.assertIsNone(t.live_get(mid))
+        self.assertEqual(edited_text(self.ch, mid), "### 테스트 대회\n-# 경기가 끝났습니다.")
+
+    async def test_no_replay_codes_without_replays(self):
+        for replays in (None, []):
+            mid = add_board(self.ch)
+            sent = len(self.ch.sent)
+            ended = {**board(played=4, version=3, ended=True), 'replays': replays}
+            if replays is None:
+                del ended['replays']
+            with mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'png')):
+                with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=ended)):
+                    await self.cog.refresh(mid)
+            self.assertEqual(len(self.ch.sent), sent + 1)
+            self.assertIsNone(t.live_get(mid))
+
+    async def test_replay_failure_still_ends(self):
+        mid = add_board(self.ch)
+        ended = {**board(ended=True, version=3), 'replays': [{'roundNo': 1, 'gameId': 1}]}
+        error = discord.Forbidden(SimpleNamespace(status=403, reason=''), '')
+        with mock.patch.object(self.ch, 'send', mock.AsyncMock(side_effect=error)):
+            with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=ended)):
+                await self.cog.refresh(mid)
+        self.assertIsNone(t.live_get(mid))
+        self.assertEqual(edited_text(self.ch, mid), "### 테스트 대회\n-# 경기가 끝났습니다.")
+
     async def test_notice_info_image(self):
         t.copy_set(101, 1, CODE, 'A')
         nxt = {'roundNo': 1, 'main': '비', 'sub': None, 'bans': []}

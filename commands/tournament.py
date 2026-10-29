@@ -378,6 +378,19 @@ def info_view(text: str) -> ui.LayoutView:
     return view
 
 
+def replay_text(b: dict) -> str:
+    title = "### 리플레이 코드" + (f" {b['group']}조" if b['groupCount'] > 1 else '')
+    lines = [title, f"-# {discord.utils.escape_markdown(b['name'])}"]
+    lines += [f"{r['roundNo']}R `{r['gameId']}`" for r in b['replays']]
+    return '\n'.join(lines)
+
+
+def replay_view(b: dict) -> ui.LayoutView:
+    view = info_view(replay_text(b))
+    view.add_item(ui.ActionRow(link_button(b)))
+    return view
+
+
 def already_text(b: dict) -> str:
     name = discord.utils.escape_markdown(b['name'])
     if b['groupCount'] > 1:
@@ -1027,6 +1040,11 @@ class Tournament(commands.Cog):
                     return
             if b['ended']:
                 live_drop(mid)
+                if b.get('replays'):
+                    try:
+                        await channel.send(view=replay_view(b))
+                    except discord.HTTPException as e:
+                        logger.warning(f"리플레이 코드 메시지 실패 {row['code']}: {type(e).__name__}: {e}")
                 await notice.edit(view=notice_view(b, 'ended', image=has_image(row['notice'])))
                 return
             live_save(mid, b, image_id, last_round)
