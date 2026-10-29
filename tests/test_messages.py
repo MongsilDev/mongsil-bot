@@ -56,6 +56,12 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
         buttons = [i for i in t.replay_view(one).walk_children() if isinstance(i, discord.ui.Button)]
         self.assertEqual([(b.label, b.url) for b in buttons], [("순위표", one['url'])])
 
+    def test_replay_codes_skip_bad_rows(self):
+        rows = [{'roundNo': 1, 'gameId': None}, {'roundNo': 2}, {'gameId': 5}, 'x', {'roundNo': 3, 'gameId': 7}]
+        self.assertEqual(t.replays_of({'replays': rows}), [{'roundNo': 3, 'gameId': 7}])
+        self.assertEqual(t.replays_of({'replays': 'x'}), [])
+        self.assertEqual(t.replays_of({}), [])
+
     async def test_only_rank_button(self):
         for state in ('on', 'unlinked'):
             view = t.notice_view(board(), state)

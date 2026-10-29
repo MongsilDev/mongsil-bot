@@ -378,10 +378,15 @@ def info_view(text: str) -> ui.LayoutView:
     return view
 
 
+def replays_of(b: dict) -> list:
+    rows = b.get('replays')
+    return [r for r in rows if isinstance(r, dict) and r.get('gameId') and isinstance(r.get('roundNo'), int)] if isinstance(rows, list) else []
+
+
 def replay_text(b: dict) -> str:
     title = "### 리플레이 코드" + (f" {b['group']}조" if b['groupCount'] > 1 else '')
     lines = [title, f"-# {discord.utils.escape_markdown(b['name'])}"]
-    lines += [f"{r['roundNo']}R `{r['gameId']}`" for r in b['replays']]
+    lines += [f"{r['roundNo']}R `{r['gameId']}`" for r in replays_of(b)]
     return '\n'.join(lines)
 
 
@@ -1040,10 +1045,11 @@ class Tournament(commands.Cog):
                     return
             if b['ended']:
                 live_drop(mid)
-                if b.get('replays'):
+                if replays_of(b):
+                    # 보드 기록을 이미 지워 여기서 멈추면 안내가 종료 상태로 바뀌지 않음
                     try:
                         await channel.send(view=replay_view(b))
-                    except discord.HTTPException as e:
+                    except Exception as e:
                         logger.warning(f"리플레이 코드 메시지 실패 {row['code']}: {type(e).__name__}: {e}")
                 await notice.edit(view=notice_view(b, 'ended', image=has_image(row['notice'])))
                 return
