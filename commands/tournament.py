@@ -48,6 +48,7 @@ TOO_SOON = "잠시 후 다시 눌러주세요."
 
 BAD_CODE = "대회 코드는 영문과 숫자 6자리입니다.\n받은 코드를 다시 확인해주세요."
 GONE = "없거나 지워진 대회입니다.\n-# 대회는 마지막으로 수정한 지 24시간이 지나면 자동으로 삭제됩니다."
+NOT_OPERATOR = "이 대회의 개최자나 운영자만 불러올 수 있습니다.\n순위는 개최자가 공유한 대회 주소에서 확인해주세요."
 DOWN = "Labs에 연결하지 못했습니다.\n잠시 후 다시 시도해주세요."
 OLD_RELAY_BUTTON = "이 버튼은 더 이상 쓰지 않습니다.\n채널을 연결하려면 이 채널에서 /대회를 다시 입력해주세요."
 OLD_OFF_BUTTON = "이 버튼은 더 이상 쓰지 않습니다.\n자동 갱신을 끄려면 Labs 관리 화면에서 연결을 해제해주세요."
@@ -294,10 +295,10 @@ def next_lines(n: dict) -> List[str]:
     return [f"{head} | 금지 {ban_text(bans)}"]
 
 
-def check_visible(b: dict) -> None:
-    """스크림 대회의 조 순위는 조 채널의 키 주소와 운영자에게만 보여 줌. 코드로 묻는 사람에게는 없는 대회와 같게 답함"""
-    if b.get('private') and not is_operator(b):
-        raise NotFoundError(f"스크림 대회 {b['code']}", GONE)
+def check_operator(b: dict) -> None:
+    """대회는 개최자와 운영자만 불러옴. 예시 대회는 주인이 없어 누구나 씀"""
+    if b['code'] != 'EXAMPLE' and not is_operator(b):
+        raise ValidationError(f"운영자 아님 {b['code']}", NOT_OPERATOR)
 
 
 def link_button(b: dict) -> ui.Button:
@@ -578,7 +579,7 @@ async def redraw(interaction: discord.Interaction, code: str, group: str) -> Non
     await interaction.response.defer()
     try:
         b = await fetch_board(code, group, interaction.user.id)
-        check_visible(b)
+        check_operator(b)
         view = card_view(b, await fetch_image(code, b['group']))
     except (NotFoundError, ServiceDownError, ValidationError) as e:
         await reply_error(interaction, e.user_message)
@@ -1412,7 +1413,7 @@ class Tournament(commands.Cog):
 
         async def build():
             b = await fetch_board(code, picked or 'A', interaction.user.id if code != 'EXAMPLE' else None)
-            check_visible(b)
+            check_operator(b)
             # 여러 조인 대회에서 조를 고르지 않았으면 연결하지 않고 카드만 보여 줌
             if not (in_guild and is_operator(b) and not b['ended']) or (b['groupCount'] > 1 and not picked):
                 return card_view(b, await fetch_image(code, b['group']))

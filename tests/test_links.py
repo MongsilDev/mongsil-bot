@@ -161,12 +161,16 @@ class LinkSyncTest(unittest.IsolatedAsyncioTestCase):
 
 
 
-class VisibleTest(unittest.TestCase):
-    def test_scrim_board_needs_operator(self):
-        with self.assertRaises(t.NotFoundError):
-            t.check_visible(board(CODE, 'B') | {'private': True, 'role': None})
-        t.check_visible(board(CODE, 'B') | {'private': True, 'role': 'operator'})
-        t.check_visible(board(CODE, 'B') | {'private': False, 'role': None})
+class OperatorOnlyTest(unittest.TestCase):
+    def test_only_owner_and_operator(self):
+        for role in ('owner', 'operator'):
+            t.check_operator(board(CODE, 'B') | {'role': role})
+        with self.assertRaises(t.ValidationError) as e:
+            t.check_operator(board(CODE, 'B') | {'role': None})
+        self.assertEqual(e.exception.user_message, t.NOT_OPERATOR)
+
+    def test_example_is_open(self):
+        t.check_operator(board(CODE, 'A') | {'code': 'EXAMPLE', 'role': None})
 
 
 if __name__ == '__main__':
