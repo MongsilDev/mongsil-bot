@@ -1,7 +1,8 @@
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
-from helpers import CODE, OTHER, FakeChannel, FakeClient, add_board, board, db, edited_text, reset, t
+from helpers import CODE, OTHER, FakeChannel, FakeClient, add_board, board, db, edited_text, reset, t, text_of
 
 import discord
 
@@ -171,6 +172,21 @@ class OperatorOnlyTest(unittest.TestCase):
 
     def test_example_is_open(self):
         t.check_operator(board(CODE, 'A') | {'code': 'EXAMPLE', 'role': None})
+
+
+
+class NoCodeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_no_code_guides_privately(self):
+        cog = SimpleNamespace()
+        send = mock.AsyncMock()
+        inter = SimpleNamespace(response=SimpleNamespace(send_message=send))
+        with mock.patch.object(t, 'fetch_board', mock.AsyncMock()) as fetch:
+            await t.Tournament.tournament_command.callback(cog, inter, None, SimpleNamespace(value='B'))
+        fetch.assert_not_awaited()
+        self.assertTrue(send.await_args.kwargs['ephemeral'])
+        view = send.await_args.kwargs['view']
+        self.assertIn(t.NO_CODE, text_of(view))
+        self.assertTrue(any(isinstance(i, discord.ui.Button) and i.url.endswith('/er/score') for i in view.walk_children()))
 
 
 if __name__ == '__main__':

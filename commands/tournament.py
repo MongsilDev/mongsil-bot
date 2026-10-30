@@ -48,6 +48,7 @@ TOO_SOON = "잠시 후 다시 눌러주세요."
 
 BAD_CODE = "대회 코드는 영문과 숫자 6자리입니다.\n받은 코드를 다시 확인해주세요."
 GONE = "없거나 지워진 대회입니다.\n-# 대회는 마지막으로 수정한 지 24시간이 지나면 자동으로 삭제됩니다."
+NO_CODE = "Labs 점수 계산기에서 대회를 만든 뒤 대회 코드나 주소를 넣어 다시 입력해주세요."
 NOT_OPERATOR = "이 대회의 개최자나 운영자만 불러올 수 있습니다.\n순위는 개최자가 공유한 대회 주소에서 확인해주세요."
 DOWN = "Labs에 연결하지 못했습니다.\n잠시 후 다시 시도해주세요."
 OLD_RELAY_BUTTON = "이 버튼은 더 이상 쓰지 않습니다.\n채널을 연결하려면 이 채널에서 /대회를 다시 입력해주세요."
@@ -382,6 +383,12 @@ def csv_text(b: dict) -> str:
 def info_view(text: str) -> ui.LayoutView:
     view = ui.LayoutView(timeout=None)
     view.add_item(ui.Container(ui.TextDisplay(text), accent_colour=visual.colour('tournament')))
+    return view
+
+
+def no_code_view() -> ui.LayoutView:
+    view = info_view(NO_CODE)
+    view.add_item(ui.ActionRow(ui.Button(style=discord.ButtonStyle.link, label="Labs 점수 계산기", url=f"{config.labs_url}/er/score")))
     return view
 
 
@@ -1395,13 +1402,16 @@ class Tournament(commands.Cog):
             await self.apply(code, links_map(links, code), post=True, skip=channel.id)
 
     @app_commands.command(name="대회", description="Labs 대회 순위")
-    @app_commands.describe(코드="대회 코드나 Labs 대회 주소", 조="여러 조로 나눈 대회의 조")
+    @app_commands.describe(코드="Labs 점수 계산기에서 만든 대회 코드나 주소", 조="여러 조로 나눈 대회의 조")
     @app_commands.choices(조=[app_commands.Choice(name=f"{g}조", value=g) for g in GROUPS])
     # Labs 봇 토큰 한도(분당 1200회)를 모든 서버가 나눠 씀
     @app_commands.checks.cooldown(3, 10)
     @handle_errors(user_message="대회 순위를 가져오지 못했습니다.\n잠시 후 다시 시도해주세요.")
-    async def tournament_command(self, interaction: discord.Interaction, 코드: str,
+    async def tournament_command(self, interaction: discord.Interaction, 코드: Optional[str] = None,
                                  조: Optional[app_commands.Choice[str]] = None):
+        if not 코드:
+            await interaction.response.send_message(view=no_code_view(), ephemeral=True)
+            return
         target = parse_target(코드)
         if not target:
             raise ValidationError(f"대회 코드 형식 {코드[:40]!r}", BAD_CODE)
