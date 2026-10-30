@@ -29,7 +29,7 @@ logger = get_logger('대회')
 
 API = f"{config.labs_url}/api/bot"
 CODE = re.compile(r'^(?:[2-9A-HJKMNP-Z]{6}|EXAMPLE)$')
-LINK = re.compile(r'/er/(?:t/([0-9A-Za-z]{6})|(example))(?:/([A-Ha-h]))?(?:[/?#]|$)')
+LINK = re.compile(r'/er/(?:t/([0-9A-Za-z]{6})|(example))(?:/([A-Ha-h]|[0-9a-f]{24}))?(?:[/?#]|$)')
 GROUPS = 'ABCDEFGH'
 MODE = {'points': '포인트제', 'checkpoint': '체크포인트', 'double': '더블 체크포인트'}
 
@@ -106,16 +106,19 @@ RELAY_STATUSES = ('added', 'duplicate', 'ended', 'invalid', 'unlinked')
 
 
 def no_group(group: Optional[str]) -> str:
+    if group and len(group) > 1:
+        return "이 대회에 없는 주소입니다.\n대회 코드와 조를 넣어 다시 입력해주세요."
     return f"이 대회에는 {group}조가 없습니다.\n조를 다시 골라주세요."
 
 
 def parse_target(text: str) -> Optional[Tuple[str, Optional[str]]]:
-    """대회 코드와 조. Labs 주소를 붙여 넣으면 주소에서 꺼냄"""
+    """대회 코드와 조. Labs 주소를 붙여 넣으면 주소에서 꺼냄. 스크림 대회의 키는 Labs가 조로 바꿈"""
     text = (text or '').strip()
     m = LINK.search(text)
     if m:
         code = 'EXAMPLE' if m[2] else m[1].upper()
-        return (code, m[3].upper() if m[3] else None) if CODE.match(code) else None
+        group = m[3] if m[3] and len(m[3]) > 1 else m[3] and m[3].upper()
+        return (code, group) if CODE.match(code) else None
     code = re.sub(r'\s+', '', text).upper()
     return (code, None) if CODE.match(code) else None
 

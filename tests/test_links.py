@@ -175,6 +175,45 @@ class OperatorOnlyTest(unittest.TestCase):
 
 
 
+class ParseTargetTest(unittest.TestCase):
+    def test_key_address(self):
+        key = '0123456789abcdef01234567'
+        self.assertEqual(t.parse_target(f'https://labs.example/er/t/{CODE}/{key}'), (CODE, key))
+        self.assertEqual(t.parse_target(f'https://labs.example/er/t/{CODE}/{key}/overlay'), (CODE, key))
+
+    def test_code_and_letter_address(self):
+        self.assertEqual(t.parse_target(CODE), (CODE, None))
+        self.assertEqual(t.parse_target(f'https://labs.example/er/t/{CODE}/b'), (CODE, 'B'))
+
+
+class OperatorLinkTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        reset()
+
+    async def link(self, *args):
+        ch = FakeChannel(101)
+        cog = t.Tournament(FakeClient(ch))
+        b = board(group='B', groups=2)
+        response = SimpleNamespace(is_done=lambda: False, send_message=mock.AsyncMock())
+        inter = SimpleNamespace(channel=ch, guild=ch.guild, user=SimpleNamespace(id=5), extras={},
+                                app_permissions=discord.Permissions.all(), response=response,
+                                followup=SimpleNamespace(send=mock.AsyncMock()), created_at=discord.utils.utcnow(),
+                                original_response=mock.AsyncMock(return_value=SimpleNamespace(id=900)))
+        put = mock.AsyncMock(return_value=[])
+        with mock.patch.object(t, 'fetch_board', mock.AsyncMock(return_value=b)) as fetch, \
+                mock.patch.object(t, 'fetch_image', mock.AsyncMock(return_value=b'png')), \
+                mock.patch.object(t, 'put_links', put):
+            await t.Tournament.tournament_command.callback(cog, inter, *args)
+        return fetch.await_args.args[1], put.await_args.kwargs.get('group') or put.await_args.args[-1]
+
+    async def test_code_and_group(self):
+        self.assertEqual(await self.link(CODE, SimpleNamespace(value='B')), ('B', 'B'))
+
+    async def test_key_address(self):
+        key = '0123456789abcdef01234567'
+        self.assertEqual(await self.link(f'https://labs.example/er/t/{CODE}/{key}'), (key, 'B'))
+
+
 class NoCodeTest(unittest.IsolatedAsyncioTestCase):
     async def test_no_code_guides_privately(self):
         cog = SimpleNamespace()
