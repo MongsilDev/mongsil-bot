@@ -160,5 +160,14 @@ class LinkSyncTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("삭제된 대회입니다.", edited_text(self.ch1, mid))
 
 
+
+class VisibleTest(unittest.TestCase):
+    def test_scrim_board_needs_operator(self):
+        with self.assertRaises(t.NotFoundError):
+            t.check_visible(board(CODE, 'B') | {'private': True, 'role': None})
+        t.check_visible(board(CODE, 'B') | {'private': True, 'role': 'operator'})
+        t.check_visible(board(CODE, 'B') | {'private': False, 'role': None})
+
+
 if __name__ == '__main__':
     unittest.main()

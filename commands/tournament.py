@@ -294,6 +294,12 @@ def next_lines(n: dict) -> List[str]:
     return [f"{head} | 금지 {ban_text(bans)}"]
 
 
+def check_visible(b: dict) -> None:
+    """스크림 대회의 조 순위는 조 채널의 키 주소와 운영자에게만 보여 줌. 코드로 묻는 사람에게는 없는 대회와 같게 답함"""
+    if b.get('private') and not is_operator(b):
+        raise NotFoundError(f"스크림 대회 {b['code']}", GONE)
+
+
 def link_button(b: dict) -> ui.Button:
     return ui.Button(style=discord.ButtonStyle.link, label="순위표", url=b['url'])
 
@@ -571,7 +577,8 @@ async def redraw(interaction: discord.Interaction, code: str, group: str) -> Non
     """한 번 보기 카드를 새 이미지로 다시 그림"""
     await interaction.response.defer()
     try:
-        b = await fetch_board(code, group)
+        b = await fetch_board(code, group, interaction.user.id)
+        check_visible(b)
         view = card_view(b, await fetch_image(code, b['group']))
     except (NotFoundError, ServiceDownError, ValidationError) as e:
         await reply_error(interaction, e.user_message)
@@ -1404,7 +1411,8 @@ class Tournament(commands.Cog):
         live: dict = {}
 
         async def build():
-            b = await fetch_board(code, picked or 'A', interaction.user.id if in_guild else None)
+            b = await fetch_board(code, picked or 'A', interaction.user.id if code != 'EXAMPLE' else None)
+            check_visible(b)
             # 여러 조인 대회에서 조를 고르지 않았으면 연결하지 않고 카드만 보여 줌
             if not (in_guild and is_operator(b) and not b['ended']) or (b['groupCount'] > 1 and not picked):
                 return card_view(b, await fetch_image(code, b['group']))
