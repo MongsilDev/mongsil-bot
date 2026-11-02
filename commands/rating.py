@@ -327,8 +327,9 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
         if board and min(mmr, cut) >= min(board):
             text += f", 사이에 {sum(1 for v in board if min(mmr, cut) < v < max(mmr, cut)):,}명"
         if outlook:
-            final = outlook['future'][-1][1]
-            text += f"\n-# 종료 예상 컷 {round(final, -1):,.0f}" + (f"까지 {round(final - mmr):,} RP" if final > mmr else f"보다 {round(mmr - final):,} RP 위")
+            # 보이는 종료 예상이 10 단위라 차이도 같은 값으로 계산
+            final = round(outlook['future'][-1][1], -1)
+            text += f"\n-# 종료 예상 컷 {final:,.0f}" + (f"까지 {final - mmr:,.0f} RP" if final > mmr else f"보다 {mmr - final:,.0f} RP 위")
         lines.append(text.strip())
     if user_rank and user_rank.get('serverCode') not in (None, RANKING_SERVER):
         lines.append(f"-# 컷은 {SERVER_NAMES[RANKING_SERVER]} 기준")
