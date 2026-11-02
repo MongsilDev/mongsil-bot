@@ -226,6 +226,11 @@ def projected_rp(p: list, mmr: int, now: float, end: float, cap: int = GRACE) ->
     return max(mmr - 100 * (decay_ticks(at, end, cap) - decay_ticks(at, now, cap)), min(mmr, DECAY_FLOOR))
 
 
+def by_rp(top_ranks: List[dict]) -> List[dict]:
+    """API 순위는 RP 순서와 어긋나는 계정이 있어(1001위에 8914) 컷은 RP 순서로 읽음"""
+    return sorted((r for r in top_ranks if r.get('mmr')), key=lambda r: int(r['mmr']), reverse=True)
+
+
 def active_cut(season_id: int, top_ranks: List[dict], place: int, end: Optional[float] = None) -> Optional[Tuple[int, int, bool]]:
     """7일 넘게 쉰 계정을 end(시즌 종료)까지 휴면 강등된 RP로 다시 정렬한 place번째 RP, 그 위에서 내려간 휴면 계정 수, 추정 여부.
     판별 안 된 계정이 20명 넘으면 None. 그 이하는 조회 실패나 목록에 처음 나타난 계정이라 활동으로 간주.
@@ -235,7 +240,7 @@ def active_cut(season_id: int, top_ranks: List[dict], place: int, end: Optional[
     since = book.get('since') or min((p[FIRST] for p in players.values()), default=0)
     now = time.time()
     end = end or now
-    ranked = sorted((r for r in top_ranks if r.get('mmr')), key=lambda r: r.get('rank', 0))
+    ranked = by_rp(top_ranks)
     if len(ranked) < 200:
         return None
     unknown = 0

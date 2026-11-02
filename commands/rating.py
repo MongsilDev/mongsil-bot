@@ -29,21 +29,9 @@ async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[
         if not top_ranks:
             return None, None
 
-        rank_300 = None
-        rank_1000 = None
-
-        # 가져온 데이터에서 300등과 1000등을 찾기
-        # API 응답이 순위별로 정렬되어 있다고 가정하고 효율적으로 검색
-        for user in top_ranks:
-            user_rank = user.get('rank')
-            if user_rank == 300:
-                rank_300 = user
-            elif user_rank == 1000:
-                rank_1000 = user
-
-            # 둘 다 찾았으면 루프 종료
-            if rank_300 and rank_1000:
-                break
+        ordered = rank_history.by_rp(top_ranks)
+        rank_300 = ordered[299] if len(ordered) >= 300 else None
+        rank_1000 = ordered[999] if len(ordered) >= 1000 else None
 
         end = season_end_for(await get_season_info(), season_id)
         active = [rank_history.active_cut(season_id, top_ranks, place, end and end.timestamp()) for place in (300, 1000)]
@@ -156,7 +144,7 @@ async def cut_snapshot(client: ERClient) -> Optional[dict]:
     return {
         'updatedAt': round(now.timestamp()),
         'season': {'id': season_id, 'name': season_name, 'end': stamp(end) if end else None},
-        'rps': [int(r['mmr']) for r in sorted(ranked, key=lambda r: r.get('rank', 0))],
+        'rps': [int(r['mmr']) for r in rank_history.by_rp(ranked)],
         'tiers': tiers,
         # 지금부터 랭크 게임을 안 하면 시즌 끝까지 깎이는 횟수. 유예를 다 채운 상태 가정
         'quitTicks': {key: rank_history.decay_ticks(now.timestamp(), end.timestamp(), rank_history.grace_cap(place, now.timestamp()))
