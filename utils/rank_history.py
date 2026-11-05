@@ -193,9 +193,9 @@ def grace_cap(rank: int, now: float) -> int:
 
 def decay_ticks(last: float, until: float, cap: int = GRACE) -> int:
     """마지막 랭크 게임 뒤 until까지 휴면 강등으로 100점씩 깎인 횟수. 시즌 12 게임 기록 398건으로 맞춘 규칙:
-    다음 오전 9시부터 하루가 비면 그다음 15시에 유예 1을 쓰고, 유예 12를 다 쓰면 100점. 격주 목요일 패치 날은 건너뜀.
-    GRACE_FROM 뒤에는 남은 유예를 cap으로 줄임"""
-    day = datetime.fromtimestamp(last, KST).replace(hour=9, minute=0, second=0, microsecond=0)
+    다음 오전 5시부터 하루가 비면 그다음 15시에 유예 1을 쓰고, 유예 12를 다 쓰면 100점. 격주 목요일 패치 날은 건너뜀.
+    오전 5시는 시즌 7 공식 공지의 기록 확인 시각. GRACE_FROM 뒤에는 남은 유예를 cap으로 줄임"""
+    day = datetime.fromtimestamp(last, KST).replace(hour=5, minute=0, second=0, microsecond=0)
     if day.timestamp() <= last:
         day += timedelta(days=1)
     grace, ticks = GRACE, 0
