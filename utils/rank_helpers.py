@@ -43,7 +43,8 @@ async def fetch_user_stats_solo(
     client: ERClient,
     user_id: str,
     season_id: int,
-    use_cache: bool = True
+    use_cache: bool = True,
+    ttl: int = 300,
 ) -> Optional[Dict]:
     """
     유저의 솔로 랭크 통계를 가져옵니다.
@@ -66,7 +67,7 @@ async def fetch_user_stats_solo(
         api_base = config.api_url.replace('/v1', '/v2')
         url = f"{api_base}/user/stats/uid/{user_id}/{season_id}/3"
 
-        data = await client.api_client.get(url, use_cache=use_cache, ttl=300)
+        data = await client.api_client.get(url, use_cache=use_cache, ttl=ttl)
 
         if data and data.get('code') == 200:
             stats_list = data.get('userStats', [])
@@ -142,7 +143,7 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
         return None
 
 
-async def fetch_user_rank(client: ERClient, user_id: str, season_id: int) -> Optional[Dict]:
+async def fetch_user_rank(client: ERClient, user_id: str, season_id: int, ttl: int = 300) -> Optional[Dict]:
     """
     유저의 서버 순위를 가져옵니다. 이터니티와 데미갓은 이 serverRank로 판정합니다.
 
@@ -151,7 +152,7 @@ async def fetch_user_rank(client: ERClient, user_id: str, season_id: int) -> Opt
     """
     url = f"{config.api_url}/rank/uid/{user_id}/{season_id}/3"
     try:
-        data = await client.api_client.get(url, ttl=300)
+        data = await client.api_client.get(url, ttl=ttl)
     except APIError as e:
         logger.warning(f"서버 순위 조회 실패, 통합 순위로 대체: {e.message}")
         return None

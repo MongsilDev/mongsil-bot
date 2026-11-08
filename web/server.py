@@ -1066,6 +1066,66 @@ def bot_token_ok(request: web.Request) -> bool:
     return bool(token) and same_token(request.headers.get('x-bot-token', ''), token)
 
 
+TIER_TTL = 60
+TIER_FAIL_TTL = 15
+TIER_FETCH_PER_MIN = 30
+NICKNAME = re.compile(r'\w{2,16}')
+_tier_cache: dict = {}
+_tier_locks: dict = {}
+_tier_fetches: list = []
+
+
+async def api_tier(request: web.Request):
+    """labs 티어 오버레이용 JSON. 닉네임마다 60초 동안 같은 값, 없는 닉네임과 실패도 잠시 기억"""
+    if not bot_token_ok(request):
+        return web.Response(status=404)
+    nickname = request.query.get('n', '').strip()
+    if not NICKNAME.fullmatch(nickname):
+        return web.json_response({'error': 'nickname'}, status=400)
+    key = nickname.lower()
+    hit = _tier_hit(key)
+    if hit:
+        return hit
+    async with _tier_locks.setdefault(key, asyncio.Lock()):
+        hit = _tier_hit(key)
+        if hit:
+            return hit
+        now = time.time()
+        _tier_fetches[:] = [t for t in _tier_fetches if now - t < 60]
+        # 처음 보는 닉네임으로 공식 API를 몰아 부르지 못하게 분당 조회 수를 막음
+        if len(_tier_fetches) >= TIER_FETCH_PER_MIN:
+            return web.json_response({'error': 'busy'}, status=429, headers={'Retry-After': '60'})
+        _tier_fetches.append(now)
+        from commands.rank import tier_snapshot
+        try:
+            data = await tier_snapshot(client, nickname)
+            body, status = ({**data, 'updatedAt': int(time.time())}, 200) if data else ({'error': 'not_found'}, 404)
+        except BotError as e:
+            logger.warning(f"티어 JSON 조회 실패: {e}")
+            body, status = {'error': 'unavailable'}, 503
+        except Exception:
+            logger.error("티어 JSON 조회 오류", exc_info=True)
+            body, status = {'error': 'unavailable'}, 503
+        _tier_cache[key] = (time.time(), body, status)
+    if len(_tier_cache) > 2000:
+        cutoff = time.time() - TIER_TTL
+        for k in [k for k, v in _tier_cache.items() if v[0] < cutoff]:
+            _tier_cache.pop(k, None)
+            if k in _tier_locks and not _tier_locks[k].locked():
+                _tier_locks.pop(k)
+    return web.json_response(body, status=status)
+
+
+def _tier_hit(key: str):
+    hit = _tier_cache.get(key)
+    if not hit:
+        return None
+    at, body, status = hit
+    if time.time() - at >= (TIER_FAIL_TTL if status == 503 else TIER_TTL):
+        return None
+    return web.json_response(body, status=status)
+
+
 async def api_tournament_channels(request: web.Request):
     """Labs 관리 화면이 조마다 고를 수 있는 채널 목록"""
     if not bot_token_ok(request):
@@ -1171,6 +1231,7 @@ async def start_dashboard(bot: discord.Client) -> web.AppRunner:
     app.router.add_get('/speculation.json', speculation)
     app.router.add_get('/health', health)
     app.router.add_get('/api/cut', api_cut)
+    app.router.add_get('/api/tier', api_tier)
     app.router.add_get('/api/t/channels', api_tournament_channels)
     app.router.add_post('/api/t/changed', api_tournament_changed)
     app.router.add_static('/static', ROOT / 'static')

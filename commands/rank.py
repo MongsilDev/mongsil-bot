@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from urllib.parse import quote
 
 import discord
@@ -202,6 +203,51 @@ async def build_rank_view(client: ERClient, nickname: str, buttons: bool = True,
     if isinstance(view, RankView):
         view.uid = user_id
     return view
+
+
+async def _recent_games(client: ERClient, user_id: str) -> Optional[Dict[str, Any]]:
+    """최근 증감만 빠지고 티어는 보이도록 실패를 삼킴"""
+    try:
+        return await client.api_client.get(f"{config.api_url}/user/games/uid/{user_id}", ttl=60)
+    except APIError as e:
+        logger.warning(f"티어 오버레이 최근 게임 조회 실패: {e}")
+        return None
+
+
+async def tier_snapshot(client: ERClient, nickname: str) -> Optional[Dict[str, Any]]:
+    """labs 티어 오버레이용 값. 없는 닉네임은 None, 조회 실패는 예외. 방송 중 갱신이라 공식 API 캐시는 60초"""
+    season = await get_ranked_season()
+    if not season:
+        raise APIError("시즌 정보를 가져올 수 없습니다.", "현재 시즌 정보를 가져올 수 없습니다.")
+    season_id, _ = season
+    user_id = await client.get_user_nickname(nickname)
+    if not user_id:
+        return None
+    try:
+        stats, user_rank, games = await asyncio.gather(
+            fetch_user_stats_solo(client, user_id, season_id, ttl=60),
+            fetch_user_rank(client, user_id, season_id, ttl=60),
+            _recent_games(client, user_id),
+        )
+    except NotFoundError:
+        # 이번 시즌 랭크 게임이 없는 유저
+        stats, user_rank, games = {'nickname': nickname, 'mmr': 0}, None, None
+    tier, place = tier_and_place(stats, user_rank)
+    last = None
+    for g in (games or {}).get('userGames') or []:
+        if g.get('matchingMode') == 3 and g.get('seasonId') == season_id and g.get('mmrAfter'):
+            at = datetime.fromisoformat(g['startDtm'].replace('+0900', '+09:00')).timestamp() if g.get('startDtm') else None
+            last = {'gain': int(g.get('mmrGain') or 0), 'at': at}
+            break
+    return {
+        'nickname': stats.get('nickname') or nickname,
+        'tier': tier,
+        'mmr': int(stats.get('mmr', 0)),
+        'place': place,
+        'serverRank': int(user_rank['serverRank']) if user_rank and user_rank.get('serverRank') else None,
+        'serverCode': user_rank.get('serverCode') if user_rank else None,
+        'last': last,
+    }
 
 
 class Rank(commands.Cog):
