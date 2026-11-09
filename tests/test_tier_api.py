@@ -13,7 +13,9 @@ from web import server
 
 GAMES = {'userGames': [
     {'matchingMode': 2, 'seasonId': 41, 'mmrAfter': 0},
-    {'matchingMode': 3, 'seasonId': 41, 'mmrAfter': 6842, 'mmrGain': 38, 'startDtm': '2026-11-09T01:00:00.000+0900'},
+    {'matchingMode': 3, 'seasonId': 41, 'mmrAfter': 6842, 'mmrGain': 38, 'gameRank': 2, 'startDtm': '2026-11-09T01:00:00.000+0900'},
+    {'matchingMode': 3, 'seasonId': 40, 'mmrAfter': 6500, 'mmrGain': 10, 'gameRank': 1},
+    {'matchingMode': 3, 'seasonId': 41, 'mmrAfter': 6804, 'mmrGain': -12, 'gameRank': 7},
 ]}
 
 
@@ -41,6 +43,7 @@ class TierSnapshotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data['mmr'], 6842)
         self.assertEqual(data['serverRank'], 1284)
         self.assertEqual(data['last']['gain'], 38)
+        self.assertEqual(data['recent'], [2, 7])
         self.assertEqual(stats.call_args.kwargs['ttl'], 60)
         self.assertEqual(user_rank.call_args.kwargs['ttl'], 60)
 
@@ -55,6 +58,7 @@ class TierSnapshotTest(unittest.IsolatedAsyncioTestCase):
             data = await rank.tier_snapshot(fake_client(), 'newbie')
         self.assertEqual(data['tier'], '언랭크')
         self.assertIsNone(data['last'])
+        self.assertEqual(data['recent'], [])
 
 
 class TierApiTest(unittest.IsolatedAsyncioTestCase):

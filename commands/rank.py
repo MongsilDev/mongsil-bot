@@ -234,11 +234,14 @@ async def tier_snapshot(client: ERClient, nickname: str) -> Optional[Dict[str, A
         stats, user_rank, games = {'nickname': nickname, 'mmr': 0}, None, None
     tier, place = tier_and_place(stats, user_rank)
     last = None
+    recent = []
     for g in (games or {}).get('userGames') or []:
         if g.get('matchingMode') == 3 and g.get('seasonId') == season_id and g.get('mmrAfter'):
-            at = datetime.fromisoformat(g['startDtm'].replace('+0900', '+09:00')).timestamp() if g.get('startDtm') else None
-            last = {'gain': int(g.get('mmrGain') or 0), 'at': at}
-            break
+            if last is None:
+                at = datetime.fromisoformat(g['startDtm'].replace('+0900', '+09:00')).timestamp() if g.get('startDtm') else None
+                last = {'gain': int(g.get('mmrGain') or 0), 'at': at}
+            if g.get('gameRank'):
+                recent.append(int(g['gameRank']))
     return {
         'nickname': stats.get('nickname') or nickname,
         'tier': tier,
@@ -247,6 +250,7 @@ async def tier_snapshot(client: ERClient, nickname: str) -> Optional[Dict[str, A
         'serverRank': int(user_rank['serverRank']) if user_rank and user_rank.get('serverRank') else None,
         'serverCode': user_rank.get('serverCode') if user_rank else None,
         'last': last,
+        'recent': recent[:10],
     }
 
 
