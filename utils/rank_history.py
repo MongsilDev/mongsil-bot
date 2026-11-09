@@ -330,7 +330,7 @@ def _surge_share(left: float) -> float:
 def forecast(points: List[Tuple[datetime, float]], start: float, now: datetime, end: datetime,
              surge: Tuple[float, float, float] = (0, 0, 0), min_days: int = 7) -> Optional[dict]:
     """오전 9시 값의 감쇠 추세(Holt, 날마다 기울기 0.95배)로 start에서 시즌 종료까지 날마다 오전 9시 값을 예상하고
-    마지막 14일에 막판 급등분을 더함. 범위는 백테스트 80% 오차(24일 뒤 약 67)라 멀수록 넓어짐.
+    마지막 14일 막판 급등분 가운데 지금 뒤에 남은 몫을 더함. 범위는 백테스트 80% 오차(24일 뒤 약 67)라 멀수록 넓어짐.
     반환은 날마다 (시각, 가운데, 낮은 값, 높은 값)"""
     if len(points) < min_days or end <= now:
         return None
@@ -341,6 +341,8 @@ def forecast(points: List[Tuple[datetime, float]], start: float, now: datetime, 
         level = ALPHA * v + (1 - ALPHA) * (level + DAMP * trend)
         trend = BETA * (level - last) + (1 - BETA) * DAMP * trend
     mid_s, low_s, high_s = surge
+    # 막판 14일 안이면 지금까지 오른 급등분은 start에 이미 들어 있음
+    done = _surge_share((end - now).total_seconds() / 86400)
     future, raw_low = [], []
     day = now.astimezone(KST).replace(hour=9, minute=0, second=0, microsecond=0)
     if day <= now:
@@ -348,7 +350,7 @@ def forecast(points: List[Tuple[datetime, float]], start: float, now: datetime, 
     while day <= end:
         h = (day - now).total_seconds() / 86400
         base = start + trend * sum(DAMP ** k for k in range(1, math.ceil(h) + 1)) * h / math.ceil(h)
-        share = _surge_share((end - day).total_seconds() / 86400)
+        share = max(_surge_share((end - day).total_seconds() / 86400) - done, 0.0)
         half = 6.2 * h ** 0.75
         # 컷은 시즌 내내 내려간 적이 거의 없어 낮은 값은 지금 값까지만
         future.append((day, base + share * mid_s, max(base - half + share * low_s, start), base + half + share * high_s))
