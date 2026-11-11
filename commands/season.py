@@ -200,7 +200,10 @@ async def get_season_info() -> Optional[SeasonInfo]:
 
     season_id = season_data.get('seasonID')
     start_date = _parse_season_date(season_data.get('seasonStart', ''))
-    end_date = _parse_season_date(season_data.get('seasonEnd', ''))
+    end_date = _parse_season_date(season_data.get('seasonEnd') or '')
+    # 새 프리 시즌 행은 끝 시각이 비어 올 수 있음. 지난 프리 시즌은 모두 7일
+    if not end_date and start_date and str(season_data.get('seasonName', '')).startswith('Pre-Season'):
+        end_date = start_date + timedelta(days=7)
     if not (season_id and start_date and end_date):
         logger.error(f"시즌 데이터 형식 이상: {season_data}")
         return None

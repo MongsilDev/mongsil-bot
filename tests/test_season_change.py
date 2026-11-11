@@ -39,6 +39,8 @@ class SeasonChangeTest(unittest.IsolatedAsyncioTestCase):
         (sid, name), info = await self.ranked(listing({**S41, 'isCurrent': 0}, pre))
         self.assertEqual((sid, name), (41, '정규 시즌 12'))
         self.assertIsNone(season_end_for(info, sid))
+        # /시즌이 오류 대신 프리 시즌 1주를 보여 줌
+        self.assertEqual(info.end_date, datetime(2026, 11, 19, 12, tzinfo=KST))
 
     async def test_pre_season_row_not_current_yet(self):
         pre = {'seasonID': 42, 'seasonName': 'Pre-Season22', 'seasonStart': '2026-11-12 12:00:00', 'seasonEnd': '2026-11-19 12:00:00', 'isCurrent': 0}
