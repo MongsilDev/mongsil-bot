@@ -219,7 +219,8 @@ def projected_rp(p: list, mmr: int, now: float, end: float, cap: int = GRACE) ->
     at = last_active(p)
     if at is None:
         return None
-    if now - at <= DORMANT_DAYS * 86400:
+    # 시즌이 끝난 뒤 순위표 RP는 최종값
+    if now - at <= DORMANT_DAYS * 86400 or end <= now:
         return mmr
     # 게임 기록 끝까지 랭크 게임이 없으면 유예를 다 쓴 것으로 간주
     at = at if at > 0 else now - 60 * 86400
