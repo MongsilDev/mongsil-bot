@@ -47,6 +47,15 @@ class TierSnapshotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stats.call_args.kwargs['ttl'], 60)
         self.assertEqual(user_rank.call_args.kwargs['ttl'], 60)
 
+    async def test_place_uses_reward_server(self):
+        # 시즌이 끝난 뒤 serverCode는 지금 접속한 서버로 바뀜
+        a, b, c = self.patches({'nickname': 'Foo', 'mmr': 11235, 'rank': 1, 'rankSize': 100000},
+                               {'serverRank': 1, 'serverCode': 12, 'rewardServerCode': 10})
+        with a, b, c:
+            data = await rank.tier_snapshot(fake_client(), 'foo')
+        self.assertEqual(data['place'], '아시아1 1위')
+        self.assertEqual(data['serverCode'], 10)
+
     async def test_unknown_nickname(self):
         a, b, c = self.patches({}, None)
         with a, b, c:

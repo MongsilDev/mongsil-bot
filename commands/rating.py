@@ -17,7 +17,7 @@ from commands import account
 from utils import accounts, app_emojis, rank_history, visual
 from utils.emojis import EMOJIS
 from utils.logging_config import get_logger
-from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_ranking_data, fetch_user_rank, fetch_user_stats_solo
+from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_ranking_data, fetch_user_rank, fetch_user_stats_solo, rank_server
 from utils.tier_system import TierSystem
 
 logger = get_logger('레이팅')
@@ -331,7 +331,7 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
             final = round(outlook['future'][-1][1], -1)
             text += f"\n-# 종료 예상 컷 {final:,.0f}" + (f"까지 {final - mmr:,.0f} RP" if final > mmr else f"보다 {mmr - final:,.0f} RP 위")
         lines.append(text.strip())
-    if user_rank and user_rank.get('serverCode') not in (None, RANKING_SERVER):
+    if rank_server(user_rank) not in (None, RANKING_SERVER):
         lines.append(f"-# 컷은 {SERVER_NAMES[RANKING_SERVER]} 기준")
     view = ui.LayoutView()
     view.add_item(ui.Container(ui.TextDisplay("\n".join(lines)), accent_colour=visual.colour('cut')))

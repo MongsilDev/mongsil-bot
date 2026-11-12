@@ -20,6 +20,13 @@ RANKING_SERVER = 10
 SERVER_NAMES = {10: "아시아1", 12: "북미", 13: "유럽", 14: "남미", 17: "아시아2", 18: "아시아3"}
 
 
+def rank_server(user_rank: Optional[Dict]) -> Optional[int]:
+    """serverRank를 매긴 서버. 시즌이 끝난 뒤 serverCode는 지금 접속 서버로 바뀌어 보상 서버 코드를 먼저 씀"""
+    if not user_rank:
+        return None
+    return user_rank.get('rewardServerCode') or user_rank.get('serverCode')
+
+
 def overall_place(stats: Dict) -> str:
     """서버 순위가 없을 때 쓰는 통합 순위 표기. 1000위 안은 순위, 그 밖은 상위 비율"""
     rank, size = int(stats.get('rank', 0)), int(stats.get('rankSize', 0))
@@ -35,7 +42,7 @@ def tier_and_place(stats: Dict, user_rank: Optional[Dict]) -> Tuple[str, str]:
     server_rank = int(user_rank.get('serverRank', 0)) if user_rank else 0
     tier = TierSystem.get_tier(int(stats.get('mmr', 0)), server_rank or int(stats.get('rank', 0)))
     if server_rank and server_rank <= 1000:
-        return tier, f"{SERVER_NAMES.get(user_rank.get('serverCode'), '서버')} {server_rank:,}위"
+        return tier, f"{SERVER_NAMES.get(rank_server(user_rank), '서버')} {server_rank:,}위"
     return tier, overall_place(stats)
 
 
