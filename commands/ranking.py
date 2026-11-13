@@ -5,7 +5,7 @@ from discord.ext import commands
 from discord import app_commands, ui
 from typing import List, Dict, NamedTuple, Optional
 from client import ERClient
-from commands.season import get_ranked_season
+from commands.season import fresh_season, get_ranked_season, get_season_info
 import math
 
 from utils.config import config
@@ -356,6 +356,14 @@ async def get_ranking_info(client: ERClient, season_id: int, page: int = 1) -> O
         logger.error(f"랭킹 처리 실패: {e}", exc_info=True)
         return None
 
+def empty_ranking_layout(season_name: str) -> ui.LayoutView:
+    """새 시즌 첫 랭크 게임이 순위표에 오르기 전"""
+    view = ui.LayoutView()
+    view.add_item(ui.Container(ui.TextDisplay(f"### {SERVER_NAMES[RANKING_SERVER]} 랭킹\n-# {season_name}\n아직 순위가 없습니다."),
+                               accent_colour=visual.colour('ranking')))
+    return view
+
+
 class Ranking(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
@@ -372,6 +380,8 @@ class Ranking(commands.Cog):
 
             unavailable = ServiceDownError("랭킹 조회 실패", "랭킹 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
             ranking_data = await fetch_ranking_data(self.client, season_id, use_cache=True)
+            if not ranking_data and fresh_season(await get_season_info(), season_id):
+                return empty_ranking_layout(season_name)
             if not ranking_data:
                 raise unavailable
             total_pages = math.ceil(min(len(ranking_data), TOTAL_RANKS) / RANKS_PER_PAGE)

@@ -74,6 +74,21 @@ class SeasonInfo(NamedTuple):
     end_date: datetime
     name: str
 
+def _in_period(season: Dict[str, Any], now: datetime) -> bool:
+    start = _parse_season_date(season.get('seasonStart') or '')
+    end = _parse_season_date(season.get('seasonEnd') or '')
+    return bool(start and end and start <= now < end)
+
+
+def _next_start(season_list: List[Any], now: datetime) -> datetime:
+    """now 뒤에 시작하는 가장 이른 시즌의 시작 시각(naive 로컬). 없으면 먼 미래"""
+    starts = [_parse_season_date(s.get('seasonStart') or '') for s in season_list if isinstance(s, dict)]
+    later = [t for t in starts if t and t > now]
+    if not later:
+        return datetime.max
+    return datetime.now() + (min(later) - now)
+
+
 async def fetch_season_data(season_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """
     API에서 시즌 정보를 가져옵니다. 캐시를 사용하여 API 호출을 최소화합니다.
@@ -121,12 +136,11 @@ async def fetch_season_data(season_id: Optional[int] = None) -> Optional[Dict[st
                     return season
             return None
 
-        # 현재 시즌 찾기 (isCurrent = 1)
-        current_season = None
-        for season in season_list:
-            if isinstance(season, dict) and season.get('isCurrent') == 1:
-                current_season = season
-                break
+        # 시즌 시작 시각에 바로 넘어가려고 기간으로 먼저 찾음. isCurrent는 API가 늦게 바꿀 수 있음
+        now = datetime.now(KST)
+        current_season = next((season for season in season_list if isinstance(season, dict) and _in_period(season, now)), None)
+        if not current_season:
+            current_season = next((season for season in season_list if isinstance(season, dict) and season.get('isCurrent') == 1), None)
 
         # isCurrent가 없는 경우 가장 높은 seasonID 사용
         if not current_season and season_list:
@@ -137,9 +151,9 @@ async def fetch_season_data(season_id: Optional[int] = None) -> Optional[Dict[st
             )
 
         if current_season:
-            # 캐시 업데이트
+            # 캐시 업데이트. 다음 시즌 시작 시각을 넘기지 않게 그 전에 만료
             _season_cache = current_season
-            _season_cache_time = datetime.now()
+            _season_cache_time = min(datetime.now(), _next_start(season_list, now) - SEASON_CACHE_TTL)
 
         return current_season
 
@@ -191,6 +205,15 @@ def _parse_season_date(date_str: str) -> Optional[datetime]:
         except ValueError:
             continue
     return None
+
+FRESH_DAYS = 3
+
+
+def fresh_season(season_info: Optional[SeasonInfo], season_id: int) -> bool:
+    """정규 시즌이 시작한 지 FRESH_DAYS일이 안 됨. 이때는 순위표가 비어도 장애로 보지 않음"""
+    return bool(season_info and season_info.number == season_id
+                and datetime.now(KST) - season_info.start_date < timedelta(days=FRESH_DAYS))
+
 
 async def get_season_info() -> Optional[SeasonInfo]:
     """현재 시즌 정보를 가져옵니다. 실패하면 None."""

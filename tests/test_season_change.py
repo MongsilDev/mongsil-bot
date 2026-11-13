@@ -55,6 +55,47 @@ class SeasonChangeTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(season_end_for(info, sid))
 
 
+
+class RegularStartTest(unittest.IsolatedAsyncioTestCase):
+    """11-19 12:00 정규 시즌 13 시작. API가 isCurrent를 늦게 바꿔도 시작 시각에 넘어감"""
+    PRE = {'seasonID': 42, 'seasonName': 'Pre-Season22', 'seasonStart': '2026-11-12 12:00:00', 'seasonEnd': '2026-11-19 12:00:00', 'isCurrent': 1}
+    S43 = {'seasonID': 43, 'seasonName': 'Season22', 'seasonStart': '2026-11-19 12:00:00', 'seasonEnd': '2027-02-18 09:00:00', 'isCurrent': 0}
+
+    async def at(self, *when):
+        now = datetime(*when, tzinfo=KST)
+
+        class Clock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return now.astimezone(tz) if tz else now.replace(tzinfo=None)
+
+        season._season_cache = season._season_cache_time = None
+        data = listing({**S41, 'isCurrent': 0}, self.PRE, self.S43)
+        with mock.patch.object(season, 'datetime', Clock), \
+                mock.patch('utils.api_client.api_client.get', mock.AsyncMock(return_value=data)):
+            info = await season.get_season_info()
+            return await season.get_ranked_season(), info, season.fresh_season(info, 43)
+
+    async def test_before_start(self):
+        (sid, _), _, _ = await self.at(2026, 11, 19, 11, 59)
+        self.assertEqual(sid, 41)
+
+    async def test_at_start(self):
+        (sid, name), info, fresh = await self.at(2026, 11, 19, 12, 0)
+        self.assertEqual((sid, name), (43, '정규 시즌 13'))
+        self.assertEqual(season_end_for(info, sid), datetime(2027, 2, 18, 9, tzinfo=KST))
+        self.assertTrue(fresh)
+
+    async def test_fresh_ends(self):
+        _, _, fresh = await self.at(2026, 11, 22, 12, 0)
+        self.assertFalse(fresh)
+
+    async def test_cache_expires_at_start(self):
+        await self.at(2026, 11, 19, 11, 50)
+        # 11:50에 받은 프리 시즌 캐시를 12:00 넘어서 쓰지 않음
+        self.assertLessEqual(season._season_cache_time + season.SEASON_CACHE_TTL, datetime(2026, 11, 19, 12, 0))
+
+
 class EndedSeasonDecayTest(unittest.TestCase):
     end = datetime(2026, 11, 12, 9, tzinfo=KST).timestamp()
 

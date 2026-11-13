@@ -8,7 +8,7 @@ from discord.ext import commands, tasks
 from discord import app_commands
 from typing import Dict, List, Optional, Tuple
 from client import ERClient
-from commands.season import get_ranked_season, get_season_info
+from commands.season import fresh_season, get_ranked_season, get_season_info
 
 from utils.config import config
 from utils.layouts import send_card, CooldownLayoutView
@@ -22,16 +22,20 @@ from utils.tier_system import TierSystem
 
 logger = get_logger('레이팅')
 
+# 순위표가 그 순위까지 차지 않았으면 RANKED_GATE만 넘으면 되므로 컷은 GATE
+GATE_USER = {'mmr': TierSystem.RANKED_GATE}
+
+
 async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[Dict], Optional[Dict]]:
     """300등과 1000등의 유저 정보를 한 번의 API 호출로 가져옵니다."""
     try:
         top_ranks = await fetch_ranking_data(client, season_id, use_cache=True)
         if not top_ranks:
-            return None, None
+            return (GATE_USER, GATE_USER) if fresh_season(await get_season_info(), season_id) else (None, None)
 
         ordered = rank_history.by_rp(top_ranks)
-        rank_300 = ordered[299] if len(ordered) >= 300 else None
-        rank_1000 = ordered[999] if len(ordered) >= 1000 else None
+        rank_300 = ordered[299] if len(ordered) >= 300 else GATE_USER
+        rank_1000 = ordered[999] if len(ordered) >= 1000 else GATE_USER
 
         end = season_end_for(await get_season_info(), season_id)
         active = [rank_history.active_cut(season_id, top_ranks, place, end and end.timestamp()) for place in (300, 1000)]
@@ -117,10 +121,11 @@ async def cut_snapshot(client: ERClient) -> Optional[dict]:
         return None
     season_id, season_name = season
     ranked = [r for r in await fetch_ranking_data(client, season_id) or [] if r.get('mmr')]
-    if not ranked:
+    info = await get_season_info()
+    if not ranked and not fresh_season(info, season_id):
         return None
     rank_300, rank_1000 = await fetch_rating_info(client, season_id)
-    end = season_end_for(await get_season_info(), season_id)
+    end = season_end_for(info, season_id)
     history = rank_history.cut_history(season_id)
     now = datetime.now(timezone.utc)
     stamp = lambda t: round(t.timestamp()) if isinstance(t, datetime) else round(t)
@@ -173,7 +178,7 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
         before = _day_ago(history, official + 2 if found else official)
         if before:
             text += f" `24시간 {start - before:+,}`"
-        if not found:
+        if not found and start > TierSystem.RANKED_GATE:
             text += "\n-# 휴면 계정을 확인하는 중이라 순위표 값을 표시합니다."
         return text
 
