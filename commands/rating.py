@@ -30,8 +30,10 @@ async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[
     """300등과 1000등의 유저 정보를 한 번의 API 호출로 가져옵니다."""
     try:
         top_ranks = await fetch_ranking_data(client, season_id, use_cache=True)
+        if top_ranks == [] and fresh_season(await get_season_info(), season_id):
+            return GATE_USER, GATE_USER
         if not top_ranks:
-            return (GATE_USER, GATE_USER) if fresh_season(await get_season_info(), season_id) else (None, None)
+            return None, None
 
         ordered = rank_history.by_rp(top_ranks)
         rank_300 = ordered[299] if len(ordered) >= 300 else GATE_USER
@@ -120,9 +122,10 @@ async def cut_snapshot(client: ERClient) -> Optional[dict]:
     if not season:
         return None
     season_id, season_name = season
-    ranked = [r for r in await fetch_ranking_data(client, season_id) or [] if r.get('mmr')]
+    top = await fetch_ranking_data(client, season_id)
+    ranked = [r for r in top or [] if r.get('mmr')]
     info = await get_season_info()
-    if not ranked and not fresh_season(info, season_id):
+    if not ranked and not (top == [] and fresh_season(info, season_id)):
         return None
     rank_300, rank_1000 = await fetch_rating_info(client, season_id)
     end = season_end_for(info, season_id)

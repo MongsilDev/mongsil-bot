@@ -380,7 +380,7 @@ class Ranking(commands.Cog):
 
             unavailable = ServiceDownError("랭킹 조회 실패", "랭킹 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
             ranking_data = await fetch_ranking_data(self.client, season_id, use_cache=True)
-            if not ranking_data and fresh_season(await get_season_info(), season_id):
+            if ranking_data == [] and fresh_season(await get_season_info(), season_id):
                 return empty_ranking_layout(season_name)
             if not ranking_data:
                 raise unavailable

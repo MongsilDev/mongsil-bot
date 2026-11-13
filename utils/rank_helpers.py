@@ -138,6 +138,9 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
             rank_history.record_ranks(season_id, top_ranks[:100])
             rank_history.record_players(season_id, top_ranks)
             return top_ranks
+        elif data and data.get('code') == 404:
+            # 랭크 기록이 아무도 없는 시즌. 조회 실패(None)와 구분해 빈 목록
+            return []
         else:
             error_msg = data.get('message') if data else 'No response'
             logger.warning(f"랭킹 API 오류: {error_msg}")

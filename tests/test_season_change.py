@@ -96,6 +96,16 @@ class RegularStartTest(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(season._season_cache_time + season.SEASON_CACHE_TTL, datetime(2026, 11, 19, 12, 0))
 
 
+    def test_empty_history_cuts(self):
+        from commands.rating import GATE_USER, cut_rp, tier_cuts
+        now = datetime(2026, 11, 19, 12, 30, tzinfo=KST)
+        end = datetime(2027, 2, 18, 9, tzinfo=KST)
+        with mock.patch.object(rank_history, 'cut_history', return_value=[]):
+            tiers = tier_cuts(43, [], [], end, cut_rp(GATE_USER), cut_rp(GATE_USER), now)
+        self.assertEqual([t[6] for t in tiers], [8300, 8300])
+        self.assertEqual(rank_history.decay_schedule(43, [], 8300, end.timestamp())[0], [])
+
+
 class EndedSeasonDecayTest(unittest.TestCase):
     end = datetime(2026, 11, 12, 9, tzinfo=KST).timestamp()
 
