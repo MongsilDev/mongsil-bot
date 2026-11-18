@@ -150,18 +150,19 @@ class Alerts(commands.Cog):
                 await self.deliver(key, lambda: news_layout(article, name, emoji))
 
     async def cut_view(self) -> Optional[ui.LayoutView]:
-        from commands.rating import create_rating_layout, fetch_rating_info, season_end_for
-        from commands.season import get_ranked_season, get_season_info
-        from utils.rank_helpers import fetch_ranking_data
+        """labs 정각 회차 결과로 만든 카드. 이번 정각 값이 없으면 10분까지 None으로 다시 기다리고, 그 뒤에는 직전 값으로 보냄"""
+        from commands.rating import create_rating_layout
+        from commands.season import get_ranked_season
+        from utils import labs_cut
         season = await get_ranked_season()
         if not season:
             return None
         season_id, season_name = season
-        (rank_300, rank_1000), info, top = await asyncio.gather(
-            fetch_rating_info(self.client, season_id), get_season_info(), fetch_ranking_data(self.client, season_id))
-        if not rank_300 and not rank_1000:
+        data = labs_cut.cut(season_id)
+        now = time.time()
+        if not data or (data.get('updatedAt', 0) < now - now % 3600 and now % 3600 < 600):
             return None
-        return create_rating_layout(rank_300, rank_1000, season_name, season_id, season_end_for(info, season_id), top=top)
+        return create_rating_layout(data, season_name, season_id, top=labs_cut.top(season_id))
 
     @tasks.loop(minutes=1)
     async def daily_cut(self):

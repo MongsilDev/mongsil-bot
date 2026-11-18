@@ -4,83 +4,31 @@ from datetime import datetime, timezone
 
 import discord
 from discord import ui
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord import app_commands
 from typing import Dict, List, Optional, Tuple
 from client import ERClient
-from commands.season import fresh_season, get_ranked_season, get_season_info
+from commands.season import get_ranked_season
 
 from utils.config import config
 from utils.layouts import send_card, CooldownLayoutView
 from utils.errors import handle_errors, validate_nickname, NotFoundError, ServiceDownError
 from commands import account
-from utils import accounts, app_emojis, rank_history, visual
+from utils import accounts, app_emojis, labs_cut, rank_history, visual
 from utils.emojis import EMOJIS
 from utils.logging_config import get_logger
-from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_ranking_data, fetch_user_rank, fetch_user_stats_solo, rank_server
+from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo, rank_server
 from utils.tier_system import TierSystem
 
 logger = get_logger('레이팅')
 
-# 순위표가 그 순위까지 차지 않았으면 RANKED_GATE만 넘으면 되므로 컷은 GATE
-GATE_USER = {'mmr': TierSystem.RANKED_GATE}
-
-
 async def fetch_rating_info(client: ERClient, season_id: int) -> Tuple[Optional[Dict], Optional[Dict]]:
-    """300등과 1000등의 유저 정보를 한 번의 API 호출로 가져옵니다."""
-    try:
-        top_ranks = await fetch_ranking_data(client, season_id, use_cache=True)
-        if top_ranks == [] and fresh_season(await get_season_info(), season_id):
-            return GATE_USER, GATE_USER
-        if not top_ranks:
-            return None, None
-
-        ordered = rank_history.by_rp(top_ranks)
-        rank_300 = ordered[299] if len(ordered) >= 300 else GATE_USER
-        rank_1000 = ordered[999] if len(ordered) >= 1000 else GATE_USER
-
-        end = season_end_for(await get_season_info(), season_id)
-        active = [rank_history.active_cut(season_id, top_ranks, place, end and end.timestamp()) for place in (300, 1000)]
-        rps = [int(r['mmr']) for r in sorted(top_ranks, key=lambda r: r.get('rank', 0)) if r.get('mmr')]
-        rank_history.record_cuts(season_id, cut_rp(rank_300), cut_rp(rank_1000),
-                                 *(max(a[0], TierSystem.RANKED_GATE) if a else None for a in active), rps=rps)
-        return rank_300, rank_1000
-    except Exception as e:
-        logger.error(f"이터컷 조회 실패: {e}", exc_info=True)
+    """labs가 정각에 받은 순위표의 300등과 1000등. 순위표가 그 순위까지 차지 않았으면 labs가 GATE를 씀"""
+    data = labs_cut.cut(season_id)
+    if not data:
         return None, None
-
-async def last_ranked_game(client: ERClient, nickname: str, season_id: int,
-                           uid: Optional[str] = None) -> Tuple[Optional[str], Optional[float]]:
-    """uid와 이 시즌 마지막 랭크 게임 시각. 게임 기록 끝까지 없으면 NO_RECENT,
-    일반 게임만 많아 끝까지 읽지 못하면 UNREADABLE, 조회 실패는 None"""
-    if not uid:
-        data = await client.api_client.get(f"{config.api_url}/user/nickname", params={'query': nickname}, use_cache=False)
-        user = (data or {}).get('user') or {}
-        uid = user.get('userId') or user.get('uid')
-        if not uid:
-            return None, None
-    path = f"{config.api_url}/user/games/uid/{uid}"
-    for _ in range(15):
-        data = await client.api_client.get(path, use_cache=False)
-        games = (data or {}).get('userGames') or []
-        for g in games:
-            if g.get('matchingMode') == 3 and g.get('seasonId') == season_id:
-                return uid, datetime.fromisoformat(g['startDtm'].replace('+0900', '+09:00')).timestamp()
-        if not games or not data.get('next'):
-            return uid, rank_history.NO_RECENT
-        path = f"{config.api_url}/user/games/uid/{uid}?next={data['next']}"
-    return uid, rank_history.UNREADABLE
-
-
-def needs_check(p: list, now: float) -> bool:
-    """RP 변화로 최근 활동을 아는 계정은 건너뜀. 모르면 확인, 휴면으로 판단한 계정은 하루마다 다시 확인"""
-    at = rank_history.last_active(p)
-    if at is not None and now - at <= rank_history.DORMANT_DAYS * 86400:
-        return False
-    checked = p[rank_history.CHECKED]
-    if checked is None:
-        return True
-    return now - checked > (86400 if p[rank_history.LAST_GAME] is not None else 1800)
+    boards = [(data.get('tiers') or {}).get(key, {}).get('board') for key in ('eternity', 'demigod')]
+    return tuple({'mmr': b} if b else None for b in boards)
 
 
 def cut_rp(user: Optional[Dict]) -> Optional[int]:
@@ -95,82 +43,31 @@ def _day_ago(history, index: int) -> Optional[int]:
     return min(old, key=lambda h: abs(now - h[0] - 86400))[index] if old else None
 
 
-def season_end_for(season_info, season_id: int) -> Optional[datetime]:
-    """프리 시즌에는 컷이 직전 정규 시즌 기준이라 현재 시즌 종료일을 붙이지 않음"""
-    return season_info.end_date if season_info and season_info.number == season_id else None
-
-
-def tier_cuts(season_id: Optional[int], ranked: List[Dict], history: List[tuple], season_end: Optional[datetime],
-              eternity: Optional[int], demigod: Optional[int], now: datetime) -> List[tuple]:
-    """티어마다 (이름, 아이콘, 순위, 순위표 컷, 기록 열, 휴면 강등 컷 결과, 표시 컷, 종료 예상)"""
-    end = season_end.timestamp() if season_end else None
+def tier_cuts(data: Optional[dict]) -> List[tuple]:
+    """labs cut.json의 티어마다 (이름, 아이콘, 순위, 순위표 컷, 기록 열, 휴면 강등 컷 결과, 표시 컷, 종료 예상)"""
     tiers = []
-    for tier, icon, place, rp, official in (('이터니티', '10', 300, eternity, 1), ('데미갓', '9', 1000, demigod, 2)):
-        found = rank_history.active_cut(season_id, ranked, place, end) if season_id and ranked else None
-        start = max(found[0], TierSystem.RANKED_GATE) if found else rp
-        outlook = None
-        if start and season_end:
-            outlook = rank_history.forecast(rank_history.at_nine(history, official), start, now, season_end,
-                                            rank_history.SURGE[place])
-        tiers.append((tier, icon, place, rp, official, found, start, outlook))
+    for key, tier, icon, place, official in (('eternity', '이터니티', '10', 300, 1), ('demigod', '데미갓', '9', 1000, 2)):
+        t = ((data or {}).get('tiers') or {}).get(key) or {}
+        found = (t['cut'], t['dropped'], t.get('estimated')) if t.get('dropped') is not None else None
+        outlook = {'future': [(datetime.fromtimestamp(f[0], timezone.utc), f[1], f[2], f[3]) for f in t['forecast']]} \
+            if t.get('forecast') else None
+        tiers.append((tier, icon, t.get('place', place), t.get('board'), official, found, t.get('cut'), outlook))
     return tiers
 
 
-async def cut_snapshot(client: ERClient) -> Optional[dict]:
-    """labs.mongsil.dev 이터컷 예측 페이지용. /이터컷과 같은 계산. 휴면 계정은 인원만 내보냄"""
-    season = await get_ranked_season()
-    if not season:
-        return None
-    season_id, season_name = season
-    top = await fetch_ranking_data(client, season_id)
-    ranked = [r for r in top or [] if r.get('mmr')]
-    info = await get_season_info()
-    if not ranked and not (top == [] and fresh_season(info, season_id)):
-        return None
-    rank_300, rank_1000 = await fetch_rating_info(client, season_id)
-    end = season_end_for(info, season_id)
-    history = rank_history.cut_history(season_id)
-    now = datetime.now(timezone.utc)
-    stamp = lambda t: round(t.timestamp()) if isinstance(t, datetime) else round(t)
-    # default는 1000위 밖
-    places = (('eternity', 300), ('demigod', 1000), ('default', 1001))
-    tiers = {}
-    for key, (tier, icon, place, rp, official, found, start, outlook) in zip(
-            ('eternity', 'demigod'), tier_cuts(season_id, ranked, history, end, cut_rp(rank_300), cut_rp(rank_1000), now)):
-        board = {stamp(t): v for t, v in rank_history.at_nine(history, official)}
-        adjusted = {stamp(t): v for t, v in rank_history.at_nine(history, official + 2)}
-        days = sorted(board)[-30:]
-        schedule, stay = rank_history.decay_schedule(season_id, ranked, start, end.timestamp()) if end and start else ([], 0)
-        tiers[key] = {
-            'place': place, 'board': rp, 'cut': start, 'estimated': bool(found and found[2]),
-            'dropped': found[1] if found else None,
-            'history': [[t, board[t], adjusted.get(t)] for t in days],
-            'forecast': [[stamp(t), round(m), round(lo), round(hi), round(raw)]
-                         for (t, m, lo, hi), raw in zip(outlook['future'], outlook['raw_low'])] if outlook else None,
-            'decay': [[d, n] for d, n in schedule], 'decayStay': stay,
-        }
-    return {
-        'updatedAt': round(now.timestamp()),
-        'season': {'id': season_id, 'name': season_name, 'end': stamp(end) if end else None},
-        'rps': [int(r['mmr']) for r in rank_history.by_rp(ranked)],
-        'tiers': tiers,
-        # 지금부터 랭크 게임을 안 하면 시즌 끝까지 깎이는 횟수. 유예를 다 채운 상태 가정
-        'quitTicks': {key: rank_history.decay_ticks(now.timestamp(), end.timestamp(), rank_history.grace_cap(place, now.timestamp()))
-                      for key, place in places} if end else None,
-        'rule': {'grace': {key: rank_history.grace_cap(place, rank_history.GRACE_FROM) for key, place in places},
-                 'graceFrom': round(rank_history.GRACE_FROM), 'step': 100, 'floor': rank_history.DECAY_FLOOR,
-                 'dormantDays': rank_history.DORMANT_DAYS},
-    }
+def season_end_of(data: Optional[dict]) -> Optional[datetime]:
+    end = ((data or {}).get('season') or {}).get('end')
+    return datetime.fromtimestamp(end, timezone.utc) if end else None
 
 
-def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], season_name: str,
-                         season_id: Optional[int] = None, season_end: Optional[datetime] = None,
+def create_rating_layout(data: dict, season_name: str, season_id: Optional[int] = None,
                          client: Optional[ERClient] = None, top: Optional[List[Dict]] = None) -> ui.LayoutView:
-    """레이팅 정보 LayoutView를 생성합니다. top은 아시아1 상위 목록"""
+    """labs cut.json으로 이터컷 카드를 만듭니다. top은 labs가 같은 회차에 받은 아시아1 상위 목록"""
     history = rank_history.cut_history(season_id) if season_id else []
     ranked = [r for r in top or [] if r.get('mmr')]
     now = datetime.now(timezone.utc)
-    tiers = tier_cuts(season_id, ranked, history, season_end, cut_rp(rank_300), cut_rp(rank_1000), now)
+    season_end = season_end_of(data)
+    tiers = tier_cuts(data)
     view = RatingView(client, season_id, ranked, *(t[6] for t in tiers)) if client and season_id else ui.LayoutView()
 
     def block(tier, icon, place, rp, official, found, start, outlook) -> str:
@@ -187,9 +84,11 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
 
     sub = [season_name, SERVER_NAMES[RANKING_SERVER]]
     if season_end:
-        days = (season_end.date() - datetime.now(season_end.tzinfo).date()).days
+        season_end = season_end.astimezone(rank_history.KST)
+        days = (season_end.date() - datetime.now(rank_history.KST).date()).days
         if days >= 0:
             sub.append(f"시즌 종료 D-{days}" if days else "시즌 종료 D-day")
+    sub.append(datetime.fromtimestamp(data.get('updatedAt', 0), rank_history.KST).strftime('%H')+':00 기준')
     children = [
         ui.TextDisplay("### 이터컷\n-# " + " | ".join(sub)),
         ui.TextDisplay("\n".join(block(*t) for t in tiers)),
@@ -203,6 +102,8 @@ def create_rating_layout(rank_300: Optional[Dict], rank_1000: Optional[Dict], se
         notes.append("휴면 강등 반영")
     if chart:
         notes.append("막판 급등 반영")
+    if labs_cut.stale(data):
+        notes.append("자료 갱신이 늦어지고 있습니다")
     if notes:
         children.append(ui.TextDisplay("-# " + " | ".join(notes)))
     if not chart:
@@ -313,9 +214,8 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
         ))
 
     user_id, stats, user_rank = await account.with_account(client, owner, name, user_id, load)
-    rank_300, rank_1000 = await fetch_rating_info(client, season_id)
-    ranked = [r for r in await fetch_ranking_data(client, season_id) or [] if r.get('mmr')]
-    end = season_end_for(await get_season_info(), season_id)
+    data = labs_cut.cut(season_id)
+    ranked = [r for r in labs_cut.top(season_id) or [] if r.get('mmr')]
     mmr = int(stats.get('mmr', 0))
     current = stats.get('nickname') or (user_rank or {}).get('nickname') or name
     mine = accounts.get(interaction.user.id)
@@ -324,8 +224,7 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
     place = int((user_rank or {}).get('serverRank') or 0)
     lines = [f"### {current}\n**{mmr:,}** RP" + (f" | {place:,}위" if place else "")]
     board = [int(r['mmr']) for r in ranked]
-    tiers = tier_cuts(season_id, ranked, rank_history.cut_history(season_id), end,
-                      cut_rp(rank_300), cut_rp(rank_1000), datetime.now(timezone.utc))
+    tiers = tier_cuts(data)
     for tier, icon, _, _, _, _, cut, outlook in tiers:
         if not cut:
             continue
@@ -353,62 +252,6 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
 class Rating(commands.Cog):
     def __init__(self, client: ERClient):
         self.client = client
-        self.warm_ranking.start()
-
-        self.check_activity.start()
-
-    def cog_unload(self):
-        self.warm_ranking.cancel()
-        self.check_activity.cancel()
-
-    # 휴면 강등 컷용. 상위 1000명 중 활동을 모르는 계정의 마지막 랭크 게임을 1분에 50명씩 확인
-    @tasks.loop(minutes=1)
-    async def check_activity(self):
-        season = await get_ranked_season()
-        if not season:
-            return
-        top = await fetch_ranking_data(self.client, season[0])
-        players = rank_history.player_book(season[0])
-        now = time.time()
-        todo = [(r['nickname'], players[r['nickname']]) for r in top or []
-                if r.get('nickname') in players and needs_check(players[r['nickname']], now)][:50]
-        if not todo:
-            return
-
-        async def one(name: str, p: list):
-            try:
-                uid, at = await last_ranked_game(self.client, name, season[0], p[rank_history.UID])
-            except Exception as e:
-                logger.debug(f"마지막 랭크 게임 확인 실패 {name}: {type(e).__name__}")
-                uid, at = None, None
-            p[rank_history.CHECKED] = now
-            if uid:
-                p[rank_history.UID] = uid
-            if at is not None:
-                p[rank_history.LAST_GAME] = at
-
-        await asyncio.gather(*(one(n, p) for n, p in todo))
-        rank_history.save()
-
-    @check_activity.before_loop
-    async def before_check_activity(self):
-        await self.client.wait_until_ready()
-
-    # 랭킹 목록 캐시는 5분. 그 전에 새로 받아 두어 명령이 목록을 기다리지 않게 함
-    @tasks.loop(minutes=4)
-    async def warm_ranking(self):
-        season = await get_ranked_season()
-        if not season:
-            return
-        try:
-            await fetch_ranking_data(self.client, season[0], refresh=True)
-            await fetch_rating_info(self.client, season[0])
-        except Exception as e:
-            logger.warning(f"랭킹 목록 미리 받기 실패: {type(e).__name__}: {e}")
-
-    @warm_ranking.before_loop
-    async def before_warm_ranking(self):
-        await self.client.wait_until_ready()
 
     @app_commands.command(name="이터컷", description="이터니티와 데미갓 컷")
     @handle_errors(user_message="이터컷을 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
@@ -420,13 +263,11 @@ class Rating(commands.Cog):
                 raise ServiceDownError("현재 시즌 조회 실패", "현재 시즌 정보를 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
             season_id, season_name = season
 
-            (rank_300, rank_1000), season_info, top = await asyncio.gather(
-                fetch_rating_info(self.client, season_id), get_season_info(), fetch_ranking_data(self.client, season_id))
-            if not rank_300 and not rank_1000:
-                raise ServiceDownError(f"{season_name} 이터컷 조회 실패",
+            data = labs_cut.cut(season_id)
+            if not data:
+                raise ServiceDownError(f"{season_name} 이터컷 자료 없음",
                                        f"{season_name} 이터컷을 가져올 수 없습니다.\n잠시 후 다시 시도해주세요.")
-            return create_rating_layout(rank_300, rank_1000, season_name, season_id,
-                                        season_end_for(season_info, season_id), self.client, top)
+            return create_rating_layout(data, season_name, season_id, self.client, labs_cut.top(season_id))
 
         view, message = await send_card(interaction, "이터컷 조회 중", build)
         if view:

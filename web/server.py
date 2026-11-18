@@ -1025,36 +1025,10 @@ async def health(request: web.Request):
                              status=200 if ok else 503)
 
 
-_cut_cache: dict = {}
-_cut_lock = asyncio.Lock()
-# bser 장애 중에는 요청마다 다시 계산하지 않고 마지막 값을 줌
-CUT_RETRY_AFTER_FAIL = 60
-
-
-def _cut_due() -> bool:
-    now = time.time()
-    return now - _cut_cache.get('at', 0) > 300 and now - _cut_cache.get('failed', 0) > CUT_RETRY_AFTER_FAIL
-
-
 async def api_cut(request: web.Request):
-    """labs.mongsil.dev 이터컷 예측 페이지용 JSON. 5분 동안 같은 값"""
-    from commands.rating import cut_snapshot
-    # 계산 중에는 지난 값이 있으면 기다리지 않고 바로 줌
-    if _cut_due() and not (_cut_lock.locked() and 'data' in _cut_cache):
-        async with _cut_lock:
-            if _cut_due():
-                data = None
-                try:
-                    data = await cut_snapshot(client)
-                except BotError as e:
-                    logger.warning(f"이터컷 JSON 계산 실패: {e}")
-                except Exception:
-                    logger.error("이터컷 JSON 계산 오류", exc_info=True)
-                if data:
-                    _cut_cache.update(at=time.time(), data=data)
-                else:
-                    _cut_cache['failed'] = time.time()
-    data = _cut_cache.get('data')
+    """labs.mongsil.dev 이터컷 예측 페이지용 JSON. labs 정각 회차가 쓴 cut.json을 그대로 줌"""
+    from utils import labs_cut
+    data = labs_cut.raw()
     if not data:
         return web.json_response({'error': 'unavailable'}, status=503)
     return web.json_response(data, headers={'Cache-Control': 'public, max-age=300'})

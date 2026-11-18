@@ -25,14 +25,12 @@ async def _build(client) -> None:
     from commands.playtime import create_playtime_layout, get_playtime_info
     from commands.rank import build_rank_view
     from commands.ranking import PaginationView, get_ranking_info
-    from datetime import datetime, timezone
-    from commands.rating import create_rating_layout, cut_rp, fetch_rating_info, season_end_for, tier_cuts
-    from utils import rank_history
+    from commands.rating import create_rating_layout, tier_cuts
+    from utils import labs_cut
     from commands.season import create_season_layout, fetch_patch_notes, get_ranked_season, get_season_info
     from commands.account import account_view
     from commands.settings import SettingsView
     from utils.animal_utils import fetch_animal_image
-    from utils.rank_helpers import fetch_ranking_data
 
     class RankingPreview(PaginationView):
         # 미리보기는 1페이지만 쓰므로 다음 페이지 선조회를 하지 않음
@@ -51,7 +49,7 @@ async def _build(client) -> None:
     if not season:
         return
     season_id, season_name = season
-    top = await fetch_ranking_data(client, season_id) or []
+    top = labs_cut.top(season_id) or []
     leader = top[0]['nickname'] if top else None
 
     async def rank():
@@ -62,14 +60,12 @@ async def _build(client) -> None:
         return users and {'input': '', 'html': render_view(RankingPreview(client, season_id, 10, users, season_name))}
 
     async def rating():
-        a, b = await fetch_rating_info(client, season_id)
-        info = await get_season_info()
-        end = season_end_for(info, season_id)
-        view = create_rating_layout(a, b, season_name, season_id, end, top=top)
+        data = labs_cut.cut(season_id)
+        if not data:
+            return None
+        view = create_rating_layout(data, season_name, season_id, top=top)
         # 점수판도 /이터컷 카드와 같은 휴면 반영 컷
-        ranked = [r for r in top if r.get('mmr')]
-        tiers = tier_cuts(season_id, ranked, rank_history.cut_history(season_id), end, cut_rp(a), cut_rp(b), datetime.now(timezone.utc))
-        for key, t in zip(('eternity', 'demigod'), tiers):
+        for key, t in zip(('eternity', 'demigod'), tier_cuts(data)):
             live[key], live[f'{key}_est'] = t[6], bool(t[5] and t[5][2])
         return {'input': '', 'html': render_view(view)}
 

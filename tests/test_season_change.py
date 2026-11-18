@@ -5,8 +5,6 @@ from unittest import mock
 import helpers  # noqa: F401
 
 from commands import season
-from commands.rating import season_end_for
-from utils import rank_history
 from utils.rank_history import KST
 
 S41 = {'seasonID': 41, 'seasonName': 'Season21', 'seasonStart': '2026-08-13 12:00:00', 'seasonEnd': '2026-11-12 09:00:00'}
@@ -28,7 +26,6 @@ class SeasonChangeTest(unittest.IsolatedAsyncioTestCase):
     async def test_ended_but_still_current(self):
         (sid, name), info = await self.ranked(listing({**S41, 'isCurrent': 1}))
         self.assertEqual((sid, name), (41, '정규 시즌 12'))
-        self.assertEqual(season_end_for(info, sid), datetime(2026, 11, 12, 9, tzinfo=KST))
 
     async def test_no_current_row_yet(self):
         (sid, _), _ = await self.ranked(listing({**S41, 'isCurrent': 0}))
@@ -38,7 +35,6 @@ class SeasonChangeTest(unittest.IsolatedAsyncioTestCase):
         pre = {'seasonID': 42, 'seasonName': 'Pre-Season22', 'seasonStart': '2026-11-12 12:00:00', 'seasonEnd': '', 'isCurrent': 1}
         (sid, name), info = await self.ranked(listing({**S41, 'isCurrent': 0}, pre))
         self.assertEqual((sid, name), (41, '정규 시즌 12'))
-        self.assertIsNone(season_end_for(info, sid))
         # /시즌이 오류 대신 프리 시즌 1주를 보여 줌
         self.assertEqual(info.end_date, datetime(2026, 11, 19, 12, tzinfo=KST))
 
@@ -52,7 +48,6 @@ class SeasonChangeTest(unittest.IsolatedAsyncioTestCase):
         (sid, _), info = await self.ranked(listing({**S41, 'isCurrent': 0}, pre))
         self.assertEqual(sid, 41)
         self.assertEqual(info.name, '프리 시즌 13')
-        self.assertIsNone(season_end_for(info, sid))
 
 
 
@@ -83,7 +78,6 @@ class RegularStartTest(unittest.IsolatedAsyncioTestCase):
     async def test_at_start(self):
         (sid, name), info, fresh = await self.at(2026, 11, 19, 12, 0)
         self.assertEqual((sid, name), (43, '정규 시즌 13'))
-        self.assertEqual(season_end_for(info, sid), datetime(2027, 2, 18, 9, tzinfo=KST))
         self.assertTrue(fresh)
 
     async def test_fresh_ends(self):
@@ -94,29 +88,6 @@ class RegularStartTest(unittest.IsolatedAsyncioTestCase):
         await self.at(2026, 11, 19, 11, 50)
         # 11:50에 받은 프리 시즌 캐시를 12:00 넘어서 쓰지 않음
         self.assertLessEqual(season._season_cache_time + season.SEASON_CACHE_TTL, datetime(2026, 11, 19, 12, 0))
-
-
-    def test_empty_history_cuts(self):
-        from commands.rating import GATE_USER, cut_rp, tier_cuts
-        now = datetime(2026, 11, 19, 12, 30, tzinfo=KST)
-        end = datetime(2027, 2, 18, 9, tzinfo=KST)
-        with mock.patch.object(rank_history, 'cut_history', return_value=[]):
-            tiers = tier_cuts(43, [], [], end, cut_rp(GATE_USER), cut_rp(GATE_USER), now)
-        self.assertEqual([t[6] for t in tiers], [8300, 8300])
-        self.assertEqual(rank_history.decay_schedule(43, [], 8300, end.timestamp())[0], [])
-
-
-class EndedSeasonDecayTest(unittest.TestCase):
-    end = datetime(2026, 11, 12, 9, tzinfo=KST).timestamp()
-
-    def test_no_decay_added_after_end(self):
-        # 11-01부터 쉰 계정. 종료 뒤에는 순위표 RP가 그대로 최종값
-        last = datetime(2026, 11, 1, 12, tzinfo=KST).timestamp()
-        p = [0] * 8
-        with mock.patch.object(rank_history, 'last_active', return_value=last):
-            for day in (13, 14, 20):
-                now = datetime(2026, 11, day, 16, tzinfo=KST).timestamp()
-                self.assertLessEqual(rank_history.projected_rp(p, 9000, now, self.end), 9000, day)
 
 
 if __name__ == '__main__':

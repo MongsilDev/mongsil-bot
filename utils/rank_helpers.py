@@ -10,7 +10,6 @@ from client import ERClient
 from utils.config import config
 from utils.errors import APIError, InvalidUidError, NotFoundError
 from utils.logging_config import get_logger
-from utils import rank_history
 from utils.tier_system import TierSystem
 
 logger = get_logger('rank_helpers')
@@ -135,8 +134,6 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
         if data and data.get('code') == 200:
             top_ranks = data.get('topRanks', [])
             logger.debug(f"랭킹 데이터 {len(top_ranks)}명 조회 완료")
-            rank_history.record_ranks(season_id, top_ranks[:100])
-            rank_history.record_players(season_id, top_ranks)
             return top_ranks
         elif data and data.get('code') == 404:
             # 랭크 기록이 아무도 없는 시즌. 조회 실패(None)와 구분해 빈 목록

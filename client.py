@@ -88,9 +88,9 @@ class ERClient(commands.Bot):
         alive = True
         try:
             from commands.season import get_ranked_season
-            from utils.rank_helpers import fetch_ranking_data
+            from utils import labs_cut
             season = await get_ranked_season()
-            top = await fetch_ranking_data(self, season[0]) if season else None
+            top = labs_cut.top(season[0]) if season else None
             if top:
                 probe = await self.api_client.get(f"{config.api_url}/user/nickname",
                                                   params={'query': top[0]['nickname']}, use_cache=False)
