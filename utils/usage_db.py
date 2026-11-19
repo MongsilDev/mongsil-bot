@@ -60,8 +60,11 @@ db = sqlite3.connect(DB_PATH, isolation_level=None)
 db.row_factory = sqlite3.Row
 db.executescript(SCHEMA)
 # 결과가 화면에 표시된 시점. ms는 명령 처리가 모두 끝난 시점이라 체감 속도와 다름
-if 'shown_ms' not in {r[1] for r in db.execute("PRAGMA table_info(command_log)")}:
-    db.execute("ALTER TABLE command_log ADD COLUMN shown_ms INTEGER")
+# recv_ms는 봇이 명령을 받아 처리하기 시작한 시점, built_ms는 결과 카드가 준비된 시점. 지연 구간을 나누는 용도
+_cols = {r[1] for r in db.execute("PRAGMA table_info(command_log)")}
+for _col in ('shown_ms', 'recv_ms', 'built_ms'):
+    if _col not in _cols:
+        db.execute(f"ALTER TABLE command_log ADD COLUMN {_col} INTEGER")
 
 
 # 개인정보 처리방침에 적은 보관 기간
@@ -82,11 +85,13 @@ def prune() -> None:
         logger.warning(f"오래된 기록 삭제 실패: {e}")
 
 
-def record_command(guild_id, user_id: int, command: str, status: str, ms: int, shown_ms=None) -> None:
+def record_command(guild_id, user_id: int, command: str, status: str, ms: int, shown_ms=None,
+                   recv_ms=None, built_ms=None) -> None:
     try:
         db.execute(
-            "INSERT INTO command_log (ts, guild_id, user_id, command, status, ms, shown_ms) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (int(time.time()), guild_id, user_id, command, status, ms, shown_ms),
+            "INSERT INTO command_log (ts, guild_id, user_id, command, status, ms, shown_ms, recv_ms, built_ms)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (int(time.time()), guild_id, user_id, command, status, ms, shown_ms, recv_ms, built_ms),
         )
     except sqlite3.Error as e:
         logger.warning(f"명령어 기록 실패: {e}")

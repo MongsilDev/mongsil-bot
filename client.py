@@ -13,11 +13,11 @@ import time
 
 from utils.config import config
 from utils.errors import ServiceDownError
-from utils.layouts import create_error_layout
+from utils.layouts import create_error_layout, elapsed_ms
 from utils.logging_config import get_logger
 from utils.api_client import api_client
 from utils.character_names import refresh_character_names
-from utils import app_emojis, guild_settings
+from utils import app_emojis, guild_settings, loop_watch
 from utils.usage_db import prune, record_command, record_guild_event
 
 logger = get_logger(__name__)
@@ -121,6 +121,7 @@ class ERClient(commands.Bot):
             ]:
                 await self.load_extension(module)
 
+            loop_watch.start()
             # supervisord는 SIGTERM으로 멈춤. 처리하지 않으면 close와 cog_unload 저장이 실행되지 않음
             asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, lambda: asyncio.create_task(self.close()))
             await app_emojis.load(self)
@@ -188,6 +189,7 @@ class ERClient(commands.Bot):
 
     async def command_channel_check(self, interaction: discord.Interaction) -> bool:
         """서버가 지정한 채널 밖의 명령을 차단. 서버 관리 권한이 있으면 모든 채널에서 사용 가능"""
+        interaction.extras['recv_ms'] = elapsed_ms(interaction)
         if interaction.type is not discord.InteractionType.application_command or interaction.guild_id is None:
             return True
         channel = interaction.channel
@@ -225,9 +227,10 @@ class ERClient(commands.Bot):
 
     async def on_app_command_completion(self, interaction: discord.Interaction, command):
         # handle_errors가 잡은 실패도 여기로 온다. 상태는 extras에 표시됨
-        ms = (discord.utils.utcnow() - interaction.created_at).total_seconds() * 1000
+        extras = interaction.extras
         record_command(interaction.guild_id, interaction.user.id, command.qualified_name,
-                       interaction.extras.get('status', 'ok'), int(ms), interaction.extras.get('shown_ms'))
+                       extras.get('status', 'ok'), elapsed_ms(interaction), extras.get('shown_ms'),
+                       extras.get('recv_ms'), extras.get('built_ms'))
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         error_message = "명령어 실행 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요."

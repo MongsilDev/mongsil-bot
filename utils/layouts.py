@@ -81,9 +81,14 @@ class CooldownLayoutView(ui.LayoutView):
                 pass
 
 
+def elapsed_ms(interaction: discord.Interaction) -> int:
+    """디스코드가 인터랙션을 만든 시각부터 지금까지"""
+    return int((discord.utils.utcnow() - interaction.created_at).total_seconds() * 1000)
+
+
 def mark_shown(interaction: discord.Interaction) -> None:
     """결과 카드가 화면에 표시된 시점을 명령어 기록에 남김"""
-    interaction.extras['shown_ms'] = int((discord.utils.utcnow() - interaction.created_at).total_seconds() * 1000)
+    interaction.extras['shown_ms'] = elapsed_ms(interaction)
 
 
 async def sent_message(interaction: discord.Interaction, sent) -> discord.InteractionMessage:
@@ -104,9 +109,11 @@ async def send_card(interaction: discord.Interaction, loading: str, build):
         task = asyncio.ensure_future(build())
         try:
             view = await asyncio.wait_for(asyncio.shield(task), FAST_REPLY_SECONDS)
+            interaction.extras['built_ms'] = elapsed_ms(interaction)
         except asyncio.TimeoutError:
             await interaction.response.send_message(view=create_loading_layout(loading))
             view = await task
+            interaction.extras['built_ms'] = elapsed_ms(interaction)
             message = await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
         else:
             message = await sent_message(interaction, await interaction.response.send_message(
@@ -117,6 +124,7 @@ async def send_card(interaction: discord.Interaction, loading: str, build):
     message = await interaction.followup.send(view=create_loading_layout(loading), wait=True)
     try:
         view = await build()
+        interaction.extras['built_ms'] = elapsed_ms(interaction)
     except BotError as e:
         # 원 응답은 계정 카드라 오류로 덮어쓰지 않고 로딩 메시지를 오류로 바꿈
         await message.edit(view=create_error_layout(e.user_message))
