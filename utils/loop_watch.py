@@ -39,19 +39,17 @@ def _watch(loop_thread_id: int) -> None:
     while True:
         time.sleep(CHECK_SECONDS)
         now = time.monotonic()
-        # 감시 스레드도 함께 늦었으면 VM이나 프로세스 전체가 멈춘 것이라 루프 스택은 원인이 아님
         own_late = now - last_check - CHECK_SECONDS
         last_check = now
         stalled = now - _beat
         if stalled < STALL_SECONDS or reported == _beat:
             continue
         reported = _beat
-        if own_late > STALL_SECONDS:
-            logger.warning(f"프로세스 전체 {own_late:.1f}초 멈춤")
-            continue
         frame = sys._current_frames().get(loop_thread_id)
         stack = ''.join(traceback.format_stack(frame, limit=12)) if frame else '(스택 없음)'
-        logger.warning(f"이벤트 루프 {stalled:.1f}초째 막힘. 실행 중인 코드:\n{stack}")
+        # 감시 스레드도 늦었으면 VM 멈춤이거나 GIL을 쥔 C 호출. 뒤쪽이면 스택이 그 호출 바로 뒤를 가리킴
+        what = f"감시 스레드도 {own_late:.1f}초 늦음, 원인은 VM 멈춤 또는 GIL 점유" if own_late > STALL_SECONDS else "막힘"
+        logger.warning(f"이벤트 루프 {stalled:.1f}초째 {what}. 실행 중인 코드:\n{stack}")
 
 
 def start() -> None:
