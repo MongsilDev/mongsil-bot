@@ -59,4 +59,8 @@ def race(season_id: Optional[int], now: Optional[float] = None) -> Optional[dict
     data = _read(RACE)
     if not data or not data.get('open') or not season_id or data.get('season') != season_id or stale(data, now):
         return None
+    # 형식이 어긋나면 카드를 깨지 않고 원래 300위 줄로 돌아감
+    if not isinstance(data.get('count'), int) or not isinstance(data.get('list'), list) \
+            or not all(isinstance(r, dict) and isinstance(r.get('nickname'), str) and isinstance(r.get('rp'), int) for r in data['list']):
+        return None
     return data

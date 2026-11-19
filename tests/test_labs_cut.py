@@ -89,7 +89,7 @@ class LabsCutTest(unittest.IsolatedAsyncioTestCase):
 
     def test_card_ignores_closed_or_stale_race(self):
         self.write(FIXTURE, updatedAt=round(time.time()))
-        for extra in ({'open': False}, {'season': 43}, {'updatedAt': round(time.time()) - 4 * 3600}):
+        for extra in ({'open': False}, {'season': 43}, {'updatedAt': round(time.time()) - 4 * 3600}, {'list': None}, {'list': [{'nickname': 'x', 'rp': None}]}):
             self.write_race(**extra)
             self.assertIn('이터니티 300위', self.card_text())
 
