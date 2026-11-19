@@ -144,7 +144,8 @@ def _ticks(lo: float, hi: float, count: int = 5) -> List[float]:
     step = next(m * mag for m in (1, 2, 2.5, 5, 10) if m * mag >= raw)
     start = math.floor(lo / step) * step
     ticks = [start]
-    while ticks[-1] < hi:
+    # 값이 모두 같아도 눈금을 두 개 이상 만들어 그래프 높이가 0이 되지 않게 함
+    while ticks[-1] < hi or len(ticks) < 2:
         ticks.append(ticks[-1] + step)
     return ticks
 
