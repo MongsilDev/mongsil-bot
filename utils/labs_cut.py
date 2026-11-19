@@ -20,7 +20,8 @@ ASIA_FRESH = 15 * 60
 STALE = 3 * 3600
 
 _cache: Dict[str, tuple] = {}
-_places: Dict[int, Dict[str, int]] = {}
+# 마지막으로 순위 사전을 만든 asia1.json 객체와 그 사전. id()는 해제된 객체 주소를 다시 쓸 수 있어 객체를 쥐고 is로 비교함
+_places: Dict[str, object] = {}
 
 
 def _read(path: str) -> Optional[dict]:
@@ -60,23 +61,23 @@ def asia(season_id: Optional[int] = None, now: Optional[float] = None) -> Option
     data = _read(ASIA)
     if not data or not data.get('active') or not isinstance(data.get('topRanks'), list):
         return None
-    if season_id is not None and data.get('season') != season_id:
+    if not season_id or data.get('season') != season_id or not isinstance(data.get('at'), (int, float)):
         return None
-    if (now or time.time()) - data.get('at', 0) / 1000 > ASIA_FRESH:
+    if (now or time.time()) - data['at'] / 1000 > ASIA_FRESH:
         return None
     return data
 
 
-def asia_place(nickname: Optional[str], now: Optional[float] = None) -> int:
+def asia_place(nickname: Optional[str], season_id: Optional[int], now: Optional[float] = None) -> int:
     """재구성 순위에서 이 닉네임의 아시아1 순위. 없으면 0"""
-    data = asia(now=now)
+    data = asia(season_id, now)
     if not data or not nickname:
         return 0
-    key = id(data)
-    if key not in _places:
-        _places.clear()
-        _places[key] = {r['nickname']: r['rank'] for r in data['topRanks'] if r.get('nickname')}
-    return _places[key].get(nickname, 0)
+    if _places.get('data') is not data:
+        _places['map'] = {r['nickname']: r['rank'] for r in data['topRanks']
+                          if isinstance(r, dict) and r.get('nickname') and isinstance(r.get('rank'), int)}
+        _places['data'] = data
+    return _places['map'].get(nickname, 0)
 
 
 def stale(data: dict, now: Optional[float] = None) -> bool:

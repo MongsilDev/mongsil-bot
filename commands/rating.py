@@ -240,7 +240,7 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
     mine = accounts.get(interaction.user.id)
     if mine and mine[0] == user_id:
         accounts.rename(interaction.user.id, current)
-    place = server_place(user_rank)
+    place = server_place(user_rank, season_id)
     lines = [f"### {current}\n**{mmr:,}** RP" + (f" | {place:,}위" if place else "")]
     board = [int(r['mmr']) for r in ranked]
     tiers = tier_cuts(data)

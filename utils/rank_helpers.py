@@ -27,14 +27,14 @@ def rank_server(user_rank: Optional[Dict]) -> Optional[int]:
     return user_rank.get('rewardServerCode') or user_rank.get('serverCode')
 
 
-def server_place(user_rank: Optional[Dict]) -> int:
+def server_place(user_rank: Optional[Dict], season_id: Optional[int]) -> int:
     """서버 순위. 시즌 43처럼 공식 순위가 0인 동안 아시아1 계정은 통합 순위표로 다시 매긴 순위를 씀"""
     if not user_rank:
         return 0
     place = int(user_rank.get('serverRank') or 0)
     if place or rank_server(user_rank) != RANKING_SERVER:
         return place
-    return labs_cut.asia_place(user_rank.get('nickname'))
+    return labs_cut.asia_place(user_rank.get('nickname'), season_id)
 
 
 def overall_place(stats: Dict) -> str:
@@ -49,7 +49,7 @@ def overall_place(stats: Dict) -> str:
 
 def tier_and_place(stats: Dict, user_rank: Optional[Dict]) -> Tuple[str, str]:
     """티어와 순위 문구. 이터니티와 데미갓은 귀속 서버 순위 기준. 통계의 rank는 통합 순위라 서버 컷과 어긋남"""
-    server_rank = server_place(user_rank)
+    server_rank = server_place(user_rank, stats.get('seasonId'))
     tier = TierSystem.get_tier(int(stats.get('mmr', 0)), server_rank or int(stats.get('rank', 0)))
     if server_rank and server_rank <= 1000:
         return tier, f"{SERVER_NAMES.get(rank_server(user_rank), '서버')} {server_rank:,}위"
@@ -93,14 +93,15 @@ async def fetch_user_stats_solo(
                 raise NotFoundError("유저 통계 없음", "랭크 게임 기록이 있는 유저만 조회할 수 있습니다.")
 
             # 랭크 솔로 모드 통계 찾기 (matchingMode=3, matchingTeamMode=3)
+            # tier_and_place가 그 시즌의 재구성 순위만 쓰도록 시즌 번호를 붙임
             for stats in stats_list:
                 if (stats.get('matchingMode', 0) == 3 and
                     stats.get('matchingTeamMode', 0) == 3):
-                    return stats
+                    return {**stats, 'seasonId': season_id}
 
             # matchingMode 필터가 맞지 않아도 결과가 하나뿐이면 그 결과 반환 (API 응답 형식 변경 대응)
             if len(stats_list) == 1:
-                return stats_list[0]
+                return {**stats_list[0], 'seasonId': season_id}
 
             # 통계가 있는데 랭크 모드 항목만 없는 건 유저 조건이 아니라 응답 형식 이상.
             raise APIError("유저 통계 형식 불일치: 랭크 모드 항목 없음",

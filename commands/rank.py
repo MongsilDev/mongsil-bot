@@ -247,7 +247,7 @@ async def tier_snapshot(client: ERClient, nickname: str) -> Optional[Dict[str, A
         'tier': tier,
         'mmr': int(stats.get('mmr', 0)),
         'place': place,
-        'serverRank': server_place(user_rank) or None,
+        'serverRank': server_place(user_rank, season_id) or None,
         'serverCode': rank_server(user_rank),
         'last': last,
         'recent': recent[:10],
