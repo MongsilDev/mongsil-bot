@@ -18,7 +18,7 @@ from utils import accounts, app_emojis, visual
 from utils.errors import handle_errors, NotFoundError, APIError
 from utils.logging_config import get_logger
 from utils.character_names import get_character_name
-from utils.rank_helpers import RANKING_SERVER, fetch_user_rank, fetch_user_stats_solo, rank_server, tier_and_place
+from utils.rank_helpers import RANKING_SERVER, fetch_user_rank, fetch_user_stats_solo, rank_server, server_place, tier_and_place
 from utils.tier_system import TierSystem
 from utils.emojis import EMOJIS
 
@@ -247,7 +247,7 @@ async def tier_snapshot(client: ERClient, nickname: str) -> Optional[Dict[str, A
         'tier': tier,
         'mmr': int(stats.get('mmr', 0)),
         'place': place,
-        'serverRank': int(user_rank['serverRank']) if user_rank and user_rank.get('serverRank') else None,
+        'serverRank': server_place(user_rank) or None,
         'serverCode': rank_server(user_rank),
         'last': last,
         'recent': recent[:10],

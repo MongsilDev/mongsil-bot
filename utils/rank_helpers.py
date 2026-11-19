@@ -7,6 +7,7 @@ from typing import Optional, Dict, List, Tuple
 import aiohttp
 
 from client import ERClient
+from utils import labs_cut
 from utils.config import config
 from utils.errors import APIError, InvalidUidError, NotFoundError
 from utils.logging_config import get_logger
@@ -26,6 +27,16 @@ def rank_server(user_rank: Optional[Dict]) -> Optional[int]:
     return user_rank.get('rewardServerCode') or user_rank.get('serverCode')
 
 
+def server_place(user_rank: Optional[Dict]) -> int:
+    """서버 순위. 시즌 43처럼 공식 순위가 0인 동안 아시아1 계정은 통합 순위표로 다시 매긴 순위를 씀"""
+    if not user_rank:
+        return 0
+    place = int(user_rank.get('serverRank') or 0)
+    if place or rank_server(user_rank) != RANKING_SERVER:
+        return place
+    return labs_cut.asia_place(user_rank.get('nickname'))
+
+
 def overall_place(stats: Dict) -> str:
     """서버 순위가 없을 때 쓰는 통합 순위 표기. 1000위 안은 순위, 그 밖은 상위 비율"""
     rank, size = int(stats.get('rank', 0)), int(stats.get('rankSize', 0))
@@ -38,7 +49,7 @@ def overall_place(stats: Dict) -> str:
 
 def tier_and_place(stats: Dict, user_rank: Optional[Dict]) -> Tuple[str, str]:
     """티어와 순위 문구. 이터니티와 데미갓은 귀속 서버 순위 기준. 통계의 rank는 통합 순위라 서버 컷과 어긋남"""
-    server_rank = int(user_rank.get('serverRank', 0)) if user_rank else 0
+    server_rank = server_place(user_rank)
     tier = TierSystem.get_tier(int(stats.get('mmr', 0)), server_rank or int(stats.get('rank', 0)))
     if server_rank and server_rank <= 1000:
         return tier, f"{SERVER_NAMES.get(rank_server(user_rank), '서버')} {server_rank:,}위"
@@ -126,6 +137,9 @@ async def fetch_ranking_data(client: ERClient, season_id: int, use_cache: bool =
     Returns:
         랭킹 데이터 리스트 또는 None
     """
+    recon = labs_cut.asia(season_id)
+    if recon:
+        return recon['topRanks']
     try:
         url = f"{config.api_url}/rank/top/{season_id}/3/{RANKING_SERVER}"
 

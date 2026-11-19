@@ -12,10 +12,15 @@ CUT = os.environ.get('LABS_CUT', '../_data/labs/er-cut/cut.json')
 TOP = os.environ.get('LABS_TOP', 'data/labs/top.json')
 # 시즌 초 8,300 도달 순서(장부 528). 공식 순위표에 오른 닉네임만 들어 있어 cut.json 옆에 둠
 RACE = os.environ.get('LABS_RACE', '../_data/labs/er-cut/race.json')
+# 공식 아시아1 순위표가 비정상인 동안 race-live.mjs가 1분마다 통합 순위표로 다시 만든 아시아1 순위
+ASIA = os.environ.get('LABS_ASIA', 'data/labs/asia1.json')
+# race-live가 한도 응답으로 10분 쉬는 동안에도 쓰고, 그보다 오래 멈추면 공식 순위표로 돌아감
+ASIA_FRESH = 15 * 60
 # 기준 시각이 이보다 오래되면 카드에 자료가 늦어지고 있다고 적음
 STALE = 3 * 3600
 
 _cache: Dict[str, tuple] = {}
+_places: Dict[int, Dict[str, int]] = {}
 
 
 def _read(path: str) -> Optional[dict]:
@@ -48,6 +53,30 @@ def cut(season_id: Optional[int]) -> Optional[dict]:
 def top(season_id: Optional[int]) -> Optional[List[dict]]:
     data = _read(TOP)
     return data.get('topRanks') if data and season_id and data.get('season') == season_id else None
+
+
+def asia(season_id: Optional[int] = None, now: Optional[float] = None) -> Optional[dict]:
+    """공식 아시아1 순위표 대신 쓸 재구성 순위. 공식 순위표가 정상이거나 자료가 늦어졌으면 None"""
+    data = _read(ASIA)
+    if not data or not data.get('active') or not isinstance(data.get('topRanks'), list):
+        return None
+    if season_id is not None and data.get('season') != season_id:
+        return None
+    if (now or time.time()) - data.get('at', 0) / 1000 > ASIA_FRESH:
+        return None
+    return data
+
+
+def asia_place(nickname: Optional[str], now: Optional[float] = None) -> int:
+    """재구성 순위에서 이 닉네임의 아시아1 순위. 없으면 0"""
+    data = asia(now=now)
+    if not data or not nickname:
+        return 0
+    key = id(data)
+    if key not in _places:
+        _places.clear()
+        _places[key] = {r['nickname']: r['rank'] for r in data['topRanks'] if r.get('nickname')}
+    return _places[key].get(nickname, 0)
 
 
 def stale(data: dict, now: Optional[float] = None) -> bool:

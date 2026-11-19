@@ -17,7 +17,7 @@ from commands import account
 from utils import accounts, app_emojis, labs_cut, rank_history, visual
 from utils.emojis import EMOJIS
 from utils.logging_config import get_logger
-from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo, rank_server
+from utils.rank_helpers import RANKING_SERVER, SERVER_NAMES, fetch_user_rank, fetch_user_stats_solo, rank_server, server_place
 from utils.tier_system import TierSystem
 
 logger = get_logger('레이팅')
@@ -119,6 +119,8 @@ def create_rating_layout(data: dict, season_name: str, season_id: Optional[int] 
         notes.append("휴면 강등 반영")
     if chart:
         notes.append("막판 급등 반영")
+    if data.get('source') == 'global':
+        notes.append("통합 순위표의 아시아1 계정으로 계산")
     if labs_cut.stale(data):
         notes.append("자료 갱신이 늦어지고 있습니다")
     if notes:
@@ -238,7 +240,7 @@ async def compare(client: ERClient, season_id: int, interaction: discord.Interac
     mine = accounts.get(interaction.user.id)
     if mine and mine[0] == user_id:
         accounts.rename(interaction.user.id, current)
-    place = int((user_rank or {}).get('serverRank') or 0)
+    place = server_place(user_rank)
     lines = [f"### {current}\n**{mmr:,}** RP" + (f" | {place:,}위" if place else "")]
     board = [int(r['mmr']) for r in ranked]
     tiers = tier_cuts(data)
