@@ -70,6 +70,16 @@ def create_rating_layout(data: dict, season_name: str, season_id: Optional[int] 
     tiers = tier_cuts(data)
     view = RatingView(client, season_id, ranked, *(t[6] for t in tiers)) if client and season_id else ui.LayoutView()
 
+    race = labs_cut.race(season_id)
+
+    def race_block(icon) -> str:
+        lines = [f"{app_emojis.tier(icon)} 이터니티 {TierSystem.RANKED_GATE:,} 달성 **{race['count']:,}**명".strip()]
+        for i, r in enumerate(race['list'][:5], 1):
+            at = datetime.fromtimestamp(r['at'], rank_history.KST) if r.get('at') else None
+            when = f" `{at.month}월 {at.day}일 {at:%H:%M}`" if at else ""
+            lines.append(f"`{i}` **{discord.utils.escape_markdown(r['nickname'])}** {r['rp']:,} RP{when}")
+        return "\n".join(lines)
+
     def block(tier, icon, place, rp, official, found, start, outlook) -> str:
         head = f"{app_emojis.tier(icon)} {tier} {place:,}위".strip()
         if not start:
@@ -91,7 +101,8 @@ def create_rating_layout(data: dict, season_name: str, season_id: Optional[int] 
     sub.append(datetime.fromtimestamp(data.get('updatedAt', 0), rank_history.KST).strftime('%H')+':00 기준')
     children = [
         ui.TextDisplay("### 이터컷\n-# " + " | ".join(sub)),
-        ui.TextDisplay("\n".join(block(*t) for t in tiers)),
+        # 시즌 초 300위가 8,300을 넘기 전에는 이터니티 컷이 늘 8,300이라 그 자리에 도달 순서를 보여 줌
+        ui.TextDisplay("\n".join(race_block(t[1]) if race and t[0] == '이터니티' else block(*t) for t in tiers)),
     ]
 
     chart = _outlook_chart(history, tiers, now) if season_end else None

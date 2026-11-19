@@ -18,7 +18,9 @@ class LabsCutTest(unittest.IsolatedAsyncioTestCase):
         self.dir = TemporaryDirectory()
         self.cut = Path(self.dir.name, 'cut.json')
         self.top = Path(self.dir.name, 'top.json')
-        patches = [mock.patch.object(labs_cut, 'CUT', str(self.cut)), mock.patch.object(labs_cut, 'TOP', str(self.top))]
+        self.race = Path(self.dir.name, 'race.json')
+        patches = [mock.patch.object(labs_cut, 'CUT', str(self.cut)), mock.patch.object(labs_cut, 'TOP', str(self.top)),
+                   mock.patch.object(labs_cut, 'RACE', str(self.race))]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
@@ -64,6 +66,32 @@ class LabsCutTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(labs_cut.top(41)), 1)
         self.assertIsNone(labs_cut.top(43))
 
+
+    def card_text(self):
+        view = rating.create_rating_layout(labs_cut.cut(41), '정규 시즌 12', 41)
+        return '\n'.join(c.content for c in view.walk_children() if hasattr(c, 'content'))
+
+    def write_race(self, **extra):
+        now = round(time.time())
+        lst = [{'nickname': f'p_{i}', 'rp': 8400 - i, 'at': now - 3600 + i} for i in range(6)] + [{'nickname': 'late', 'rp': 8300, 'at': None}]
+        self.race.write_text(json.dumps({'updatedAt': now, 'season': 41, 'open': True, 'count': len(lst), 'list': lst, **extra}))
+        labs_cut._cache.clear()
+
+    def test_card_shows_race_while_open(self):
+        self.write(FIXTURE, updatedAt=round(time.time()))
+        self.write_race()
+        text = self.card_text()
+        self.assertIn('이터니티 8,300 달성 **7**명', text)
+        self.assertIn('`1` **p\\_0** 8,400 RP `', text)
+        self.assertNotIn('p\\_5', text)
+        self.assertIn('데미갓 1,000위', text)
+        self.assertNotIn('이터니티 300위', text)
+
+    def test_card_ignores_closed_or_stale_race(self):
+        self.write(FIXTURE, updatedAt=round(time.time()))
+        for extra in ({'open': False}, {'season': 43}, {'updatedAt': round(time.time()) - 4 * 3600}):
+            self.write_race(**extra)
+            self.assertIn('이터니티 300위', self.card_text())
 
 if __name__ == '__main__':
     unittest.main()
