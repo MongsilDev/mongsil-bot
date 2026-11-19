@@ -72,14 +72,18 @@ class Asia1Test(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(labs_cut.asia(43))
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class FlatChartTest(unittest.TestCase):
     def test_flat_series_draws(self):
         from datetime import datetime, timedelta, timezone
         from utils import visual
         t = datetime(2026, 11, 19, tzinfo=timezone.utc)
         pts = [(t + timedelta(hours=i), 8300) for i in range(4)]
+        ticks = visual._ticks(8300, 8300)
+        self.assertGreater(len({f'{v:,.0f}' for v in ticks}), 1)
+        self.assertEqual(len({f'{v:,.0f}' for v in ticks}), len(ticks))
         self.assertTrue(visual.lines_chart([(pts, visual.TIER_COLOURS['10']), (pts, visual.TIER_COLOURS['9'])], hours=24, end_labels=True, legend=('이터니티', '데미갓'), mark_extremes=True, label_low=True))
+
+
+if __name__ == '__main__':
+    unittest.main()
+

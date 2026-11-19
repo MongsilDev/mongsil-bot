@@ -139,13 +139,15 @@ def _smooth(line: Sequence[Tuple[float, float]], steps: int = 10) -> List[Tuple[
 
 
 def _ticks(lo: float, hi: float, count: int = 5) -> List[float]:
+    # 값이 모두 같으면 위아래로 넓혀 서로 다른 정수 눈금이 생기게 함
+    if hi <= lo:
+        lo, hi = lo - count / 2, hi + count / 2
     raw = max(hi - lo, 1) / count
     mag = 10 ** math.floor(math.log10(raw))
     step = next(m * mag for m in (1, 2, 2.5, 5, 10) if m * mag >= raw)
     start = math.floor(lo / step) * step
     ticks = [start]
-    # 값이 모두 같아도 눈금을 두 개 이상 만들어 그래프 높이가 0이 되지 않게 함
-    while ticks[-1] < hi or len(ticks) < 2:
+    while ticks[-1] < hi:
         ticks.append(ticks[-1] + step)
     return ticks
 
