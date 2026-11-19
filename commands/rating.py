@@ -74,10 +74,16 @@ def create_rating_layout(data: dict, season_name: str, season_id: Optional[int] 
 
     def race_block(icon) -> str:
         lines = [f"{app_emojis.tier(icon)} 이터니티 {TierSystem.RANKED_GATE:,} 달성 **{race['count']:,}**명".strip()]
+        # 도달한 계정은 도달 시각을, 아직 못 닿은 계정은 남은 RP를 붙임
         for i, r in enumerate(race['list'][:5], 1):
             at = datetime.fromtimestamp(r['at'], rank_history.KST) if r.get('at') else None
-            when = f" `{at.month}월 {at.day}일 {at:%H:%M}`" if at else ""
-            lines.append(f"`{i}` **{discord.utils.escape_markdown(r['nickname'])}** {r['rp']:,} RP{when}")
+            if at:
+                tail = f" `{at.month}월 {at.day}일 {at:%H:%M}`"
+            elif r['rp'] < TierSystem.RANKED_GATE:
+                tail = f" `{TierSystem.RANKED_GATE - r['rp']:,} 남음`"
+            else:
+                tail = ""
+            lines.append(f"`{i}` **{discord.utils.escape_markdown(r['nickname'])}** {r['rp']:,} RP{tail}")
         return "\n".join(lines)
 
     def block(tier, icon, place, rp, official, found, start, outlook) -> str:

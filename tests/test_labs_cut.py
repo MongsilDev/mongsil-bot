@@ -87,6 +87,17 @@ class LabsCutTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn('데미갓 1,000위', text)
         self.assertNotIn('이터니티 300위', text)
 
+    def test_card_shows_rp_left_before_gate(self):
+        self.write(FIXTURE, updatedAt=round(time.time()))
+        now = round(time.time())
+        lst = [{'nickname': 'top', 'rp': 8310, 'at': now - 60, 'gain': 300}, {'nickname': 'next', 'rp': 8247, 'at': None, 'gain': None}]
+        self.race.write_text(json.dumps({'updatedAt': now, 'season': 41, 'open': True, 'count': 1, 'list': lst}))
+        labs_cut._cache.clear()
+        text = self.card_text()
+        self.assertIn('이터니티 8,300 달성 **1**명', text)
+        self.assertIn('`2` **next** 8,247 RP `53 남음`', text)
+        self.assertNotIn('top** 8,310 RP `53', text)
+
     def test_card_ignores_closed_or_stale_race(self):
         self.write(FIXTURE, updatedAt=round(time.time()))
         for extra in ({'open': False}, {'season': 43}, {'updatedAt': round(time.time()) - 4 * 3600}, {'list': None}, {'list': [{'nickname': 'x', 'rp': None}]}):
