@@ -141,7 +141,8 @@ def _smooth(line: Sequence[Tuple[float, float]], steps: int = 10) -> List[Tuple[
 def _ticks(lo: float, hi: float, count: int = 5) -> List[float]:
     # 값이 모두 같으면 위아래로 넓혀 서로 다른 정수 눈금이 생기게 함
     if hi <= lo:
-        lo, hi = lo - count / 2, hi + count / 2
+        lo = max(lo - count / 2, 0) if lo >= 0 else lo - count / 2
+        hi = lo + count
     raw = max(hi - lo, 1) / count
     mag = 10 ** math.floor(math.log10(raw))
     step = next(m * mag for m in (1, 2, 2.5, 5, 10) if m * mag >= raw)
