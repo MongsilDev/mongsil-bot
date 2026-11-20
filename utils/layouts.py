@@ -144,7 +144,7 @@ async def send_card(interaction: discord.Interaction, loading: str, build, fast_
                 try:
                     await interaction.delete_original_response()
                     interaction.extras['loading_deleted'] = True
-                except discord.HTTPException:
+                except (discord.HTTPException, aiohttp.ClientError, OSError, asyncio.TimeoutError):
                     pass
                 raise
             message = await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
