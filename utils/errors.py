@@ -90,6 +90,8 @@ async def _send_error(interaction: discord.Interaction, error_text: str):
     try:
         if not interaction.response.is_done():
             await interaction.response.send_message(view=layout, ephemeral=True)
+        elif interaction.extras.get('loading_deleted'):
+            await interaction.followup.send(view=layout, ephemeral=True)
         else:
             # 로딩 메시지를 에러로 교체 시도, 실패 시 followup
             try:

@@ -125,6 +125,7 @@ async def send_card(interaction: discord.Interaction, loading: str, build, fast_
     """결과가 fast_reply초(기본 FAST_REPLY_SECONDS) 안에 준비되면 바로 보내고, 늦으면 로딩 카드를 먼저 보낸 뒤 교체. 이미 응답한 인터랙션은 새 메시지로.
     fast_reply가 0이면 로딩 카드를 바로 보냄. 첨부가 있는 첫 응답은 로딩 카드 수정보다 0.3~0.5초 느림(장부 518)"""
     from . import visual
+    from .errors import NotFoundError, ValidationError
     if not interaction.response.is_done():
         if fast_reply is None:
             fast_reply = FAST_REPLY_SECONDS
@@ -136,7 +137,16 @@ async def send_card(interaction: discord.Interaction, loading: str, build, fast_
         except asyncio.TimeoutError:
             await interaction.response.send_message(view=create_loading_layout(loading))
             interaction.extras['loading_ms'] = elapsed_ms(interaction)
-            view = await task
+            try:
+                view = await task
+            except (NotFoundError, ValidationError):
+                # 입력 오류는 전처럼 본인에게만 보이게 공개 로딩 카드를 지우고 handle_errors에 넘김
+                try:
+                    await interaction.delete_original_response()
+                    interaction.extras['loading_deleted'] = True
+                except discord.HTTPException:
+                    pass
+                raise
             message = await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
         else:
             message = await sent_message(interaction, await interaction.response.send_message(

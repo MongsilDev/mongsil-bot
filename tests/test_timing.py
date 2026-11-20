@@ -61,6 +61,28 @@ class SendCardTimingTest(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(i.extras['loading_ms'], i.extras['enter_ms'])
         self.assertGreaterEqual(i.extras['shown_ms'], i.extras['built_ms'])
 
+    async def test_user_error_after_loading_stays_private(self):
+        from utils.errors import NotFoundError, handle_errors
+        i = interaction()
+        i.delete_original_response = mock.AsyncMock()
+        i.followup = SimpleNamespace(send=mock.AsyncMock())
+        sent = []
+        i.response.send_message.side_effect = lambda **kw: sent.append(kw)
+        i.response.is_done = lambda: bool(sent)
+
+        async def build():
+            raise NotFoundError("없음", "찾지 못했습니다.")
+
+        @handle_errors()
+        async def command(inter):
+            await layouts.send_card(inter, '불러오는 중', build, fast_reply=0)
+        with mock.patch('discord.Interaction', SimpleNamespace):
+            await command(i)
+        i.delete_original_response.assert_awaited_once()
+        i.edit_original_response.assert_not_awaited()
+        self.assertTrue(i.followup.send.await_args.kwargs['ephemeral'])
+        self.assertEqual(i.extras['status'], 'user')
+
     async def test_api_time_collected_only_inside_build(self):
         i = interaction()
 
