@@ -10,6 +10,7 @@ from helpers import db, reset  # noqa: F401
 import discord
 
 from utils import layouts, loop_watch
+from utils.api_client import api_timing
 from utils.usage_db import record_command
 
 
@@ -48,6 +49,30 @@ class SendCardTimingTest(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(i.extras['built_ms'], 250)
         self.assertGreaterEqual(i.extras['shown_ms'], i.extras['built_ms'])
 
+    async def test_zero_fast_reply_sends_loading_first(self):
+        i = interaction()
+
+        async def build():
+            return discord.ui.LayoutView()
+        await layouts.send_card(i, '불러오는 중', build, fast_reply=0)
+        i.response.send_message.assert_awaited_once()
+        self.assertNotIn('files', i.response.send_message.await_args.kwargs)
+        i.edit_original_response.assert_awaited_once()
+        self.assertGreaterEqual(i.extras['loading_ms'], i.extras['enter_ms'])
+        self.assertGreaterEqual(i.extras['shown_ms'], i.extras['built_ms'])
+
+    async def test_api_time_collected_only_inside_build(self):
+        i = interaction()
+
+        async def build():
+            t = api_timing.get()
+            t['api'] += 0.12
+            t['sem'] += 0.03
+            return discord.ui.LayoutView()
+        await layouts.send_card(i, '불러오는 중', build)
+        self.assertEqual((i.extras['api_ms'], i.extras['sem_ms']), (120, 30))
+        self.assertIsNone(api_timing.get())
+
 
 class RecordTest(unittest.TestCase):
     def setUp(self):
@@ -57,6 +82,11 @@ class RecordTest(unittest.TestCase):
         record_command(1, 2, '랭크', 'ok', 1700, 1650, 180, 400)
         row = db.execute("SELECT ms, shown_ms, recv_ms, built_ms FROM command_log").fetchone()
         self.assertEqual(tuple(row), (1700, 1650, 180, 400))
+
+    def test_build_breakdown_saved(self):
+        record_command(1, 2, '랭크', 'ok', 1700, enter_ms=150, loading_ms=700, api_ms=300, sem_ms=0)
+        row = db.execute("SELECT enter_ms, loading_ms, api_ms, sem_ms FROM command_log").fetchone()
+        self.assertEqual(tuple(row), (150, 700, 300, 0))
 
     def test_old_call_leaves_new_columns_empty(self):
         record_command(1, 2, '설정', 'ok', 500)

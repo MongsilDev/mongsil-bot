@@ -102,18 +102,41 @@ async def sent_message(interaction: discord.Interaction, sent) -> discord.Intera
 FAST_REPLY_SECONDS = 1.0
 
 
-async def send_card(interaction: discord.Interaction, loading: str, build):
-    """결과가 빨리 준비되면 바로 보내고, 늦으면 로딩 카드를 먼저 보낸 뒤 교체. 이미 응답한 인터랙션은 새 메시지로"""
+def _start_build(interaction: discord.Interaction, build) -> asyncio.Future:
+    """카드 생성 태스크를 시작. 태스크 안의 API 슬롯 대기와 요청 시간을 extras에 모음"""
+    from .api_client import api_timing
+    timing = {'sem': 0.0, 'api': 0.0}
+    interaction.extras['enter_ms'] = elapsed_ms(interaction)
+    token = api_timing.set(timing)
+    try:
+        task = asyncio.ensure_future(build())
+    finally:
+        api_timing.reset(token)
+
+    def done(_):
+        interaction.extras['built_ms'] = elapsed_ms(interaction)
+        interaction.extras['api_ms'] = int(timing['api'] * 1000)
+        interaction.extras['sem_ms'] = int(timing['sem'] * 1000)
+    task.add_done_callback(done)
+    return task
+
+
+async def send_card(interaction: discord.Interaction, loading: str, build, fast_reply: Optional[float] = None):
+    """결과가 fast_reply초(기본 FAST_REPLY_SECONDS) 안에 준비되면 바로 보내고, 늦으면 로딩 카드를 먼저 보낸 뒤 교체. 이미 응답한 인터랙션은 새 메시지로.
+    fast_reply가 0이면 로딩 카드를 바로 보냄. 첨부가 있는 첫 응답은 로딩 카드 수정보다 0.3~0.5초 느림(장부 518)"""
     from . import visual
     if not interaction.response.is_done():
-        task = asyncio.ensure_future(build())
+        if fast_reply is None:
+            fast_reply = FAST_REPLY_SECONDS
+        task = _start_build(interaction, build)
         try:
-            view = await asyncio.wait_for(asyncio.shield(task), FAST_REPLY_SECONDS)
-            interaction.extras['built_ms'] = elapsed_ms(interaction)
+            if fast_reply <= 0:
+                raise asyncio.TimeoutError
+            view = await asyncio.wait_for(asyncio.shield(task), fast_reply)
         except asyncio.TimeoutError:
             await interaction.response.send_message(view=create_loading_layout(loading))
+            interaction.extras['loading_ms'] = elapsed_ms(interaction)
             view = await task
-            interaction.extras['built_ms'] = elapsed_ms(interaction)
             message = await interaction.edit_original_response(view=view, embeds=[], attachments=visual.files_of(view))
         else:
             message = await sent_message(interaction, await interaction.response.send_message(
@@ -122,9 +145,9 @@ async def send_card(interaction: discord.Interaction, loading: str, build):
         return view, message
     from .errors import BotError
     message = await interaction.followup.send(view=create_loading_layout(loading), wait=True)
+    task = _start_build(interaction, build)
     try:
-        view = await build()
-        interaction.extras['built_ms'] = elapsed_ms(interaction)
+        view = await task
     except BotError as e:
         # 원 응답은 계정 카드라 오류로 덮어쓰지 않고 로딩 메시지를 오류로 바꿈
         await message.edit(view=create_error_layout(e.user_message))

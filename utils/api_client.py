@@ -4,6 +4,7 @@
 import aiohttp
 import asyncio
 import time
+from contextvars import ContextVar
 from typing import Any, Optional, Dict
 from datetime import datetime, timedelta
 from collections import OrderedDict
@@ -15,6 +16,9 @@ logger = get_logger('api_client')
 
 # 도쿄 bser는 보통 0.1초 안팎. 이보다 느린 응답만 남겨 느린 엔드포인트를 찾음
 SLOW_REQUEST_MS = 500
+
+# send_card가 카드 생성 태스크에 넣는 dict. 슬롯 대기(sem)와 요청 시간(api)을 초 단위로 더함
+api_timing: ContextVar[Optional[dict]] = ContextVar('api_timing', default=None)
 
 class OptimizedAPIClient:
     """최적화된 API 클라이언트"""
@@ -110,14 +114,18 @@ class OptimizedAPIClient:
         for attempt in range(MAX_RETRIES + 1):
             retry_after = None
 
+            timing = api_timing.get()
+            waited = time.perf_counter()
             async with self._semaphore:
+                if timing is not None:
+                    timing['sem'] += time.perf_counter() - waited
                 session = await self.get_session()
 
                 # API 키는 bser 요청에만 실어 다른 호스트(Steam, 동물 API 등)로 전송되지 않게 한다
                 headers = {'x-api-key': config.api_key} if url.startswith('https://open-api.bser.io') else None
 
+                started = time.perf_counter()
                 try:
-                    started = time.perf_counter()
                     async with session.get(url, params=params, headers=headers) as response:
                         if response.status == 200:
                             data = await response.json()
@@ -160,6 +168,9 @@ class OptimizedAPIClient:
                 except Exception as e:
                     logger.error(f"예상치 못한 오류: {type(e).__name__}: {redact_secrets(e)}")
                     raise BotError(f"예상치 못한 오류: {type(e).__name__}: {redact_secrets(e)}", "오류가 발생했습니다.\n잠시 후 다시 시도해주세요.") from None
+                finally:
+                    if timing is not None:
+                        timing['api'] += time.perf_counter() - started
 
             await asyncio.sleep(retry_after)
     

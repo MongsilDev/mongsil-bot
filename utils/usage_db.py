@@ -60,9 +60,11 @@ db = sqlite3.connect(DB_PATH, isolation_level=None)
 db.row_factory = sqlite3.Row
 db.executescript(SCHEMA)
 # 결과가 화면에 표시된 시점. ms는 명령 처리가 모두 끝난 시점이라 체감 속도와 다름
-# recv_ms는 봇이 명령을 받아 처리하기 시작한 시점, built_ms는 결과 카드가 준비된 시점. 지연 구간을 나누는 용도
+# recv_ms는 봇이 명령을 받은 시점, enter_ms는 카드 생성 시작, loading_ms는 로딩 카드 전송 완료, built_ms는 카드 준비 완료.
+# api_ms와 sem_ms는 카드 생성 중 API 요청 시간과 슬롯 대기 시간의 합. 지연 구간을 나누는 용도
+TIMING_COLS = ('shown_ms', 'recv_ms', 'built_ms', 'enter_ms', 'loading_ms', 'api_ms', 'sem_ms')
 _cols = {r[1] for r in db.execute("PRAGMA table_info(command_log)")}
-for _col in ('shown_ms', 'recv_ms', 'built_ms'):
+for _col in TIMING_COLS:
     if _col not in _cols:
         db.execute(f"ALTER TABLE command_log ADD COLUMN {_col} INTEGER")
 
@@ -86,12 +88,13 @@ def prune() -> None:
 
 
 def record_command(guild_id, user_id: int, command: str, status: str, ms: int, shown_ms=None,
-                   recv_ms=None, built_ms=None) -> None:
+                   recv_ms=None, built_ms=None, enter_ms=None, loading_ms=None, api_ms=None, sem_ms=None) -> None:
+    timing = (shown_ms, recv_ms, built_ms, enter_ms, loading_ms, api_ms, sem_ms)
     try:
         db.execute(
-            "INSERT INTO command_log (ts, guild_id, user_id, command, status, ms, shown_ms, recv_ms, built_ms)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (int(time.time()), guild_id, user_id, command, status, ms, shown_ms, recv_ms, built_ms),
+            f"INSERT INTO command_log (ts, guild_id, user_id, command, status, ms, {', '.join(TIMING_COLS)})"
+            f" VALUES (?, ?, ?, ?, ?, ?{', ?' * len(TIMING_COLS)})",
+            (int(time.time()), guild_id, user_id, command, status, ms, *timing),
         )
     except sqlite3.Error as e:
         logger.warning(f"명령어 기록 실패: {e}")

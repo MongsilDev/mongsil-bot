@@ -272,9 +272,11 @@ class Rank(commands.Cog):
 
     @handle_errors(user_message="랭크 정보를 가져오는 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.")
     async def show(self, interaction: discord.Interaction, nickname: str, uid: Optional[str], owner: Optional[int]):
+        # 첨부가 붙은 첫 응답 전송이 느려 로딩 카드를 먼저 보냄(장부 518)
         view, message = await send_card(interaction, "랭크 조회 중",
                                         lambda: account.with_account(self.client, owner, nickname, uid,
-                                                                     lambda u: build_rank_view(self.client, nickname, user_id=u)))
+                                                                     lambda u: build_rank_view(self.client, nickname, user_id=u)),
+                                        fast_reply=0)
         if view is None:
             return
         view.message = message

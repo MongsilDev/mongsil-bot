@@ -18,7 +18,7 @@ from utils.logging_config import get_logger
 from utils.api_client import api_client
 from utils.character_names import refresh_character_names
 from utils import app_emojis, guild_settings, loop_watch
-from utils.usage_db import prune, record_command, record_guild_event
+from utils.usage_db import TIMING_COLS, prune, record_command, record_guild_event
 
 logger = get_logger(__name__)
 
@@ -229,8 +229,8 @@ class ERClient(commands.Bot):
         # handle_errors가 잡은 실패도 여기로 온다. 상태는 extras에 표시됨
         extras = interaction.extras
         record_command(interaction.guild_id, interaction.user.id, command.qualified_name,
-                       extras.get('status', 'ok'), elapsed_ms(interaction), extras.get('shown_ms'),
-                       extras.get('recv_ms'), extras.get('built_ms'))
+                       extras.get('status', 'ok'), elapsed_ms(interaction),
+                       **{c: extras.get(c) for c in TIMING_COLS})
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         error_message = "명령어 실행 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요."
