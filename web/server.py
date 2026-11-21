@@ -132,6 +132,10 @@ env.globals['bot_avatar'] = lambda size: client.user.display_avatar.with_size(si
 env.globals['static_version'] = str(int(max(f.stat().st_mtime for f in (ROOT / 'static').iterdir())))
 
 
+# 로그인 없이 열리는 화면만 대표 주소를 알림
+CANONICAL_PATHS = ('/', '/terms', '/privacy')
+
+
 def render(request: web.Request, name: str, status: int = 200, **context) -> web.Response:
     session = request.get('session')
     public = {k: session[k] for k in ('user_id', 'username', 'avatar', 'csrf')} if session else None
@@ -139,6 +143,7 @@ def render(request: web.Request, name: str, status: int = 200, **context) -> web
         session=public,
         is_owner=bool(session) and session['user_id'] in owner_ids(),
         path=request.path,
+        canonical=base_url + request.path if status == 200 and request.path in CANONICAL_PATHS else None,
         rail=context.pop('rail', None),
         **context,
     )

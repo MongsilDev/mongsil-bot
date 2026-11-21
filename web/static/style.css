@@ -1883,6 +1883,7 @@ a.grow:hover {
 .foot {
   display: flex;
   flex-wrap: wrap;
+  align-items: baseline;
   gap: 8px 20px;
   padding: 20px 24px;
   border-top: 1px solid var(--line);
@@ -1894,6 +1895,10 @@ a.grow:hover {
   margin-right: auto;
   color: var(--muted);
   font-weight: 700;
+}
+
+.foot a {
+  padding: 3px 0;
 }
 
 .foot a:hover {
