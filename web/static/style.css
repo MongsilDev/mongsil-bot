@@ -160,9 +160,8 @@ img {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(20, 22, 44, 0.92);
+  background: rgb(20, 22, 44);
   border-bottom: 1px solid var(--line);
-  backdrop-filter: blur(12px);
 }
 
 .wordmark {
@@ -2229,10 +2228,19 @@ a.grow:hover {
     padding: 0 16px;
     overflow-x: auto;
     scrollbar-width: none;
+    /* 오른쪽 끝을 흐리게 해 옆으로 넘길 명령이 더 있음을 알립니다. */
+    mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
   }
 
   .cmd-tabs::-webkit-scrollbar {
     display: none;
+  }
+
+  /* 끝까지 넘기면 마지막 명령이 흐린 구간을 벗어납니다. */
+  .cmd-tabs::after {
+    content: "";
+    flex: none;
+    width: 40px;
   }
 
   .cmd-group {
