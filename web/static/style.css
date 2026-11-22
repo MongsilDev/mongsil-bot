@@ -543,7 +543,7 @@ img {
 /* 명령 목록과 미리보기 */
 .demo {
   display: grid;
-  grid-template-columns: 304px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 616px;
   align-items: start;
   gap: 40px;
   margin-top: 48px;
@@ -618,7 +618,6 @@ img {
 
 .stage {
   min-width: 0;
-  min-height: 100%;
   padding: 20px;
   background: #313338;
   border-radius: 8px;
@@ -715,6 +714,11 @@ img {
 .now-value .u {
   margin-left: 4px;
   font-size: 15px;
+}
+
+/* 띄어 쓰는 단위는 공백 글자가 간격을 대신함 */
+.now-value .n + .u-word {
+  margin-left: 0;
 }
 
 .now-row .season {
@@ -2034,6 +2038,11 @@ a.grow:hover {
     gap: 24px;
   }
 
+  .stage {
+    justify-self: start;
+    max-width: 100%;
+  }
+
   .cmd-tabs button {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2215,12 +2224,31 @@ a.grow:hover {
   .cmd-tabs {
     position: static;
     display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
+    margin: 0 -16px;
+    padding: 0 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .cmd-tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .cmd-group {
-    display: contents;
+    display: flex;
+    flex: none;
+    gap: 2px;
+  }
+
+  .cmd-group + .cmd-group {
+    margin: 0 0 0 8px;
+    padding: 0 0 0 8px;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .cmd-tabs button {
+    flex: none;
   }
 
   .cmd-tabs button {
@@ -2242,13 +2270,16 @@ a.grow:hover {
   }
 
   .stage {
+    justify-self: stretch;
+    max-width: none;
     margin: 0 -16px;
-    padding: 14px 12px 16px;
+    padding: 14px 6px 16px;
     border-radius: 0;
   }
 
   .cmd-desc {
     display: block;
+    padding-left: 10px;
   }
 
   .now {

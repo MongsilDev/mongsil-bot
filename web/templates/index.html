@@ -15,7 +15,6 @@
         <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.3 5.3A17 17 0 0 0 15 4l-.5 1a15.7 15.7 0 0 0-5 0L9 4a17 17 0 0 0-4.3 1.3C2 9.4 1.2 13.4 1.6 17.3A17.2 17.2 0 0 0 6.9 20l1.1-1.7a11 11 0 0 1-1.7-.8l.4-.3a12.3 12.3 0 0 0 10.6 0l.4.3a11 11 0 0 1-1.7.8l1.1 1.7a17.1 17.1 0 0 0 5.3-2.7c.5-4.5-.8-8.4-3.1-12ZM8.7 14.9c-1 0-1.9-1-1.9-2.2s.8-2.2 1.9-2.2 1.9 1 1.9 2.2-.8 2.2-1.9 2.2Zm6.6 0c-1 0-1.9-1-1.9-2.2s.8-2.2 1.9-2.2 1.9 1 1.9 2.2-.8 2.2-1.9 2.2Z"/></svg>
         서버에 추가
       </a>
-      <a class="btn" href="/servers">대시보드</a>
     </div>
     {% set people = user_count|compact %}
     <p class="reach">서버 {{ num(guild_count, '개') }}, 멤버 합계 {% if people.endswith('만') %}<span class="n">{{ people[:-1] }}</span><span class="u">만 명</span>{% else %}{{ num(user_count, '명') }}{% endif %}, {{ num(days, '일') }}째 운영 중</p>
@@ -66,13 +65,13 @@
     {% if live.eternity is defined and live.eternity %}
     <div class="now-row">
       <dt><img src="/static/tier/10.png" alt="" width="28" height="28">이터니티 컷</dt>
-      <dd class="now-value">{% if live.eternity_est %}<span class="u">약 </span>{% endif %}{{ num(live.eternity, 'RP') }}</dd>
+      <dd class="now-value">{% if live.eternity_est %}<span class="u">약 </span>{% endif %}<span class="n">{{ live.eternity|number }}</span> <span class="u u-word">RP</span></dd>
     </div>
     {% endif %}
     {% if live.demigod is defined and live.demigod %}
     <div class="now-row">
       <dt><img src="/static/tier/9.png" alt="" width="28" height="28">데미갓 컷</dt>
-      <dd class="now-value">{% if live.demigod_est %}<span class="u">약 </span>{% endif %}{{ num(live.demigod, 'RP') }}</dd>
+      <dd class="now-value">{% if live.demigod_est %}<span class="u">약 </span>{% endif %}<span class="n">{{ live.demigod|number }}</span> <span class="u u-word">RP</span></dd>
     </div>
     {% endif %}
     {% if live.season_days is defined %}
