@@ -2038,9 +2038,10 @@ a.grow:hover {
     gap: 24px;
   }
 
+  /* 사진이 뜨기 전에도 같은 폭이 되도록 넓은 화면의 칸 폭을 그대로 씁니다. */
   .stage {
     justify-self: start;
-    max-width: 100%;
+    width: min(616px, 100%);
   }
 
   .cmd-tabs button {
@@ -2271,7 +2272,7 @@ a.grow:hover {
 
   .stage {
     justify-self: stretch;
-    max-width: none;
+    width: auto;
     margin: 0 -16px;
     padding: 14px 6px 16px;
     border-radius: 0;
