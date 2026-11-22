@@ -2229,6 +2229,7 @@ a.grow:hover {
     overflow-x: auto;
     scrollbar-width: none;
     /* 오른쪽 끝을 흐리게 해 옆으로 넘길 명령이 더 있음을 알립니다. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
     mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
   }
 
