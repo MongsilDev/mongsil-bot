@@ -73,7 +73,7 @@ def save_disabled_servers(disabled_servers: Set[int]) -> bool:
         logger.error(f"설정 파일 저장 실패: {e}")
         return False
 
-async def disable_emoji_zoom_and_notify(guild_id: int, channel: discord.TextChannel) -> None:
+async def disable_emoji_zoom_and_notify(guild_id: int, channel: discord.abc.Messageable) -> None:
     """이모지 확대 기능을 비활성화하고 알림을 보냅니다."""
     global _webhook_permission_notified
 
@@ -155,8 +155,8 @@ def schedule_webhook_warmup(client: discord.Client) -> None:
     _run_in_background(warm_webhook_cache(client))
 
 
-async def get_or_create_webhook(channel) -> Optional[discord.Webhook]:
-    """채널의 웹훅을 가져오거나 생성합니다."""
+async def get_or_create_webhook(channel, notify_to: Optional[discord.abc.Messageable] = None) -> Optional[discord.Webhook]:
+    """채널의 웹훅을 가져오거나 생성합니다. 권한 오류 알림은 notify_to(없으면 channel)로 보낸다."""
     channel_id = channel.id
 
     if channel_id in _webhook_cache:
@@ -178,7 +178,8 @@ async def get_or_create_webhook(channel) -> Optional[discord.Webhook]:
     except discord.Forbidden:
         # 길드 권한 자체가 없으면 서버 비활성화, 채널 오버라이드 탓이면 그 채널만 조용히 스킵
         if not channel.guild.me.guild_permissions.manage_webhooks:
-            await disable_emoji_zoom_and_notify(channel.guild.id, channel)
+            # 포럼 글이면 channel이 ForumChannel이라 send가 없어 메시지가 있던 스레드로 알린다
+            await disable_emoji_zoom_and_notify(channel.guild.id, notify_to or channel)
         return None
     except discord.NotFound:
         _webhook_cache.pop(channel_id, None)
@@ -268,7 +269,7 @@ async def process_emoji_zoom(message: discord.Message) -> None:
     if not perms.use_external_emojis and message.guild.get_emoji(emoji.id) is None:
         return
 
-    webhook = await get_or_create_webhook(hook_channel)
+    webhook = await get_or_create_webhook(hook_channel, message.channel)
     if not webhook:
         return
 
@@ -295,7 +296,7 @@ async def process_emoji_zoom(message: discord.Message) -> None:
     except discord.NotFound:
         # 웹훅이 수동 삭제된 경우: 캐시 비우고 한 번 재생성해 재시도
         _webhook_cache.pop(hook_channel.id, None)
-        webhook = await get_or_create_webhook(hook_channel)
+        webhook = await get_or_create_webhook(hook_channel, message.channel)
         try:
             if not webhook:
                 raise discord.ClientException("웹훅 재생성 실패")
