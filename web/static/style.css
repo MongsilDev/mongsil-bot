@@ -582,12 +582,11 @@ img {
 .cmd-tabs button b {
   color: var(--fg);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .cmd-group + .cmd-group button b {
   color: var(--muted);
-  font-weight: 500;
 }
 
 .cmd-tabs button:hover,
@@ -595,8 +594,10 @@ img {
   background: var(--surface);
 }
 
+/* 굵기는 고른 명령에만 씁니다. 묶음 순서는 색으로만 나눕니다. */
 .cmd-tabs button[aria-selected="true"] b {
   color: var(--fg);
+  font-weight: 700;
 }
 
 .cmd-tabs button[aria-selected="true"]::before {
