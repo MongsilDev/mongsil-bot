@@ -41,15 +41,23 @@ def _inline(text: str) -> str:
     return TIMESTAMP.sub(_timestamp, out)
 
 
+def _line(tag: str, text: str) -> str:
+    # 구분 기호가 줄 끝에 남지 않게 항목마다 나눠 두고 CSS가 줄 첫 기호를 가린다
+    parts = text.split(' | ')
+    if len(parts) > 1 and all(part.count('**') % 2 == 0 and part.count('`') % 2 == 0 for part in parts):
+        return f'<div class="dc-{tag} dc-segs">{"".join(f"<span>{_inline(part)}</span>" for part in parts)}</div>'
+    return f'<div class="dc-{tag}">{_inline(text) or "&nbsp;"}</div>'
+
+
 def markdown(text: str) -> str:
     lines = []
     for line in text.split('\n'):
         for prefix, tag in (('### ', 'h3'), ('## ', 'h2'), ('# ', 'h1'), ('-# ', 'small')):
             if line.startswith(prefix):
-                lines.append(f'<div class="dc-{tag}">{_inline(line[len(prefix):])}</div>')
+                lines.append(_line(tag, line[len(prefix):]))
                 break
         else:
-            lines.append(f'<div class="dc-line">{_inline(line) or "&nbsp;"}</div>')
+            lines.append(_line('line', line))
     return ''.join(lines)
 
 

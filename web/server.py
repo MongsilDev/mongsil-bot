@@ -55,7 +55,13 @@ FALLBACK_TTL = 3600
 
 
 # 봇에서 자주 쓰는 순서, 목록에 없는 명령은 맨 뒤
-COMMAND_ORDER = ['랭크', '랭킹', '이터컷', '플탐', '시즌', '동접', '대회', '계정', '강아지', '고양이', '설정', '정보']
+# 홈 화면 명령 목록의 묶음과 순서
+COMMAND_GROUPS = [
+    ['랭크', '랭킹', '이터컷', '플탐', '시즌', '동접', '대회'],
+    ['계정', '설정', '정보'],
+    ['강아지', '고양이'],
+]
+COMMAND_ORDER = [name for group in COMMAND_GROUPS for name in group]
 
 # 이모지 확대와 명령어는 스레드와 포럼 글도 부모 채널 기준
 SCOPE_TYPES = (discord.TextChannel, discord.VoiceChannel, discord.ForumChannel)
@@ -584,6 +590,8 @@ async def index(request: web.Request):
             'params': [p.display_name for p in cmd.parameters],
         })
     commands.sort(key=lambda c: COMMAND_ORDER.index(c['name']) if c['name'] in COMMAND_ORDER else 99)
+    for c in commands:
+        c['group'] = next((i for i, group in enumerate(COMMAND_GROUPS) if c['name'] in group), len(COMMAND_GROUPS))
 
     live = dict(previews.live)
     now = datetime.now(KST)

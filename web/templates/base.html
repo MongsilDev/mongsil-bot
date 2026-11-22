@@ -40,7 +40,7 @@
 </head>
 <body{% if rail is not none %} class="has-rail"{% endif %}>
 <header class="bar">
-  <a class="wordmark" href="/"><img src="{{ bot_avatar(64) }}" alt="" width="28" height="28">몽실봇</a>
+  {% block wordmark %}<a class="wordmark" href="/"><img src="{{ bot_avatar(64) }}" alt="" width="28" height="28">몽실봇</a>{% endblock %}
   <nav class="nav" aria-label="계정">
     {% if session %}
     {% if rail is none %}<a href="/servers">내 서버</a>{% endif %}
@@ -87,7 +87,6 @@
     {% block main %}{% endblock %}
     </main>
     <footer class="foot">
-      <span>몽실봇</span>
       <a href="{{ support_server }}">지원 서버</a>
       <a href="/terms">이용약관</a>
       <a href="/privacy">개인정보 처리방침</a>

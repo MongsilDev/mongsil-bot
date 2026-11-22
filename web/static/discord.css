@@ -119,6 +119,26 @@
   font-size: 13px;
 }
 
+/* 줄 첫 항목의 구분 기호는 잘라 낸 영역에 놓여 보이지 않음 */
+.dc-segs {
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: -0.9em;
+  clip-path: inset(0 0 0 0.9em);
+}
+
+.dc-segs > span {
+  padding-left: 0.9em;
+}
+
+.dc-segs > span::before {
+  content: "|";
+  display: inline-block;
+  width: 0.9em;
+  margin-left: -0.9em;
+  text-align: center;
+}
+
 .dc-text strong {
   color: #f2f3f5;
   font-weight: 700;
@@ -130,6 +150,7 @@
   border: 1px solid #1e1f22;
   border-radius: 4px;
   font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  white-space: nowrap;
 }
 
 .dc-time {
