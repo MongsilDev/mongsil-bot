@@ -690,7 +690,8 @@ img {
 
 .now-row {
   display: grid;
-  grid-template-columns: 9.5rem auto minmax(0, 1fr);
+  /* 가장 긴 이름인 「이터니티 8,300 달성」이 한 줄에 들어가는 폭 */
+  grid-template-columns: 11rem auto minmax(0, 1fr);
   align-items: center;
   gap: 0 28px;
   min-height: 76px;
@@ -2053,7 +2054,8 @@ a.grow:hover {
   }
 
   .now-row {
-    grid-template-columns: 9.5rem minmax(0, 1fr);
+    grid-template-columns: 11rem minmax(0, 1fr);
+    column-gap: 16px;
   }
 
   .now-row .season {
@@ -2321,7 +2323,8 @@ a.grow:hover {
   .now-row,
   .has-live .now-row {
     grid-column: auto;
-    grid-template-columns: 8rem minmax(0, 1fr);
+    /* 폭이 320px쯤이면 값이 한 줄에 들어가게 이름 칸을 절반까지만 둠 */
+    grid-template-columns: min(10.5rem, 50%) minmax(0, 1fr);
     min-height: 64px;
     padding-left: 0;
   }

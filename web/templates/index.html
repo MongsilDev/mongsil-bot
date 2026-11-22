@@ -62,7 +62,12 @@
       {% endif %}
     </div>
     {% endif %}
-    {% if live.eternity is defined and live.eternity %}
+    {% if live.eternity_reached %}
+    <div class="now-row">
+      <dt><img src="/static/tier/10.png" alt="" width="28" height="28">이터니티 {{ live.eternity_reached[0]|number }} 달성</dt>
+      <dd class="now-value"><span class="n">{{ live.eternity_reached[1]|number }}</span><span class="u">명</span></dd>
+    </div>
+    {% elif live.eternity is defined and live.eternity %}
     <div class="now-row">
       <dt><img src="/static/tier/10.png" alt="" width="28" height="28">이터니티 컷</dt>
       <dd class="now-value">{% if live.eternity_est %}<span class="u">약 </span>{% endif %}<span class="n">{{ live.eternity|number }}</span> <span class="u u-word">RP</span></dd>

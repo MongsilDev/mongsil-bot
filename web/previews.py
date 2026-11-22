@@ -31,6 +31,7 @@ async def _build(client) -> None:
     from commands.account import account_view
     from commands.settings import SettingsView
     from utils.animal_utils import fetch_animal_image
+    from utils.tier_system import TierSystem
 
     class RankingPreview(PaginationView):
         # 미리보기는 1페이지만 쓰므로 다음 페이지 선조회를 하지 않음
@@ -67,6 +68,9 @@ async def _build(client) -> None:
         # 점수판도 /이터컷 카드와 같은 휴면 반영 컷
         for key, t in zip(('eternity', 'demigod'), tier_cuts(data)):
             live[key], live[f'{key}_est'] = t[6], bool(t[5] and t[5][2])
+        # /이터컷 카드와 같이 300위가 8,300을 넘기 전에는 늘 8,300인 이터니티 컷 대신 달성 인원
+        race = labs_cut.race(season_id)
+        live['eternity_reached'] = race and (TierSystem.RANKED_GATE, race['count'])
         return {'input': '', 'html': render_view(view)}
 
     async def playtime():
