@@ -2267,6 +2267,12 @@ a.grow:hover {
     padding: 9px 10px;
   }
 
+  /* 가로로 넘기는 줄에서는 고른 명령의 폭이 달라져 옆 버튼이 밀리지 않게 굵기를 하나로 둡니다. */
+  .cmd-tabs button b,
+  .cmd-tabs button[aria-selected="true"] b {
+    font-weight: 600;
+  }
+
   .cmd-tabs button span {
     display: none;
   }
