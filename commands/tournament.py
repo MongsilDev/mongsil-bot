@@ -27,7 +27,7 @@ from utils.usage_db import db
 
 logger = get_logger('대회')
 
-API = f"{config.labs_url}/api/bot"
+API = f"{config.labs_api_url}/api/bot"
 CODE = re.compile(r'^(?:[2-9A-HJKMNP-Z]{6}|EXAMPLE)$')
 LINK = re.compile(r'/er/(?:t/([0-9A-Za-z]{6})|(example))(?:/([A-Ha-h]|[0-9a-f]{24}))?(?:[/?#]|$)')
 GROUPS = 'ABCDEFGH'

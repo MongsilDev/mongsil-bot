@@ -28,6 +28,8 @@ class BotConfig:
     bot_invite: str = 'https://discord.com/oauth2/authorize?client_id=1118780504490131557'
     dashboard_url: str = os.getenv('DASHBOARD_URL', 'https://bot.mongsil.dev')
     labs_url: str = 'https://labs.mongsil.dev'
+    # 봇 API는 CloudFront 요청 수를 줄이려 컨테이너 안에서 원본으로 직접 부름
+    labs_api_url: str = os.getenv('LABS_API_URL', 'https://labs.mongsil.dev')
 
     # UI 타임아웃 설정 (초 단위)
     view_timeout_interactive: int = 300  # 상호작용 버튼 (5분)
